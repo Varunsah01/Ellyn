@@ -1,0 +1,56 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #180B26; /* Midnight Violet */
+    --foreground: #FAFAFA; /* Canvas White */
+
+    --primary: #FF5C8D; /* Electric Rose */
+    --primary-foreground: #FAFAFA; /* Canvas White */
+
+    --secondary: #FF7A5C; /* Sunset Coral */
+    --secondary-foreground: #FAFAFA; /* Canvas White */
+
+    --muted: #3B2052; /* A darker shade for muted elements, derived from Midnight Violet */
+    --muted-foreground: #B0A1C2; /* A lighter shade for muted text, derived from Midnight Violet */
+
+    --card: #180B26; /* Midnight Violet for card backgrounds initially, can be adjusted */
+    --card-foreground: #FAFAFA; /* Canvas White */
+
+    --border: #3B2052; /* Darker border for contrast */
+    --input: #3B2052; /* Darker input background */
+    --ring: #FF5C8D; /* Electric Rose for focus rings */
+
+    --radius: 12px;
+  }
+
+  .dark {
+    /* Since we are going for a dark mode aesthetic as default,
+       the dark class will largely inherit from the :root.
+       Adjustments can be made here if there are specific dark mode overrides needed. */
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    color: var(--foreground);
+    background-color: var(--background);
+    font-family: 'DM Sans', sans-serif; /* Set DM Sans as default body font */
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Fraunces', serif; /* Set Fraunces as default heading font */
+  }
+}
+
+/* Define CSS variables for custom fonts */
+:root {
+  --font-dm-sans: 'DM Sans';
+  --font-fraunces: 'Fraunces';
+}
