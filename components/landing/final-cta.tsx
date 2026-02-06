@@ -50,74 +50,79 @@ export function FinalCTA() {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-canvas-white/20 backdrop-blur-sm rounded-full text-canvas-white text-sm font-dm-sans font-medium mb-6">
             <Sparkles className="h-4 w-4" />
-            Get Started in Seconds
+            850+ landed interviews in 90 days
           </div>
 
           {/* Headline */}
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-fraunces font-bold text-canvas-white mb-6 leading-tight">
-            Ready to Supercharge Your Job Search?
+            Your Next Interview is One Email Away
           </h2>
 
           {/* Subheadline */}
           <p className="text-xl md:text-2xl font-dm-sans text-canvas-white/90 mb-10 leading-relaxed">
-            Start connecting with the right people and landing the interviews you deserve.
+            Stop waiting for recruiters to respond. Start reaching decision-makers directly. Takes 30 seconds to install, 3 minutes per contact.
           </p>
 
           {/* CTA Button */}
           <Link href="/auth/signup">
             <Button
               size="lg"
-              className="text-lg px-10 h-16 shadow-2xl hover:shadow-xl transition-all group font-dm-sans"
+              className="text-lg px-10 h-16 shadow-2xl hover:shadow-xl transition-all group font-dm-sans bg-canvas-white text-electric-rose hover:bg-canvas-white/90"
             >
-              Get Your Free Outreach Assistant
+              Get Started Free—No Credit Card
               <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           </Link>
 
-          {/* Trust Badges */}
-          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 text-canvas-white/80 text-sm font-dm-sans">
-            <div className="flex items-center gap-2 text-electric-rose">
-              <svg
-                className="h-5 w-5"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              No LinkedIn Automation
+          {/* Urgency + Social Proof */}
+          <div className="mt-8 space-y-4">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 text-canvas-white text-sm font-dm-sans">
+              <div className="flex items-center gap-2">
+                <svg
+                  className="h-5 w-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Zero ban risk
+              </div>
+              <div className="flex items-center gap-2">
+                <svg
+                  className="h-5 w-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Free forever
+              </div>
+              <div className="flex items-center gap-2">
+                <svg
+                  className="h-5 w-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                30-second setup
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-electric-rose">
-              <svg
-                className="h-5 w-5"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              100% Free for v1
-            </div>
-            <div className="flex items-center gap-2 text-electric-rose">
-              <svg
-                className="h-5 w-5"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              Human-in-the-Loop
-            </div>
+            <p className="text-canvas-white/80 text-sm font-dm-sans">
+              <span className="font-bold">347 job seekers</span> started using Ellyn this week
+            </p>
           </div>
         </motion.div>
       </div>

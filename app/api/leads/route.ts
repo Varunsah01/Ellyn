@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, type Lead, type EmailResult } from '@/lib/supabase';
+import { supabase, type Contact, type EmailResult } from '@/lib/supabase';
 
 // GET /api/leads - Fetch all leads
 export async function GET(request: NextRequest) {

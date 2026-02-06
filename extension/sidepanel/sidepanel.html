@@ -7,420 +7,85 @@
   <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
-  <!-- Header Section -->
-  <header class="header">
-    <div class="logo-container">
-      <div class="logo-icon">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="2" y="4" width="20" height="16" rx="2"/>
-          <path d="m2 7 10 6 10-6"/>
-        </svg>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>Ellyn</h1>
+      <button id="sync-btn" class="sync-btn">↻ Sync</button>
+    </div>
+
+    <!-- Input Section -->
+    <div class="input-section">
+      <h2>Discover Email</h2>
+      <form id="contact-form">
+        <label for="firstName">First Name *</label>
+        <input type="text" id="firstName" name="firstName" required placeholder="John">
+
+        <label for="lastName">Last Name *</label>
+        <input type="text" id="lastName" name="lastName" required placeholder="Doe">
+
+        <label for="company">Company *</label>
+        <input type="text" id="company" name="company" required placeholder="Acme Corp">
+
+        <label for="role">Role</label>
+        <input type="text" id="role" name="role" placeholder="CEO">
+
+        <button type="submit" class="primary-btn">🔍 Discover Email</button>
+        <div class="cost-note">Zero-cost enrichment using free APIs</div>
+      </form>
+    </div>
+
+    <!-- Results Section (hidden by default) -->
+    <div id="results" class="results-section" style="display: none;">
+      <h2>Results</h2>
+
+      <!-- Company Info -->
+      <div class="company-info">
+        <div class="info-row">
+          <span class="label">Domain:</span>
+          <span class="value" id="domain">-</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Industry:</span>
+          <span class="value" id="industry">-</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Size:</span>
+          <span class="value" id="company-size">-</span>
+        </div>
       </div>
-      <div class="logo-text">
-        <h1>Ellyn</h1>
-        <p class="tagline">Email Discovery Assistant</p>
+
+      <!-- Email Patterns -->
+      <h3 style="font-size: 14px; margin-bottom: 8px;">Select Email Pattern</h3>
+      <div id="email-list" class="email-list">
+        <!-- Email cards will be inserted here -->
+      </div>
+
+      <!-- Actions -->
+      <div class="actions">
+        <button id="save-btn" class="primary-btn">💾 Save Contact</button>
+        <button id="open-web-app-btn" class="secondary-btn">Open in Web App</button>
       </div>
     </div>
-  </header>
-
-  <!-- Context Indicator -->
-  <div id="context-indicator" class="context-indicator">
-    <div class="context-icon">⚠️</div>
-    <div class="context-message">
-      <p id="context-text">Open a LinkedIn profile to get started</p>
-    </div>
-  </div>
-
-  <!-- Main Content -->
-  <main class="main-content">
-
-    <!-- Extract Section -->
-    <section id="extract-section" class="section hidden">
-      <h2 class="section-title">Extract Profile</h2>
-      <button id="extract-btn" class="btn btn-primary btn-large">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        Extract Contact Data
-      </button>
-    </section>
-
-    <!-- Contact Preview Card -->
-    <section id="contact-preview" class="section hidden">
-      <h2 class="section-title">Contact Information</h2>
-      <div class="contact-card">
-        <div class="contact-avatar">
-          <span id="contact-initials">--</span>
-        </div>
-        <div class="contact-info">
-          <h3 id="contact-name">--</h3>
-          <p id="contact-role" class="contact-role">--</p>
-          <p id="contact-company" class="contact-company">--</p>
-          <a id="contact-linkedin" href="#" target="_blank" class="contact-link hidden">
-            View LinkedIn Profile
-          </a>
-        </div>
-      </div>
-    </section>
-
-    <!-- Email Patterns Section -->
-    <section id="email-patterns-section" class="section hidden">
-      <h2 class="section-title">Email Pattern Guesses</h2>
-      <p class="section-description">Based on common email formats</p>
-      <div id="email-patterns-list" class="email-patterns-list">
-        <!-- Email patterns will be dynamically inserted here -->
-      </div>
-      <p class="help-text">
-        💡 <strong>Tip:</strong> Higher confidence scores are more likely to be correct
-      </p>
-    </section>
-
-    <!-- AI Draft Generation Section -->
-    <section id="ai-draft-section" class="section hidden">
-      <h2 class="section-title">✨ Generate with AI</h2>
-
-      <div class="ai-controls">
-        <div class="form-group">
-          <label for="draft-style">Style:</label>
-          <select id="draft-style" class="input-select">
-            <option value="professional">Professional</option>
-            <option value="casual">Casual & Friendly</option>
-            <option value="referral">Referral-Focused</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="draft-tone">Tone:</label>
-          <select id="draft-tone" class="input-select">
-            <option value="warm">Warm</option>
-            <option value="direct">Direct</option>
-            <option value="enthusiastic">Enthusiastic</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="custom-instructions">Additional Instructions (optional):</label>
-          <textarea
-            id="custom-instructions"
-            class="input-textarea"
-            placeholder="E.g., 'Mention my interest in AI' or 'Keep it very brief'"
-            rows="2"
-          ></textarea>
-        </div>
-      </div>
-
-      <div class="ai-info">
-        <span id="remaining-generations" class="remaining-count">Loading...</span>
-        <span class="cost-estimate">~$0.001 per email</span>
-      </div>
-
-      <button id="generate-ai-draft-btn" class="btn btn-primary btn-large">
-        ✨ Generate with AI
-      </button>
-
-      <button id="use-template-btn" class="btn btn-outline btn-small">
-        Use Template Instead
-      </button>
-    </section>
-
-    <!-- Draft Preview Section -->
-    <section id="draft-preview-section" class="section hidden">
-      <div class="draft-header">
-        <h2 class="section-title">Your Draft</h2>
-        <div class="draft-actions-header">
-          <button id="regenerate-btn" class="btn-icon" title="Regenerate">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-            </svg>
-          </button>
-          <button id="edit-draft-btn" class="btn-icon" title="Edit" style="display:none;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div class="draft-content">
-        <div class="form-group">
-          <label for="draft-subject">Subject:</label>
-          <input
-            type="text"
-            id="draft-subject"
-            class="input-text editable-subject"
-            placeholder="Email subject"
-          />
-        </div>
-
-        <div class="form-group">
-          <label for="draft-body">Body:</label>
-          <textarea
-            id="draft-body"
-            class="input-textarea editable-body"
-            rows="12"
-            placeholder="Email body will appear here..."
-          ></textarea>
-        </div>
-      </div>
-
-      <div class="draft-meta">
-        <span id="word-count" class="meta-info">0 words</span>
-        <span id="draft-cost" class="meta-info">Cost: $0.00</span>
-      </div>
-    </section>
-
-    <!-- Template Fallback Section (shown when AI is unavailable) -->
-    <section id="template-section" class="section hidden">
-      <h2 class="section-title">Email Templates</h2>
-
-      <!-- Template Selector -->
-      <div class="form-group">
-        <label for="template-select">Choose Template:</label>
-        <select id="template-select" class="input-select">
-          <option value="cold-outreach">Cold Outreach</option>
-          <option value="follow-up">Follow Up</option>
-          <option value="introduction">Introduction</option>
-        </select>
-      </div>
-
-      <!-- Subject Line -->
-      <div class="form-group">
-        <label for="email-subject">Subject:</label>
-        <input
-          type="text"
-          id="email-subject"
-          class="input-text"
-          placeholder="Email subject line"
-        >
-      </div>
-
-      <!-- Email Preview -->
-      <div class="form-group">
-        <label>Preview:</label>
-        <div id="email-preview" class="email-preview">
-          Select a template to preview...
-        </div>
-      </div>
-    </section>
-
-    <!-- Action Buttons -->
-    <section id="actions-section" class="section hidden">
-      <h2 class="section-title">Actions</h2>
-      <div class="action-buttons">
-        <button id="save-contact-btn" class="btn btn-primary" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-            <polyline points="17 21 17 13 7 13 7 21"/>
-            <polyline points="7 3 7 8 15 8"/>
-          </svg>
-          Save Contact
-        </button>
-
-        <button id="generate-draft-btn" class="btn btn-secondary" disabled>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
-          Generate Draft
-        </button>
-
-        <div class="action-buttons-row">
-          <button id="gmail-btn" class="btn btn-outline" disabled>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="4" width="20" height="16" rx="2"/>
-              <path d="m2 7 10 6 10-6"/>
-            </svg>
-            Gmail
-          </button>
-
-          <button id="outlook-btn" class="btn btn-outline" disabled>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="2" y="4" width="20" height="16" rx="2"/>
-              <path d="m2 7 10 6 10-6"/>
-            </svg>
-            Outlook
-          </button>
-        </div>
-      </div>
-    </section>
 
     <!-- Recent Contacts -->
-    <section class="section">
-      <h2 class="section-title">Recent Contacts</h2>
-      <div id="recent-contacts-list" class="recent-contacts-list">
-        <p class="empty-state">No recent contacts</p>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- Footer -->
-  <footer class="footer">
-    <p>Powered by <strong>Ellyn</strong></p>
-    <div class="footer-links">
-      <a href="http://localhost:3001" target="_blank" class="footer-link">Open Web App</a>
-      <button id="settings-btn" class="footer-link btn-link">⚙️ Settings</button>
-    </div>
-  </footer>
-
-  <!-- API Configuration Modal -->
-  <div id="api-config-modal" class="modal hidden">
-    <div class="modal-overlay"></div>
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>AI Email Generation Setup</h3>
-        <button id="close-modal-btn" class="btn-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <p class="modal-description">
-          To generate personalized emails with AI, you'll need an Anthropic API key.
-        </p>
-
-        <div class="setup-steps">
-          <h4>How to get your API key:</h4>
-          <ol>
-            <li>Go to <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a></li>
-            <li>Create an account or sign in</li>
-            <li>Navigate to "API Keys" section</li>
-            <li>Click "Create Key" and copy it</li>
-            <li>Paste it below</li>
-          </ol>
-        </div>
-
-        <div class="form-group">
-          <label for="api-key-input">Anthropic API Key:</label>
-          <div class="input-with-button">
-            <input
-              type="password"
-              id="api-key-input"
-              class="input-text"
-              placeholder="sk-ant-..."
-            />
-            <button id="toggle-api-key-visibility" class="btn-icon-inline" title="Show/Hide">
-              👁️
-            </button>
-          </div>
-        </div>
-
-        <div class="cost-note">
-          <strong>💡 Cost Information:</strong>
-          <ul>
-            <li>~$0.001 per email (~0.1¢)</li>
-            <li>50 emails ≈ $0.05</li>
-            <li>Uses Claude 3.5 Haiku (most cost-effective)</li>
-            <li>Daily limit: 50 emails</li>
-            <li>Rate limit: 3 per minute</li>
-          </ul>
-        </div>
-
-        <div class="privacy-note">
-          <strong>🔒 Privacy & Security:</strong>
-          <ul>
-            <li>API key stored locally in Chrome (encrypted)</li>
-            <li>Never shared with Ellyn servers</li>
-            <li>You can revoke it anytime</li>
-            <li>Only used when you click "Generate with AI"</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button id="save-api-key-btn" class="btn btn-primary">Save & Connect</button>
-        <button id="cancel-api-key-btn" class="btn btn-outline">Cancel</button>
-      </div>
-
-      <div class="modal-footer">
-        <button id="remove-api-key-btn" class="btn-link btn-danger" style="display:none;">
-          Remove API Key
-        </button>
+    <div class="recent-section">
+      <h3>Recent Contacts</h3>
+      <div id="recent-list" class="recent-list">
+        <p style="color: #9ca3af; font-size: 12px;">No recent contacts</p>
       </div>
     </div>
-  </div>
 
-  <!-- User Profile Modal -->
-  <div id="user-profile-modal" class="modal hidden">
-    <div class="modal-overlay"></div>
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>Your Profile</h3>
-        <button id="close-profile-modal-btn" class="btn-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <p class="modal-description">
-          This information helps personalize your AI-generated emails.
-        </p>
-
-        <div class="form-group">
-          <label for="user-name-input">Your Name: <span class="required">*</span></label>
-          <input
-            type="text"
-            id="user-name-input"
-            class="input-text"
-            placeholder="John Doe"
-          />
-        </div>
-
-        <div class="form-group">
-          <label for="user-role-input">Your Role/Major:</label>
-          <input
-            type="text"
-            id="user-role-input"
-            class="input-text"
-            placeholder="Computer Science Student"
-          />
-        </div>
-
-        <div class="form-group">
-          <label for="user-school-input">Your School/Company:</label>
-          <input
-            type="text"
-            id="user-school-input"
-            class="input-text"
-            placeholder="Stanford University"
-          />
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button id="save-profile-btn" class="btn btn-primary">Save Profile</button>
-        <button id="cancel-profile-btn" class="btn btn-outline">Cancel</button>
-      </div>
+    <!-- Footer -->
+    <div class="footer">
+      <span>100% LinkedIn compliant</span>
+      <a href="http://localhost:3000" target="_blank">Open App</a>
     </div>
-  </div>
-
-  <!-- Toast Notification -->
-  <div id="toast" class="toast hidden">
-    <span id="toast-message"></span>
-  </div>
-
-  <!-- Loading Overlay -->
-  <div id="loading-overlay" class="loading-overlay hidden">
-    <div class="loading-spinner"></div>
-    <p id="loading-message">Loading...</p>
   </div>
 
   <!-- Scripts -->
-  <script src="../config/api-config.js"></script>
-  <script src="../utils/email-patterns.js"></script>
-  <script src="../utils/email-inference.js"></script>
-  <script src="../utils/ai-draft-generator.js"></script>
   <script src="../utils/storage.js"></script>
-  <script src="ai-generation.js"></script>
+  <script src="../utils/api-client.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

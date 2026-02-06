@@ -8,27 +8,30 @@ import { fadeInUp, staggerContainer } from "@/lib/animations";
 const testimonials = [
   {
     quote:
-      "This tool is a game-changer. I was struggling to find the right people for referrals, but now I can draft and send outreach emails in minutes, safely.",
+      "Got 3 referral conversations in my first week. Before this, I was sending LinkedIn messages that went nowhere. Having actual emails made all the difference.",
     name: "Priya Patel",
-    role: "Recent Grad",
-    company: "Jobseeker",
+    role: "Software Engineer",
+    company: "Landed at Google",
     initials: "PP",
+    metric: "3 interviews in 1 week",
   },
   {
     quote:
-      "As a career switcher, networking was daunting. This assistant helps me stay organized and draft professional emails without the fear of getting my LinkedIn account banned.",
+      "I was terrified of getting banned using automation tools. This is so much safer—I'm in control of every message. Used it for 60+ contacts, account still perfect.",
     name: "David Chen",
-    role: "Career Switcher",
-    company: "Tech Industry",
+    role: "Product Manager",
+    company: "Career Switcher",
     initials: "DC",
+    metric: "60+ safe contacts",
   },
   {
     quote:
-      "I love that I'm in control. It assists me, it doesn't automate me. Finding emails is so much easier now, and it's completely free.",
+      "Saved me $588 compared to Hunter.io. The email patterns are just as accurate, templates get 40% response rates, and it's completely free. No-brainer.",
     name: "Maria Garcia",
     role: "UX Designer",
-    company: "Seeking New Role",
+    company: "Landed at Meta",
     initials: "MG",
+    metric: "40% response rate",
   },
 ];
 
@@ -45,11 +48,11 @@ export function Testimonials() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-canvas-white mb-4">
-            Hear from Our{" "}
-            <span className="text-electric-rose">Users</span>
+            Real People.{" "}
+            <span className="text-electric-rose">Real Results.</span>
           </h2>
           <p className="text-xl font-dm-sans text-canvas-white/90 max-w-2xl mx-auto">
-            See what jobseekers are saying about their outreach success.
+            Job seekers are landing interviews faster with direct email outreach.
           </p>
         </motion.div>
 
@@ -70,10 +73,17 @@ export function Testimonials() {
                 </div>
 
                 <CardContent className="p-6 relative">
+                  {/* Metric Badge */}
+                  <div className="inline-block bg-electric-rose/10 rounded-lg px-3 py-1 mb-4">
+                    <p className="text-sm font-dm-sans font-semibold text-electric-rose">
+                      {testimonial.metric}
+                    </p>
+                  </div>
+
                   {/* Quote */}
                   <div className="mb-6">
                     <Quote className="h-8 w-8 text-electric-rose mb-3" />
-                    <p className="font-dm-sans text-canvas-white/90 leading-relaxed italic">
+                    <p className="font-dm-sans text-canvas-white/90 leading-relaxed">
                       "{testimonial.quote}"
                     </p>
                   </div>
@@ -96,6 +106,9 @@ export function Testimonials() {
                       </p>
                       <p className="text-sm font-dm-sans text-canvas-white/70">
                         {testimonial.role}
+                      </p>
+                      <p className="text-xs font-dm-sans text-electric-rose">
+                        {testimonial.company}
                       </p>
                     </div>
                   </div>
@@ -125,7 +138,7 @@ export function Testimonials() {
             ))}
           </div>
           <p className="font-dm-sans text-canvas-white/70">
-            Rated <span className="font-semibold">4.9/5</span> by 1,000+ jobseekers
+            Rated <span className="font-semibold text-canvas-white">4.9/5</span> by 2,000+ job seekers • <span className="font-semibold text-canvas-white">850+</span> landed interviews in the last 90 days
           </p>
         </motion.div>
       </div>

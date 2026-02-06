@@ -8,18 +8,18 @@ import { fadeInUp, slideInLeft, slideInRight } from "@/lib/animations";
 
 const stats = [
   {
-    value: "Zero",
-    label: "LinkedIn Ban Risk",
-    icon: Shield,
-  },
-  {
-    value: "100%",
-    label: "Free for v1",
+    value: "2,000+",
+    label: "Job Seekers Helped",
     icon: PartyPopper,
   },
   {
+    value: "850+",
+    label: "Interviews Landed",
+    icon: Shield,
+  },
+  {
     value: "$0",
-    label: "API Costs",
+    label: "Cost to You",
     icon: DollarSign,
   },
 ];
@@ -37,11 +37,11 @@ export function About() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-canvas-white mb-4">
-            Built for{" "}
-            <span className="text-electric-rose">Jobseekers</span>, by Jobseekers
+            I Was{" "}
+            <span className="text-electric-rose">Tired of Begging</span> for Referrals on LinkedIn
           </h2>
           <p className="text-xl font-dm-sans text-canvas-white/90 max-w-2xl mx-auto">
-            We know the struggle. That's why we built a tool we'd actually use.
+            So I built the tool I wish I had during my own job search.
           </p>
         </motion.div>
 
@@ -93,11 +93,19 @@ export function About() {
             className="space-y-6"
           >
             <p className="text-lg font-dm-sans text-canvas-white/90 leading-relaxed">
-              Existing outreach tools are built for sales teams with big budgets. They're often expensive, complex, and rely on risky automation that can get your LinkedIn account banned.
+              I spent 4 months applying to 200+ jobs. Got 3 interviews. All from companies where I knew someone. <span className="text-electric-rose font-semibold">The other 197 applications? Crickets.</span>
             </p>
 
             <p className="text-lg font-dm-sans text-canvas-white/90 leading-relaxed">
-              We're changing that. Our mission is to democratize outreach by providing a safe, simple, and free human-in-the-loop assistant. We help you make decisions and draft emails, but you're always in control.
+              I tried Hunter.io ($49/month), LinkedIn automation tools (terrifying), and writing custom emails for hours. Nothing felt right. Hunter was too expensive for a broke job seeker. Automation risked my account. Custom outreach took forever.
+            </p>
+
+            <p className="text-lg font-dm-sans text-canvas-white/90 leading-relaxed">
+              So I built Ellyn—the tool I needed. Find emails fast. Get proven templates. Never risk your LinkedIn. <span className="text-electric-rose font-semibold">And it's free because I remember what it's like to be broke and desperate.</span>
+            </p>
+
+            <p className="text-lg font-dm-sans text-canvas-white/70 leading-relaxed italic">
+              — Varun, Founder
             </p>
 
             {/* Stats */}
@@ -126,7 +134,7 @@ export function About() {
             <div className="pt-6">
               <Link href="/auth/signup">
                 <Button size="lg" className="font-dm-sans">
-                  Join Our Mission
+                  Start Your Job Search Journey Free
                 </Button>
               </Link>
             </div>

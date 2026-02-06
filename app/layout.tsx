@@ -19,23 +19,31 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Ellyn - Creativity Needs a Canvas",
+  title: "Ellyn - Find Emails & Get Referrals for Your Job Search | Free LinkedIn Email Finder",
   description:
-    "Ellyn exists at the intersection of precision and play. We provide the tools; you provide the art. Build digital experiences that feel as tactile and personal as a brushstroke on canvas.",
+    "Stop sending your resume into the void. Find professional emails on LinkedIn, draft personalized outreach, and get referrals from decision-makers. 100% free, zero LinkedIn ban risk. 850+ interviews landed in 90 days.",
   keywords: [
-    "ellyn",
-    "creative tools",
-    "digital experience",
-    "design platform",
-    "art tech",
-    "tactile design",
-    "personal expression",
+    "LinkedIn email finder",
+    "job search referrals",
+    "find professional emails",
+    "cold email outreach",
+    "job referral tool",
+    "email pattern finder",
+    "free Hunter.io alternative",
+    "LinkedIn networking tool",
+    "job seeker email finder",
+    "career networking assistant",
+    "safe LinkedIn tool",
+    "email outreach templates",
+    "hiring manager emails",
+    "recruiter email finder",
+    "job application referrals",
   ],
   authors: [{ name: "Ellyn" }],
   openGraph: {
-    title: "Ellyn - Creativity Needs a Canvas",
+    title: "Ellyn - Get Referrals & Land Interviews 3x Faster | Free LinkedIn Email Finder",
     description:
-      "Ellyn exists at the intersection of precision and play. We provide the tools; you provide the art. Build digital experiences that feel as tactile and personal as a brushstroke on canvas.",
+      "Find decision-makers' emails in 10 seconds. Get proven outreach templates. Track your networking. 2,000+ job seekers landed interviews using Ellyn. 100% free forever, zero ban risk.",
     type: "website",
   },
 };

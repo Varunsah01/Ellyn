@@ -25,20 +25,19 @@ export function Hero() {
               transition={{ delay: 0.2 }}
               className="inline-flex items-center gap-2 px-4 py-2 bg-electric-rose text-canvas-white rounded-lg text-sm font-dm-sans font-medium mb-6"
             >
-              Your Human-in-the-Loop Outreach Assistant
+              Zero Risk • 100% Free • Proven Email Patterns
             </motion.div>
 
             {/* Headline */}
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-fraunces font-bold mb-6 leading-tight">
-              Land Your Dream Job Faster.
+              Stop Sending Your Resume
               <br />
-              Connect with the right people,{" "}
-              <span className="text-electric-rose">safely.</span>
+              Into the <span className="text-electric-rose">Void</span>
             </h1>
 
             {/* Subheadline */}
             <p className="text-xl font-dm-sans text-canvas-white/90 mb-8 leading-relaxed max-w-2xl mx-auto">
-              Our browser extension helps you find professional emails, draft effective outreach, and track your networking—all without putting your LinkedIn account at risk.
+              Get referrals from real people at your dream companies. Find their emails, draft personalized outreach, and skip the LinkedIn ban risk—all completely free.
             </p>
 
             {/* CTAs */}
@@ -46,16 +45,16 @@ export function Hero() {
               <Link href="/auth/signup">
                 <Button
                   size="lg"
-                  className="text-lg px-8 h-14 shadow-lg hover:shadow-xl transition-all font-dm-sans" // Styling comes from button.tsx now
+                  className="text-lg px-8 h-14 shadow-lg hover:shadow-xl transition-all font-dm-sans"
                 >
-                  Get Started for Free
+                  Start Getting Referrals Free
                 </Button>
               </Link>
             </div>
 
             {/* Trust badge */}
             <p className="mt-6 text-sm text-canvas-white/70 font-dm-sans">
-              No LinkedIn Automation • 100% Free • Human-in-the-Loop
+              No credit card • No automation • No LinkedIn ban risk
             </p>
           </motion.div>
         </div>
@@ -68,7 +67,7 @@ export function Hero() {
           className="mt-16 text-center"
         >
           <p className="text-sm text-canvas-white/70 mb-6 font-dm-sans font-medium">
-            Join thousands of jobseekers
+            Trusted by 2,000+ job seekers who landed referrals
           </p>
           <div className="flex flex-wrap justify-center items-center gap-8 opacity-50">
             {[1, 2, 3, 4, 5].map((i) => (

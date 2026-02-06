@@ -4,28 +4,32 @@ import { UserPlus, MailCheck, Send } from "lucide-react"; // Updated icons
 import { motion } from "framer-motion";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 import { Button } from "@/components/ui/button"; // Import Button component
+import Link from "next/link";
 
 const steps = [
   {
     number: "01",
     icon: UserPlus,
-    title: "Save Contact",
+    title: "Find the Right Person",
     description:
-      "Find a potential contact on LinkedIn and save their profile with one click.",
+      "Browse LinkedIn for someone at your target company. Click our extension to save their profile. Takes 10 seconds.",
+    time: "10 sec",
   },
   {
     number: "02",
     icon: MailCheck,
-    title: "Draft & Infer",
+    title: "Get Their Email",
     description:
-      "We infer their professional email and draft a polite, referral-focused message for you.",
+      "We instantly show you their most likely email addresses with confidence scores. No guessing, no hunting. Takes 5 seconds.",
+    time: "5 sec",
   },
   {
     number: "03",
     icon: Send,
-    title: "Send & Track",
+    title: "Send & Get Results",
     description:
-      "Open the draft in your own email client, send it, and track its status in our web app.",
+      "Use our proven template, add a personal touch, and send from your Gmail. Track responses in one place. Takes 2 minutes.",
+    time: "2 min",
   },
 ];
 
@@ -42,11 +46,11 @@ export function HowItWorks() {
           className="text-center mb-20"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-canvas-white mb-4">
-            Your Outreach Workflow in{" "}
-            <span className="text-electric-rose">3 Simple Steps</span>
+            From LinkedIn to Inbox in{" "}
+            <span className="text-electric-rose">Under 3 Minutes</span>
           </h2>
           <p className="text-xl font-dm-sans text-canvas-white/90 max-w-2xl mx-auto">
-            From finding a contact to sending a personalized email, we assist you at every stage.
+            Most people spend hours finding emails and writing outreach. You'll do it in minutes.
           </p>
         </motion.div>
 
@@ -84,9 +88,14 @@ export function HowItWorks() {
                 </motion.div>
 
                 {/* Content */}
-                <h3 className="text-2xl font-fraunces font-bold text-canvas-white mb-3">
-                  {step.title}
-                </h3>
+                <div className="inline-flex items-center gap-2 mb-2">
+                  <h3 className="text-2xl font-fraunces font-bold text-canvas-white">
+                    {step.title}
+                  </h3>
+                  <span className="text-sm font-dm-sans font-semibold text-electric-rose bg-electric-rose/10 px-2 py-1 rounded">
+                    {step.time}
+                  </span>
+                </div>
                 <p className="font-dm-sans text-canvas-white/70 leading-relaxed max-w-xs">
                   {step.description}
                 </p>
@@ -121,12 +130,21 @@ export function HowItWorks() {
           transition={{ delay: 0.6 }}
           className="text-center mt-16"
         >
-          <p className="text-lg font-dm-sans text-canvas-white/90 mb-6">
-            Ready to streamline your job search?
-          </p>
-          <Button className="font-dm-sans">
-            Get Started Free
-          </Button>
+          <div className="inline-block bg-electric-rose/10 rounded-lg px-8 py-4 mb-6">
+            <p className="text-2xl font-fraunces font-bold text-electric-rose">
+              Total time: ~3 minutes per contact
+            </p>
+            <p className="text-sm font-dm-sans text-canvas-white/70 mt-1">
+              Sarah landed 3 interviews in her first week
+            </p>
+          </div>
+          <div className="mt-6">
+            <Link href="/auth/signup">
+              <Button size="lg" className="font-dm-sans">
+                Start Your First Outreach Free
+              </Button>
+            </Link>
+          </div>
         </motion.div>
       </div>
     </section>

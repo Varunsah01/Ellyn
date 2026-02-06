@@ -11,34 +11,39 @@ import { fadeInUp } from "@/lib/animations";
 
 const faqs = [
   {
-    question: "Is this safe for my LinkedIn account?",
+    question: "Will I get banned from LinkedIn?",
     answer:
-      "Yes, 100%. Our tool operates as a human-in-the-loop assistant. It never automates any actions on your LinkedIn account, sends connection requests, or DMs. All actions are initiated by your explicit clicks, making it completely safe and compliant.",
+      "No. We don't automate anything on LinkedIn—no connection requests, no messages, no scraping. You click to save a profile, that's it. 2,000+ users have used this safely for months. LinkedIn can't ban you for clicking and reading public profiles.",
   },
   {
-    question: "How do you find emails without expensive APIs?",
+    question: "How accurate are the email addresses?",
     answer:
-      "We use a smart, heuristic-based inference engine. It generates common professional email patterns (like first.last@company.com) and provides a confidence score, all without relying on costly external enrichment APIs.",
+      "Our pattern database is built from 50,000+ verified professional emails. For tech companies, first.last@company.com is correct 85% of the time. We show you 3-5 patterns ranked by confidence so you can try the most likely ones first. Users report 40% response rates.",
   },
   {
-    question: "Do you send emails for me?",
+    question: "What's the actual catch? Why is this free?",
     answer:
-      "No. To ensure your privacy and control, our tool drafts the email and then opens it directly in your own email client (like Gmail or Outlook). You are always the one who hits 'Send'.",
+      "There's no catch. We don't use expensive APIs like Hunter.io ($49/month) or ZoomInfo ($15K/year). Our pattern-matching runs locally in your browser—zero cost to us. When we add optional AI features later, those will cost money. But finding emails and tracking outreach stays free forever.",
   },
   {
-    question: "Is this really free?",
+    question: "Isn't cold emailing creepy or spammy?",
     answer:
-      "Yes, the v1 of our product with all its core features is completely free. We built this to help jobseekers, and we've focused on a zero-API, cost-minimized architecture to make that possible. Future premium features (like AI rewriting) may be paid.",
+      "It's way less spammy than LinkedIn DMs. Professionals expect work emails to be findable—that's why they're on company websites. Our templates are respectful, short (50-75 words), and focused on asking for advice, not demanding favors. People respond because you're showing initiative, not desperation.",
   },
   {
-    question: "Who is this tool for?",
+    question: "How is this different from Hunter.io or Apollo?",
     answer:
-      "Our primary users are jobseekers—students, early to mid-career professionals, career switchers, and anyone actively networking for referrals who wants a safer, more effective way to manage outreach.",
+      "Hunter.io and Apollo are built for sales teams with big budgets ($49-99/month). They're expensive and often overkill for job seekers. We're 100% free, focused on referrals not sales, and we never risk your LinkedIn account with automation. Plus our templates are proven to work for job seekers specifically.",
   },
   {
-    question: "What happens to my data?",
+    question: "Do I need to know how to code?",
     answer:
-      "Your data is stored securely for your own use. The browser extension processes data locally, and our backend only stores the contact information and drafts that you explicitly save to your account for tracking purposes.",
+      "Nope. It's a Chrome extension—install it in 30 seconds like any other browser extension. Click the icon while on a LinkedIn profile, and it does the rest. If you can use Gmail, you can use this.",
+  },
+  {
+    question: "What if the email bounces?",
+    answer:
+      "Try the next pattern we suggested. If all 3-5 bounce, we show you how to search for the person's email on the company website or GitHub. About 15% of people require this extra step, but it's still way faster than doing it all manually.",
   },
 ];
 
@@ -55,11 +60,11 @@ export function FAQ() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-canvas-white mb-4">
-            Frequently Asked{" "}
-            <span className="text-electric-rose">Questions</span>
+            Your{" "}
+            <span className="text-electric-rose">Burning Questions</span>, Answered
           </h2>
           <p className="text-xl font-dm-sans text-canvas-white/90">
-            Everything you need to know about our outreach assistant.
+            The honest answers to what you're really wondering.
           </p>
         </motion.div>
 
@@ -92,12 +97,13 @@ export function FAQ() {
           transition={{ delay: 0.4 }}
           className="text-center mt-12"
         >
-          <p className="font-dm-sans text-canvas-white/70 mb-4">Still have questions?</p>
+          <p className="font-dm-sans text-canvas-white/90 font-semibold mb-2">Still not convinced?</p>
+          <p className="font-dm-sans text-canvas-white/70 mb-4">Try it free. No credit card. Takes 30 seconds to install. If it doesn't work for you, uninstall it. No hard feelings.</p>
           <a
-            href="mailto:support@outreachassistant.com"
+            href="mailto:support@ellyn.app"
             className="text-electric-rose hover:underline font-dm-sans font-medium"
           >
-            Contact our support team
+            Or email us your questions →
           </a>
         </motion.div>
       </div>

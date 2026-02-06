@@ -1,184 +1,178 @@
 # Ellyn Browser Extension
 
-A Chrome/Edge browser extension that extracts LinkedIn profile data and generates email address patterns locally.
+**100% LinkedIn-compliant email discovery workspace** - No scraping, no DOM access, manual input only.
+
+## 🚨 Important: LinkedIn Compliance
+
+This extension is **fully compliant** with LinkedIn's Terms of Service:
+
+✅ **NO LinkedIn scraping or data extraction**
+✅ **NO content scripts on LinkedIn**
+✅ **NO DOM access or automation**
+✅ **Manual input only** - User types/pastes data
+✅ **API-based enrichment** - Calls your web app backend
 
 ## Features
 
-✅ **LinkedIn Profile Extraction**
-- Extracts visible profile data (name, role, company) from LinkedIn
-- Only runs on LinkedIn profile pages
-- Manual extraction (no automatic background scraping)
+### ✅ Manual Input Workspace
+- Clean form for entering contact details (name, company, role)
+- No automation - user manually enters data
+- Can be used while browsing any website (not just LinkedIn)
 
-✅ **Advanced Email Inference Engine**
-- Generates 9+ email pattern variations with intelligent confidence scoring
-- Knows 100+ top company domains (Google, Microsoft, Amazon, etc.)
-- Role-based heuristics (boosts patterns for recruiters, founders, engineers)
-- Company size estimation (large companies prefer first.last format)
-- Learning system that caches successful patterns for future accuracy
-- No API calls - 100% client-side and privacy-focused
+### ✅ API-Powered Enrichment
+- Calls your Next.js web app API for enrichment
+- Gets company domain, industry, size from free APIs
+- Generates email patterns with confidence scores
+- All processing happens server-side
 
-✅ **Email Draft Templates**
-- 3 pre-built templates (Cold Outreach, Follow Up, Introduction)
-- Variable replacement ({{firstName}}, {{company}}, etc.)
-- Preview before sending
+### ✅ Contact Management
+- Save contacts to web app database
+- View recent contacts (synced from web app)
+- One-click access to full web app
 
-✅ **Quick Actions**
-- Save contact to web app
-- Open in Gmail/Outlook with pre-filled draft
-- View recent contacts
-
-✅ **Smart Caching & Learning**
-- Stores up to 10 recent contacts locally
-- Caches company→domain mappings for instant lookup
-- Learns successful email patterns over time
-- Boosts confidence scores for cached patterns (+20%)
-- No external database required
-- Privacy-focused
+### ✅ Privacy Focused
+- No tracking or analytics
+- Data stored locally using Chrome Storage
+- API calls only to your own web app
+- No third-party data sharing
 
 ## Installation
 
 ### Development Mode (For Testing)
 
-1. **Generate Extension Icons**
-   ```bash
-   cd extension/icons
-   # Open icon-generator.html in your browser
-   # Right-click and save each icon as PNG
-   ```
-
-2. **Load Extension in Chrome**
+1. **Load Extension in Chrome**
    - Open Chrome and go to `chrome://extensions/`
    - Enable "Developer mode" (toggle in top-right)
    - Click "Load unpacked"
    - Select the `extension` folder
    - The Ellyn icon should appear in your toolbar
 
-3. **Open Sidebar**
+2. **Open Sidebar**
    - Click the Ellyn extension icon in the toolbar
-   - The sidebar will open on the right side
+   - The sidebar panel will open
 
-4. **Test on LinkedIn**
-   - Navigate to any LinkedIn profile (e.g., `https://www.linkedin.com/in/someone`)
-   - Click "Extract Contact Data" in the sidebar
-   - Email patterns will be generated automatically
+3. **Test Manual Input**
+   - Enter contact details (First Name, Last Name, Company)
+   - Click "Discover Email"
+   - Results will show company info + email patterns
+   - Select a pattern and save to web app
 
 ## File Structure
 
 ```
 extension/
 ├── manifest.json                 # Extension configuration (Manifest V3)
-├── icons/                        # Extension icons (16, 32, 48, 128px)
-│   ├── icon-generator.html      # Tool to generate icons
-│   └── README.md                # Icon instructions
+├── icons/                        # Extension icons
 ├── sidepanel/
-│   ├── sidepanel.html           # Sidebar UI
+│   ├── sidepanel.html           # Manual input form UI
 │   ├── sidepanel.css            # Styling
-│   └── sidepanel.js             # Main sidebar logic
-├── content/
-│   └── linkedin-extractor.js    # Content script for LinkedIn
+│   └── sidepanel.js             # Form logic + API calls
 ├── utils/
-│   ├── email-patterns.js        # Basic email pattern generation
-│   ├── email-inference.js       # Advanced inference engine with ML-like heuristics
-│   └── storage.js               # Chrome storage helpers + caching
+│   ├── api-client.js            # Web app API wrapper
+│   └── storage.js               # Chrome storage helper
 └── README.md                    # This file
 ```
 
+**REMOVED FILES (LinkedIn scraping):**
+- ❌ `content/linkedin-extractor.js` - DELETED
+- ❌ `utils/email-inference.js` - DELETED (now server-side)
+- ❌ `utils/ai-draft-generator.js` - DELETED (AI removed)
+- ❌ `utils/email-patterns.js` - DELETED (now server-side)
+
 ## How It Works
 
-### 1. Profile Detection
-- Extension detects when you're on a LinkedIn profile page
-- Shows "Extract Contact Data" button in sidebar
-- Only works on `https://www.linkedin.com/in/*` pages
+### 1. Manual Input
+- User enters contact details in sidebar form
+- First Name, Last Name, Company, Role (optional)
+- Click "Discover Email" to enrich
 
-### 2. Data Extraction
-When you click "Extract Contact Data":
-- Content script reads visible DOM elements
-- Extracts: name, role, company, LinkedIn URL
-- No API calls, no background scraping
-- Only data visible on the page
+### 2. API Enrichment
+- Extension calls `POST /api/enrich` on web app
+- Server fetches company info (domain, industry, size)
+- Server generates 8-12 email patterns with confidence scores
+- Results returned to extension
 
-### 3. Advanced Email Inference
-After extraction, the inference engine:
+### 3. Display Results
+- Company info shown (domain, industry, size)
+- Email patterns displayed as selectable cards
+- Each pattern has confidence score (high/medium/low)
+- User selects best pattern
 
-**Step 1: Domain Inference**
-- Checks 100+ known company domains (e.g., "Microsoft Corp" → "microsoft.com")
-- Falls back to cached mappings from previous extractions
-- Generates heuristic domain if unknown (cleans company name + .com)
+### 4. Save Contact
+- Selected email + contact data sent to web app
+- Calls `POST /api/contacts` to save
+- Contact stored in database
+- Shows in recent contacts list
 
-**Step 2: Name Normalization**
-- Removes titles (Dr., Mr., etc.), middle names, accents
-- Handles hyphenated names (generates with and without hyphens)
-- Extracts initials for pattern variations
-
-**Step 3: Pattern Generation with Confidence Scoring**
-Generates 9+ patterns with base confidence scores:
-  - first.last@domain.com (70% confidence)
-  - first@domain.com (50% confidence)
-  - f.last@domain.com (40% confidence)
-  - flast@domain.com (30% confidence)
-  - firstlast@domain.com (25% confidence)
-  - first_last@domain.com (20% confidence)
-  - lastf@domain.com (15% confidence)
-  - last.first@domain.com (10% confidence)
-
-**Step 4: Intelligent Adjustments**
-- **Role-based boosts**: Recruiters (+10% to first.last), Founders (+15% to first@)
-- **Company size adjustments**: Large companies prefer first.last, small companies prefer first@
-- **Cache boosts**: Previously successful patterns get +20% confidence
-
-**Step 5: Learning & Caching**
-- When you send an email, the extension caches the selected pattern
-- Future extractions for the same company/domain will rank that pattern higher
-- Improves accuracy over time without any external APIs
-- All processing happens locally in your browser
-
-### 4. Actions
-- **Save Contact**: Opens web app with pre-filled data
-- **Generate Draft**: Creates email from template
-- **Open in Gmail**: Opens Gmail compose with draft
-- **Open in Outlook**: Opens Outlook compose with draft
+### 5. Sync with Web App
+- Click "Sync" button to fetch recent contacts
+- Updates local storage with last 5 contacts
+- Keeps extension in sync with web app
 
 ## Privacy & Permissions
 
 ### Required Permissions
-- `storage` - Store recent contacts locally
+- `storage` - Store recent contacts locally (Chrome Storage)
 - `sidePanel` - Display sidebar UI
-- `activeTab` - Check current tab URL
-- `scripting` - Inject content script on LinkedIn
+- `http://localhost:3000/*` - Allow API calls to local dev server
 
 ### What We DON'T Do
-❌ No automatic background scraping
-❌ No data sent to external servers
-❌ No tracking or analytics
-❌ No bulk profile extraction
-❌ No email verification API calls
+❌ NO LinkedIn scraping
+❌ NO content scripts
+❌ NO DOM access
+❌ NO automation
+❌ NO background scraping
+❌ NO tracking or analytics
+❌ NO third-party data sharing
 
 ### What We DO
-✅ Extract only visible profile data
-✅ Process everything locally
-✅ Store contacts only in your browser
-✅ Require manual click to extract
+✅ Manual user input only
+✅ API calls to your own web app
+✅ Local storage for recent contacts
+✅ 100% LinkedIn compliant
+
+## Configuration
+
+### API URL
+By default, the extension calls `http://localhost:3000` for development.
+
+To change for production:
+
+1. Open `extension/utils/api-client.js`
+2. Update `baseURL`:
+   ```javascript
+   this.baseURL = 'https://your-production-domain.com';
+   ```
+
+### Manifest Host Permissions
+Update `manifest.json` for production:
+```json
+"host_permissions": [
+  "https://your-production-domain.com/*"
+]
+```
 
 ## Troubleshooting
 
-### "Extract Contact Data" button is disabled
-- **Solution**: Make sure you're on a LinkedIn profile page (`/in/` in URL)
-- Navigate to a profile, then click the extension icon
-
-### Extraction fails / No data shown
-- **Solution**: LinkedIn may have updated their DOM structure
+### API calls failing
+- **Solution**: Make sure web app is running on `http://localhost:3000`
 - Check browser console for errors (`F12` → Console tab)
-- Content script selectors may need updating
-
-### Icons not showing
-- **Solution**: Generate proper icon files
-- Open `icons/icon-generator.html` and save PNGs
-- Reload extension in `chrome://extensions/`
+- Verify CORS is enabled in web app API routes
 
 ### Sidebar doesn't open
 - **Solution**: Manifest V3 requires Chrome 114+
 - Update Chrome to latest version
 - Check for extension errors in `chrome://extensions/`
+
+### Recent contacts not loading
+- **Solution**: Click "Sync" button to fetch from web app
+- Verify web app API is running
+- Check `GET /api/contacts` endpoint is working
+
+### Icons not showing
+- **Solution**: Rename icons to match manifest.json
+- Icons should be named: `icon-16.png`, `icon-48.png`, `icon-128.png`
+- Reload extension in `chrome://extensions/`
 
 ## Development
 
@@ -186,78 +180,119 @@ Generates 9+ patterns with base confidence scores:
 
 1. **Modify Files**
    - Edit any `.html`, `.css`, or `.js` files
-   - Changes to content scripts require page reload
-   - Changes to sidebar require sidebar reload
+   - Changes require extension reload
 
 2. **Reload Extension**
    - Go to `chrome://extensions/`
    - Click the refresh icon on the Ellyn extension
    - Or toggle the extension off and on
 
-3. **Debug Content Script**
-   - Open DevTools on LinkedIn page (`F12`)
-   - Check Console for `[Ellyn]` messages
-   - Content script logs extraction process
-
-4. **Debug Sidebar**
+3. **Debug Sidebar**
    - Right-click on the sidebar
    - Select "Inspect"
    - Sidebar DevTools opens with console
 
-### Updating LinkedIn Selectors
-
-If LinkedIn changes their HTML structure:
-
-1. Open `content/linkedin-extractor.js`
-2. Find the `extractProfileData()` function
-3. Update CSS selectors:
-   ```javascript
-   // Example: Update name selector
-   const nameElement = document.querySelector('h1.NEW-CLASS-NAME');
-   ```
-4. Test on multiple profiles to ensure reliability
-
-## Roadmap / TODOs
-
-### Next Features
-- [ ] Email verification (would require API)
-- [ ] More email templates
-- [ ] Custom template creation
-- [ ] Copy email to clipboard
-- [ ] Dark mode support
-- [ ] Keyboard shortcuts
-- [ ] Export contacts to CSV
-
-### Known Limitations
-- No email verification (by design - no API calls)
-- No bulk extraction (explicitly non-goal)
-- No automatic extraction (privacy focused)
-- Domain guessing may be inaccurate for complex company names
-
 ## Web App Integration
 
-The extension integrates with the Ellyn web app:
+The extension depends on these API endpoints:
 
-### "Save Contact" Action
-Opens web app at: `http://localhost:3001/?prefill=true&name=John+Doe&company=Microsoft`
+### POST /api/enrich
+Enrich contact with company data + email patterns.
 
-The web app should:
-1. Read URL parameters
-2. Pre-fill the email discovery form
-3. Allow user to verify/save the lead
-
-### Production Deployment
-Update `WEB_APP_URL` in `sidepanel.js` to your production domain:
-```javascript
-const WEB_APP_URL = 'https://yourdomain.com';
+**Request:**
+```json
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "company": "Microsoft",
+  "role": "Engineer"
+}
 ```
+
+**Response:**
+```json
+{
+  "success": true,
+  "enrichment": {
+    "domain": "microsoft.com",
+    "industry": "Technology",
+    "size": "10000+"
+  },
+  "emails": [
+    { "email": "john.doe@microsoft.com", "pattern": "first.last", "confidence": 85 },
+    { "email": "john@microsoft.com", "pattern": "first", "confidence": 65 }
+  ],
+  "cost": 0
+}
+```
+
+### POST /api/contacts
+Save contact to database.
+
+**Request:**
+```json
+{
+  "firstName": "John",
+  "lastName": "Doe",
+  "company": "Microsoft",
+  "role": "Engineer",
+  "inferredEmail": "john.doe@microsoft.com",
+  "emailConfidence": 85,
+  "companyDomain": "microsoft.com",
+  "companyIndustry": "Technology",
+  "companySize": "10000+",
+  "source": "extension"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "contact": {
+    "id": "123",
+    "full_name": "John Doe",
+    ...
+  }
+}
+```
+
+### GET /api/contacts?limit=5
+Get recent contacts.
+
+**Response:**
+```json
+{
+  "success": true,
+  "contacts": [
+    {
+      "id": "123",
+      "full_name": "John Doe",
+      "company": "Microsoft",
+      "inferred_email": "john.doe@microsoft.com",
+      ...
+    }
+  ]
+}
+```
+
+## Chrome Web Store Submission
+
+This extension is designed to pass Chrome Web Store review:
+
+✅ **No LinkedIn scraping** - Complies with LinkedIn ToS
+✅ **Manual input only** - No automation
+✅ **Clear privacy policy** - No data collection
+✅ **Minimal permissions** - Only storage + sidePanel
+✅ **No obfuscated code** - All code is readable
 
 ## Support
 
 For issues or questions:
 1. Check the Troubleshooting section above
 2. Review browser console for errors
-3. Open an issue on GitHub
+3. Verify web app API is running
+4. Check API endpoint responses
 
 ## License
 
