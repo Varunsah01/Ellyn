@@ -1,17 +1,24 @@
 {
   "manifest_version": 3,
   "name": "Ellyn - Email Discovery Workspace",
-  "version": "2.0.0",
-  "description": "Discover professional email addresses with manual input + API enrichment. NO LinkedIn scraping.",
+  "version": "2.1.0",
+  "description": "Discover professional email addresses from LinkedIn profiles with one-click extraction.",
 
   "permissions": [
     "storage",
-    "sidePanel"
+    "sidePanel",
+    "activeTab",
+    "scripting"
   ],
 
   "host_permissions": [
-    "http://localhost:3000/*"
+    "http://localhost:3000/*",
+    "https://www.linkedin.com/*"
   ],
+
+  "background": {
+    "service_worker": "background.js"
+  },
 
   "side_panel": {
     "default_path": "sidepanel/sidepanel.html"

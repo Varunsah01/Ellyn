@@ -1,439 +1,375 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useParams, useRouter } from "next/navigation"
+import { DashboardShell } from "@/components/dashboard/dashboard-shell"
+import { PageHeader } from "@/components/dashboard/page-header"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { SequenceTimeline } from "@/components/sequence-timeline"
+import { computeSequenceStats, getSequenceStatusLabel } from "@/lib/sequence-engine"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  ArrowLeft,
-  MoreHorizontal,
-  Play,
-  Pause,
-  Edit,
-  Copy,
-  Download,
-  Trash,
-  Users,
-  Mail,
-  Eye,
-  Reply,
-  AlertCircle,
-  UserMinus,
-  TrendingUp,
-  Clock,
-} from "lucide-react";
-import { mockSequences } from "@/lib/data/mock-sequences";
-import {
-  getStatusColor,
-  getStatusLabel,
-  calculateOpenRate,
-  calculateReplyRate,
-  calculateBounceRate,
-} from "@/lib/utils/sequence-utils";
-import { cn } from "@/lib/utils";
-import { StatCard } from "@/components/dashboard/stat-card";
+  Sequence,
+  SequenceEnrollment,
+  SequenceEnrollmentStep,
+  SequenceEvent,
+  SequenceStep,
+} from "@/lib/types/sequence"
+import { AlertCircle, Pause, Play, Users } from "lucide-react"
+
+interface SequenceDetailResponse {
+  sequence: Sequence
+  steps: SequenceStep[]
+  enrollments: SequenceEnrollment[]
+  enrollmentSteps: SequenceEnrollmentStep[]
+  events: SequenceEvent[]
+}
 
 export default function SequenceDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const sequenceId = params.id as string;
+  const params = useParams()
+  const router = useRouter()
+  const sequenceId = params.id as string
 
-  // Find sequence from mock data
-  const [sequence, setSequence] = useState(
-    mockSequences.find((s) => s.id === sequenceId)
-  );
+  const [data, setData] = useState<SequenceDetailResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string | null>(null)
 
-  if (!sequence) {
-    return (
-      <DashboardShell>
-        <div className="flex flex-col items-center justify-center min-h-[400px]">
-          <h2 className="text-2xl font-bold mb-2">Sequence not found</h2>
-          <p className="text-muted-foreground mb-4">
-            The sequence you're looking for doesn't exist.
-          </p>
-          <Button onClick={() => router.push("/dashboard/sequences")}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Sequences
-          </Button>
-        </div>
-      </DashboardShell>
-    );
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/sequences/${sequenceId}`)
+      if (!response.ok) {
+        const payload = await response.json()
+        throw new Error(payload.error || "Failed to load sequence")
+      }
+      const payload = (await response.json()) as SequenceDetailResponse
+      setData(payload)
+      setSelectedEnrollmentId((prev) => prev ?? payload.enrollments[0]?.id ?? null)
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load sequence")
+    } finally {
+      setLoading(false)
+    }
+  }, [sequenceId])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  const stats = useMemo(() => {
+    if (!data) return null
+    return computeSequenceStats({
+      enrollments: data.enrollments,
+      events: data.events,
+    })
+  }, [data])
+
+  const stepPerformance = useMemo(() => {
+    if (!data) return []
+    const sentByStep = new Map<string, number>()
+    const openedByStep = new Map<string, number>()
+    const repliedByStep = new Map<string, number>()
+
+    data.events.forEach((event) => {
+      if (!event.step_id) return
+      if (event.event_type === "sent") {
+        sentByStep.set(event.step_id, (sentByStep.get(event.step_id) || 0) + 1)
+      }
+      if (event.event_type === "opened") {
+        openedByStep.set(
+          event.step_id,
+          (openedByStep.get(event.step_id) || 0) + 1
+        )
+      }
+      if (event.event_type === "replied") {
+        repliedByStep.set(
+          event.step_id,
+          (repliedByStep.get(event.step_id) || 0) + 1
+        )
+      }
+    })
+
+    return data.steps.map((step) => {
+      const sent = sentByStep.get(step.id) || 0
+      const opened = openedByStep.get(step.id) || 0
+      const replied = repliedByStep.get(step.id) || 0
+      return {
+        id: step.id,
+        order: step.order,
+        subject: step.subject,
+        sent,
+        openRate: sent ? Math.round((opened / sent) * 100) : 0,
+        replyRate: sent ? Math.round((replied / sent) * 100) : 0,
+      }
+    })
+  }, [data])
+
+  const templatePerformance = useMemo(() => {
+    if (!data) return []
+    const replyCounts = new Map<string, { replies: number; sent: number }>()
+
+    data.steps.forEach((step) => {
+      if (!step.template_id) return
+      replyCounts.set(step.template_id, { replies: 0, sent: 0 })
+    })
+
+    data.events.forEach((event) => {
+      if (!event.step_id) return
+      const step = data.steps.find((s) => s.id === event.step_id)
+      if (!step?.template_id) return
+      const entry = replyCounts.get(step.template_id)
+      if (!entry) return
+      if (event.event_type === "sent") {
+        entry.sent += 1
+      }
+      if (event.event_type === "replied") {
+        entry.replies += 1
+      }
+    })
+
+    return Array.from(replyCounts.entries())
+      .map(([templateId, stats]) => ({
+        templateId,
+        replyRate: stats.sent ? Math.round((stats.replies / stats.sent) * 100) : 0,
+        sent: stats.sent,
+      }))
+      .sort((a, b) => b.replyRate - a.replyRate)
+      .slice(0, 3)
+  }, [data])
+
+  const selectedEnrollment = useMemo(
+    () => data?.enrollments.find((enrollment) => enrollment.id === selectedEnrollmentId) ?? null,
+    [data, selectedEnrollmentId]
+  )
+
+  const selectedEnrollmentSteps = useMemo(
+    () =>
+      data?.enrollmentSteps.filter(
+        (step) => step.enrollment_id === selectedEnrollment?.id
+      ) ?? [],
+    [data, selectedEnrollment]
+  )
+
+  const handleSequenceStatus = async (status: "paused" | "active") => {
+    try {
+      await fetch(`/api/sequences/${sequenceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      })
+      refresh()
+    } catch (err) {
+      console.error(err)
+    }
   }
 
-  const statusColors = getStatusColor(sequence.status);
-  const openRate = calculateOpenRate(sequence.stats);
-  const replyRate = calculateReplyRate(sequence.stats);
-  const bounceRate = calculateBounceRate(sequence.stats);
-
-  const toggleStatus = () => {
-    if (sequence.status === "active") {
-      setSequence({ ...sequence, status: "paused" });
-    } else if (sequence.status === "paused") {
-      setSequence({ ...sequence, status: "active" });
+  const handleEnrollmentAction = async (action: string, enrollmentStepId?: string) => {
+    try {
+      await fetch(`/api/sequences/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          enrollmentId: selectedEnrollment?.id,
+          enrollmentStepId,
+        }),
+      })
+      refresh()
+    } catch (err) {
+      console.error(err)
     }
-  };
+  }
 
-  // Mock contact data for table
-  const mockContactData = [
-    {
-      id: "1",
-      name: "John Smith",
-      email: "john.smith@google.com",
-      company: "Google",
-      currentStep: 2,
-      status: "in_progress" as const,
-      lastActivity: "2024-02-05T10:00:00Z",
-    },
-    {
-      id: "2",
-      name: "Sarah Johnson",
-      email: "sarah.j@meta.com",
-      company: "Meta",
-      currentStep: 3,
-      status: "completed" as const,
-      lastActivity: "2024-02-04T15:30:00Z",
-    },
-    {
-      id: "3",
-      name: "Michael Chen",
-      email: "m.chen@microsoft.com",
-      company: "Microsoft",
-      currentStep: 1,
-      status: "in_progress" as const,
-      lastActivity: "2024-02-06T09:15:00Z",
-    },
-  ];
+  if (loading) {
+    return (
+      <DashboardShell>
+        <p className="text-muted-foreground">Loading sequence...</p>
+      </DashboardShell>
+    )
+  }
 
-  // Mock activity timeline
-  const mockTimeline = [
-    {
-      id: "1",
-      type: "replied" as const,
-      contactName: "Sarah Johnson",
-      stepNumber: 2,
-      timestamp: "2024-02-06T14:30:00Z",
-      details: "Positive response, interested in connecting",
-    },
-    {
-      id: "2",
-      type: "opened" as const,
-      contactName: "Michael Chen",
-      stepNumber: 1,
-      timestamp: "2024-02-06T09:15:00Z",
-    },
-    {
-      id: "3",
-      type: "sent" as const,
-      contactName: "John Smith",
-      stepNumber: 2,
-      timestamp: "2024-02-05T10:00:00Z",
-    },
-    {
-      id: "4",
-      type: "bounced" as const,
-      contactName: "David Wilson",
-      stepNumber: 1,
-      timestamp: "2024-02-04T16:45:00Z",
-      details: "Invalid email address",
-    },
-  ];
+  if (error || !data) {
+    return (
+      <DashboardShell>
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
+          <AlertCircle className="h-4 w-4" />
+          {error || "Sequence not found"}
+        </div>
+      </DashboardShell>
+    )
+  }
 
   return (
     <DashboardShell>
-      {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push("/dashboard/sequences")}
-            className="mb-2"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Sequences
-          </Button>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-fraunces font-bold">{sequence.name}</h1>
-            <Badge
-              variant="outline"
-              className={cn(
-                "font-medium",
-                statusColors.bg,
-                statusColors.text,
-                statusColors.border
-              )}
-            >
-              {getStatusLabel(sequence.status)}
-            </Badge>
-          </div>
-          {sequence.description && (
-            <p className="text-muted-foreground mt-2">{sequence.description}</p>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {(sequence.status === "active" || sequence.status === "paused") && (
-            <Button
-              variant="outline"
-              onClick={toggleStatus}
-            >
-              {sequence.status === "active" ? (
-                <>
-                  <Pause className="mr-2 h-4 w-4" />
-                  Pause
-                </>
-              ) : (
-                <>
+      <div className="space-y-6">
+        <PageHeader
+          title={data.sequence.name}
+          description={data.sequence.description || "Sequence overview"}
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/dashboard/sequences/${sequenceId}/enroll`)}
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Enroll Contacts
+              </Button>
+              {data.sequence.status === "paused" ? (
+                <Button onClick={() => handleSequenceStatus("active")}>
                   <Play className="mr-2 h-4 w-4" />
                   Resume
-                </>
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => handleSequenceStatus("paused")}>
+                  <Pause className="mr-2 h-4 w-4" />
+                  Pause
+                </Button>
               )}
-            </Button>
-          )}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => router.push(`/dashboard/sequences/${sequence.id}/edit`)}>
-                <Edit className="mr-2 h-4 w-4" />
-                Edit Sequence
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Copy className="mr-2 h-4 w-4" />
-                Duplicate
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Download className="mr-2 h-4 w-4" />
-                Export Data
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive">
-                <Trash className="mr-2 h-4 w-4" />
-                Archive
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-6">
-        <StatCard
-          title="Total Contacts"
-          value={sequence.stats.totalContacts}
-          icon={Users}
-          description={`${sequence.stats.inProgress} in progress`}
+            </div>
+          }
         />
-        <StatCard
-          title="Emails Sent"
-          value={sequence.stats.emailsSent}
-          icon={Mail}
-          description="across all steps"
-        />
-        <StatCard
-          title="Open Rate"
-          value={`${openRate}%`}
-          change={openRate > 50 ? 12 : -5}
-          trend={openRate > 50 ? "up" : "down"}
-          icon={Eye}
-          description={`${sequence.stats.opened} opened`}
-        />
-        <StatCard
-          title="Reply Rate"
-          value={`${replyRate}%`}
-          change={replyRate > 20 ? 8 : -3}
-          trend={replyRate > 20 ? "up" : "down"}
-          icon={Reply}
-          description={`${sequence.stats.replied} replied`}
-        />
-      </div>
 
-      {/* Additional Metrics */}
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-yellow-500" />
-              Bounce Rate
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{bounceRate}%</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {sequence.stats.bounced} bounced emails
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <UserMinus className="h-4 w-4 text-red-500" />
-              Unsubscribed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{sequence.stats.unsubscribed}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              contacts opted out
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Clock className="h-4 w-4 text-blue-500" />
-              Steps
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{sequence.steps.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              email steps configured
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabs */}
-      <Tabs defaultValue="steps" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="steps">Steps</TabsTrigger>
-          <TabsTrigger value="contacts">Contacts</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="steps" className="space-y-4">
-          {sequence.steps.map((step, index) => (
-            <Card key={step.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg">
-                      Step {step.order}: {step.delay_days === 0 ? "Immediate" : `Day ${step.delay_days}`}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Subject: {step.subject}
-                    </p>
-                  </div>
-                  <div className="text-right text-sm text-muted-foreground">
-                    <div>{Math.round(sequence.stats.emailsSent / sequence.steps.length)} sent</div>
-                    <div>{Math.round(sequence.stats.opened / sequence.steps.length)} opened</div>
-                  </div>
-                </div>
+        {stats && (
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Contacts</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="bg-muted p-4 rounded-lg whitespace-pre-wrap font-mono text-sm">
-                  {step.body}
-                </div>
+              <CardContent className="text-2xl font-bold">{stats.totalContacts}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Emails Sent</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-bold">{stats.emailsSent}</CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Reply Rate</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-bold">
+                {stats.emailsSent > 0 ? Math.round((stats.replied / stats.emailsSent) * 100) : 0}%
               </CardContent>
             </Card>
-          ))}
-        </TabsContent>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Completion</CardTitle>
+              </CardHeader>
+              <CardContent className="text-2xl font-bold">{stats.completionRate}%</CardContent>
+            </Card>
+          </div>
+        )}
 
-        <TabsContent value="contacts" className="space-y-4">
+        <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
           <Card>
             <CardHeader>
-              <CardTitle>Enrolled Contacts</CardTitle>
+              <CardTitle>Step Performance</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {mockContactData.map((contact) => (
-                  <div
-                    key={contact.id}
-                    className="flex items-center justify-between p-4 border rounded-lg"
-                  >
+            <CardContent className="space-y-3">
+              {stepPerformance.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No step data yet.</p>
+              ) : (
+                stepPerformance.map((step) => (
+                  <div key={step.id} className="flex items-center justify-between border-b pb-3 last:border-0 last:pb-0">
                     <div>
-                      <p className="font-medium">{contact.name}</p>
-                      <p className="text-sm text-muted-foreground">{contact.email}</p>
+                      <p className="text-sm font-medium">Step {step.order}</p>
+                      <p className="text-xs text-muted-foreground line-clamp-1">{step.subject}</p>
                     </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-sm text-right">
-                        <p className="font-medium">Step {contact.currentStep}</p>
-                        <p className="text-muted-foreground capitalize">
-                          {contact.status.replace("_", " ")}
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm">
-                        View
-                      </Button>
+                    <div className="text-xs text-muted-foreground text-right">
+                      <p>{step.openRate}% open</p>
+                      <p>{step.replyRate}% reply</p>
                     </div>
                   </div>
-                ))}
-              </div>
+                ))
+              )}
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="activity" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
+              <CardTitle>Best Performing Templates</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {mockTimeline.map((event) => (
-                  <div key={event.id} className="flex gap-4">
-                    <div className="flex-shrink-0">
-                      {event.type === "sent" && (
-                        <div className="h-8 w-8 rounded-full bg-blue-500/10 flex items-center justify-center">
-                          <Mail className="h-4 w-4 text-blue-500" />
-                        </div>
-                      )}
-                      {event.type === "opened" && (
-                        <div className="h-8 w-8 rounded-full bg-purple-500/10 flex items-center justify-center">
-                          <Eye className="h-4 w-4 text-purple-500" />
-                        </div>
-                      )}
-                      {event.type === "replied" && (
-                        <div className="h-8 w-8 rounded-full bg-green-500/10 flex items-center justify-center">
-                          <Reply className="h-4 w-4 text-green-500" />
-                        </div>
-                      )}
-                      {event.type === "bounced" && (
-                        <div className="h-8 w-8 rounded-full bg-red-500/10 flex items-center justify-center">
-                          <AlertCircle className="h-4 w-4 text-red-500" />
-                        </div>
-                      )}
+            <CardContent className="space-y-3">
+              {templatePerformance.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No template data yet.</p>
+              ) : (
+                templatePerformance.map((template) => (
+                  <div key={template.templateId} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Template {template.templateId.slice(0, 6)}</p>
+                      <p className="text-xs text-muted-foreground">{template.sent} sent</p>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium">
-                        {event.contactName}{" "}
-                        <span className="text-muted-foreground font-normal">
-                          {event.type} Step {event.stepNumber}
-                        </span>
-                      </p>
-                      {event.details && (
-                        <p className="text-sm text-muted-foreground">{event.details}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {new Date(event.timestamp).toLocaleString()}
-                      </p>
-                    </div>
+                    <Badge variant="outline">{template.replyRate}% reply</Badge>
                   </div>
-                ))}
-              </div>
+                ))
+              )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Enrollments</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.enrollments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No contacts enrolled yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {data.enrollments.map((enrollment) => (
+                    <button
+                      key={enrollment.id}
+                      type="button"
+                      className={`w-full rounded-lg border p-3 text-left transition ${
+                        enrollment.id === selectedEnrollmentId
+                          ? "border-primary bg-primary/5"
+                          : "hover:border-muted-foreground/40"
+                      }`}
+                      onClick={() => setSelectedEnrollmentId(enrollment.id)}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">
+                            {enrollment.contact?.full_name || "Unknown contact"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Next step:{" "}
+                            {enrollment.next_step_at
+                              ? new Date(enrollment.next_step_at).toLocaleDateString()
+                              : "Not scheduled"}
+                          </p>
+                        </div>
+                        <Badge variant="outline">
+                          {getSequenceStatusLabel(enrollment.status)}
+                        </Badge>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {selectedEnrollment ? (
+            <SequenceTimeline
+              steps={data.steps}
+              enrollmentSteps={selectedEnrollmentSteps}
+              enrollmentStatus={selectedEnrollment.status}
+              onAction={handleEnrollmentAction}
+            />
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-sm text-muted-foreground text-center">
+                Select an enrollment to view the timeline.
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </DashboardShell>
-  );
+  )
 }

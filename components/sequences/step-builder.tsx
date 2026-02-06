@@ -6,6 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -31,9 +39,10 @@ import { motion, Reorder } from "framer-motion";
 interface StepBuilderProps {
   steps: SequenceStep[];
   onChange: (steps: SequenceStep[]) => void;
+  templates?: Array<{ id: string; name: string; subject: string; body: string }>;
 }
 
-export function StepBuilder({ steps, onChange }: StepBuilderProps) {
+export function StepBuilder({ steps, onChange, templates = [] }: StepBuilderProps) {
   const [editingStep, setEditingStep] = useState<SequenceStep | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -46,6 +55,8 @@ export function StepBuilder({ steps, onChange }: StepBuilderProps) {
       subject: "",
       body: "",
       status: "draft",
+      stop_on_reply: true,
+      stop_on_bounce: true,
     };
     setEditingStep(newStep);
     setIsDialogOpen(true);
@@ -109,6 +120,7 @@ export function StepBuilder({ steps, onChange }: StepBuilderProps) {
               setEditingStep(null);
             }}
             onSave={saveStep}
+            templates={templates}
           />
         )}
       </div>
@@ -149,6 +161,7 @@ export function StepBuilder({ steps, onChange }: StepBuilderProps) {
             setEditingStep(null);
           }}
           onSave={saveStep}
+          templates={templates}
         />
       )}
     </div>
@@ -181,6 +194,11 @@ function StepCard({ step, index, onEdit, onDelete }: StepCardProps) {
             <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
               {step.subject || "No subject"}
             </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-2">
+              <span>Stops on reply: {step.stop_on_reply ? "Yes" : "No"}</span>
+              <span>â€¢</span>
+              <span>Stops on bounce: {step.stop_on_bounce ? "Yes" : "No"}</span>
+            </div>
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={onEdit}>
@@ -213,6 +231,7 @@ interface StepEditorDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (step: SequenceStep) => void;
+  templates?: Array<{ id: string; name: string; subject: string; body: string }>;
 }
 
 function StepEditorDialog({
@@ -220,8 +239,13 @@ function StepEditorDialog({
   isOpen,
   onClose,
   onSave,
+  templates = [],
 }: StepEditorDialogProps) {
-  const [step, setStep] = useState<SequenceStep>(initialStep);
+  const [step, setStep] = useState<SequenceStep>({
+    ...initialStep,
+    stop_on_reply: initialStep.stop_on_reply ?? true,
+    stop_on_bounce: initialStep.stop_on_bounce ?? true,
+  });
   const [showPreview, setShowPreview] = useState(false);
 
   const handleSave = () => {
@@ -276,6 +300,46 @@ function StepEditorDialog({
               />
               <p className="text-xs text-muted-foreground mt-1">
                 How many days to wait before sending this email
+              </p>
+            </div>
+          )}
+
+          {/* Template Picker */}
+          {templates.length > 0 && (
+            <div>
+              <Label>Email template (optional)</Label>
+              <Select
+                value={step.template_id ?? "custom"}
+                onValueChange={(value) => {
+                  if (value === "custom") {
+                    setStep({ ...step, template_id: undefined });
+                    return;
+                  }
+                  const selected = templates.find((t) => t.id === value);
+                  if (selected) {
+                    setStep({
+                      ...step,
+                      template_id: selected.id,
+                      subject: selected.subject,
+                      body: selected.body,
+                    });
+                  }
+                }}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder="Choose a template" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="custom">Custom (no template)</SelectItem>
+                  {templates.map((template) => (
+                    <SelectItem key={template.id} value={template.id}>
+                      {template.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Selecting a template will replace the subject and body.
               </p>
             </div>
           )}
@@ -356,6 +420,37 @@ function StepEditorDialog({
                 className="mt-2 min-h-[300px] font-mono text-sm"
               />
             )}
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">Stop on reply</p>
+                <p className="text-xs text-muted-foreground">
+                  End the sequence once the contact replies.
+                </p>
+              </div>
+              <Switch
+                checked={step.stop_on_reply ?? true}
+                onCheckedChange={(checked) =>
+                  setStep({ ...step, stop_on_reply: checked })
+                }
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <p className="text-sm font-medium">Stop on bounce</p>
+                <p className="text-xs text-muted-foreground">
+                  Pause the sequence if an email bounces.
+                </p>
+              </div>
+              <Switch
+                checked={step.stop_on_bounce ?? true}
+                onCheckedChange={(checked) =>
+                  setStep({ ...step, stop_on_bounce: checked })
+                }
+              />
+            </div>
           </div>
 
           {/* Actions */}

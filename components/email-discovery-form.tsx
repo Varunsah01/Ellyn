@@ -128,12 +128,13 @@ export function EmailDiscoveryForm() {
     if (!pattern || !enrichment) return;
 
     try {
-      await fetch("/api/learning/record", {
+      await fetch("/api/pattern-feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          domain: enrichment.domain,
+          email,
           pattern: pattern.pattern,
+          companyDomain: enrichment.domain,
           worked
         })
       });
@@ -143,8 +144,14 @@ export function EmailDiscoveryForm() {
           ? "✅ Marked as Worked - Thanks! This helps improve our accuracy."
           : "❌ Marked as Bounced - Thanks for the feedback!"
       );
+
+      // Reload patterns after feedback to reflect updated learning
+      setTimeout(() => {
+        setFeedbackMessage("");
+      }, 3000);
     } catch (error) {
       console.error("Failed to record feedback:", error);
+      setFeedbackMessage("⚠️ Could not record feedback. Please try again.");
     }
   }
 

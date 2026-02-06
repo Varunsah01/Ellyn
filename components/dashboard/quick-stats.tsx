@@ -28,6 +28,7 @@ interface QuickStatsProps {
   topSequences: Sequence[];
   onViewAllContacts?: () => void;
   onViewAllSequences?: () => void;
+  loading?: boolean;
 }
 
 export function QuickStats({
@@ -35,7 +36,44 @@ export function QuickStats({
   topSequences,
   onViewAllContacts,
   onViewAllSequences,
+  loading = false,
 }: QuickStatsProps) {
+  if (loading) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Recent Contacts</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {[1, 2, 3].map((item) => (
+              <div key={item} className="flex items-center gap-3">
+                <div className="h-8 w-8 rounded-full bg-muted" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-1/2 rounded bg-muted" />
+                  <div className="h-3 w-1/3 rounded bg-muted" />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Top Sequences</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[1, 2].map((item) => (
+              <div key={item} className="space-y-2">
+                <div className="h-3 w-2/3 rounded bg-muted" />
+                <div className="h-2 w-full rounded bg-muted" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* Recent Contacts */}

@@ -1,17 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateEmailPatterns, guessDomain } from '@/lib/email-patterns';
+import {
+  generateSmartEmailPatterns,
+  estimateCompanySize,
+  getKnownDomain,
+} from '@/lib/enhanced-email-patterns';
+import {
+  verifyDomainMxRecords,
+  validateEmailFormat,
+  calculateEnhancedConfidence,
+  getVerificationStatusDisplay,
+  getProviderDisplayName,
+} from '@/lib/email-verification';
+import { getLearnedPatterns, applyLearnedBoosts } from '@/lib/pattern-learning';
 import { supabase } from '@/lib/supabase';
 
 interface GenerateEmailsRequest {
   firstName: string;
   lastName: string;
   companyName: string;
+  companyDomain?: string;
+  role?: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: GenerateEmailsRequest = await request.json();
-    const { firstName, lastName, companyName } = body;
+    const { firstName, lastName, companyName, companyDomain, role } = body;
 
     // Validate inputs
     if (!firstName || !lastName || !companyName) {
@@ -43,72 +58,144 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check domain cache first
-    let domain = guessDomain(companyName);
-    let fromCache = false;
+    // Step 1: Determine domain
+    let domain = companyDomain || getKnownDomain(companyName) || guessDomain(companyName);
+    let domainSource: 'provided' | 'known' | 'cache' | 'inferred' = companyDomain
+      ? 'provided'
+      : getKnownDomain(companyName)
+      ? 'known'
+      : 'inferred';
 
-    try {
-      const { data: cachedDomain, error: cacheError } = await supabase
-        .from('domain_cache')
-        .select('domain, last_verified')
-        .eq('company_name', companyName.trim().toLowerCase())
-        .single();
+    // Check domain cache if domain was inferred
+    if (domainSource === 'inferred') {
+      try {
+        const { data: cachedDomain, error: cacheError } = await supabase
+          .from('domain_cache')
+          .select('domain, last_verified')
+          .eq('company_name', companyName.trim().toLowerCase())
+          .single();
 
-      // Use cached domain if it exists and was verified within 7 days
-      if (cachedDomain && !cacheError) {
-        const lastVerified = new Date(cachedDomain.last_verified);
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        // Use cached domain if it exists and was verified within 30 days
+        if (cachedDomain && !cacheError) {
+          const lastVerified = new Date(cachedDomain.last_verified);
+          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-        if (lastVerified > sevenDaysAgo) {
-          domain = cachedDomain.domain;
-          fromCache = true;
-          console.log(`Using cached domain for ${companyName}: ${domain}`);
+          if (lastVerified > thirtyDaysAgo) {
+            domain = cachedDomain.domain;
+            domainSource = 'cache';
+            console.log(`Using cached domain for ${companyName}: ${domain}`);
+          }
         }
+      } catch (cacheError) {
+        console.warn('Cache lookup failed:', cacheError);
       }
-    } catch (cacheError) {
-      console.warn('Cache lookup failed, will generate domain:', cacheError);
     }
 
-    // Generate domain if not found in cache or expired
-    if (!fromCache) {
+    // Step 2: Verify domain with MX records (DNS lookup)
+    const domainVerification = await verifyDomainMxRecords(domain);
+    const verificationStatus = getVerificationStatusDisplay(
+      domainVerification.isValid,
+      domainVerification.error
+    );
 
-      // Save to cache (fire and forget)
+    // Step 3: Estimate company size
+    const companySize = estimateCompanySize(domain);
+
+    // Step 4: Get learned patterns for this company
+    const learnedPatterns = await getLearnedPatterns(domain);
+
+    // Step 5: Generate smart email patterns
+    const smartPatterns = generateSmartEmailPatterns(
+      firstName,
+      lastName,
+      {
+        domain,
+        estimatedSize: companySize,
+        emailProvider: domainVerification.emailProvider,
+      },
+      role
+    );
+
+    // Step 6: Apply learned pattern boosts
+    const patternsWithLearning = applyLearnedBoosts(smartPatterns, learnedPatterns);
+
+    // Step 7: Enhance confidence scores with verification data
+    const enhancedPatterns = patternsWithLearning.map(p => {
+      const formatValid = validateEmailFormat(p.email);
+      const enhancedConfidence = calculateEnhancedConfidence(
+        p.confidence,
+        domainVerification.isValid,
+        domainVerification.emailProvider,
+        p.pattern,
+        formatValid
+      );
+
+      return {
+        email: p.email,
+        pattern: p.pattern,
+        confidence: enhancedConfidence,
+        learned: p.learned || false,
+        verification: {
+          domainVerified: domainVerification.isValid,
+          formatValid,
+          emailProvider: domainVerification.emailProvider,
+        },
+      };
+    });
+
+    // Step 8: Cache the verified domain
+    if (domainVerification.isValid && domainSource !== 'cache') {
       try {
         await supabase
           .from('domain_cache')
-          .upsert({
-            company_name: companyName.trim().toLowerCase(),
-            domain,
-            last_verified: new Date().toISOString(),
-          }, {
-            onConflict: 'company_name'
-          });
-        console.log(`Cached domain for ${companyName}: ${domain}`);
+          .upsert(
+            {
+              company_name: companyName.trim().toLowerCase(),
+              domain,
+              verified: true,
+              mx_records: domainVerification.mxRecords,
+              email_provider: domainVerification.emailProvider,
+              last_verified: new Date().toISOString(),
+            },
+            {
+              onConflict: 'company_name',
+            }
+          );
+        console.log(`Cached verified domain for ${companyName}: ${domain}`);
       } catch (cacheWriteError) {
         console.warn('Failed to write to cache:', cacheWriteError);
-        // Don't fail the request if cache write fails
       }
     }
 
-    // Generate all email patterns
-    const emails = generateEmailPatterns(firstName, lastName, domain);
-
-    // Return results
+    // Step 9: Return enhanced results
     return NextResponse.json({
       success: true,
       domain,
-      fromCache,
-      emails: emails.map(e => ({
-        email: e.email,
-        pattern: e.pattern,
-        confidence: e.baseConfidence
-      })),
-      message: `Generated ${emails.length} email possibilities${fromCache ? ' (domain from cache)' : ''}`,
+      domainSource,
+      companySize,
+      verification: {
+        verified: domainVerification.isValid,
+        hasMxRecords: domainVerification.hasMxRecords,
+        mxRecordCount: domainVerification.mxRecords.length,
+        emailProvider: domainVerification.emailProvider,
+        providerName: domainVerification.emailProvider
+          ? getProviderDisplayName(domainVerification.emailProvider)
+          : undefined,
+        status: verificationStatus,
+        error: domainVerification.error,
+      },
+      learning: {
+        hasLearnedPatterns: learnedPatterns.length > 0,
+        learnedPatternCount: learnedPatterns.length,
+      },
+      emails: enhancedPatterns,
+      message: `Generated ${enhancedPatterns.length} email patterns with verification`,
       metadata: {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        companyName: companyName.trim()
-      }
+        companyName: companyName.trim(),
+        role: role?.trim(),
+      },
     });
 
   } catch (error) {

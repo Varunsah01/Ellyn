@@ -24,6 +24,8 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmptyContacts } from "@/components/empty-state";
+import { showToast } from "@/lib/toast";
 
 export type Contact = {
   id: string;
@@ -114,6 +116,11 @@ const statusLabels = {
 
 export function ContactsTable() {
   const [contacts, setContacts] = useState<Contact[]>(mockContacts);
+
+  // Show empty state if no contacts
+  if (contacts.length === 0) {
+    return <EmptyContacts />;
+  }
 
   const columns: ColumnDef<Contact>[] = [
     {
@@ -260,20 +267,26 @@ export function ContactsTable() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => navigator.clipboard.writeText(contact.email)}>
+              <DropdownMenuItem onClick={() => {
+                navigator.clipboard.writeText(contact.email);
+                showToast.success("Email copied to clipboard");
+              }}>
                 <Mail className="mr-2 h-4 w-4" />
                 Copy email
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => showToast.info("View details coming soon")}>
                 <Eye className="mr-2 h-4 w-4" />
                 View details
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => showToast.info("Edit contact coming soon")}>
                 <Edit className="mr-2 h-4 w-4" />
                 Edit contact
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive">
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={() => showToast.error("Delete functionality coming soon")}
+              >
                 <Trash className="mr-2 h-4 w-4" />
                 Delete contact
               </DropdownMenuItem>

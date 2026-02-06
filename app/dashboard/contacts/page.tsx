@@ -11,8 +11,12 @@ import { AddContactDialog } from "@/components/contacts/add-contact-dialog";
 export default function ContactsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
 
+  const breadcrumbs = [
+    { label: "Contacts" }
+  ];
+
   return (
-    <DashboardShell>
+    <DashboardShell breadcrumbs={breadcrumbs}>
       <PageHeader
         title="Contacts"
         description="Manage your outreach contacts and track engagement"

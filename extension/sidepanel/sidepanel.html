@@ -11,35 +11,131 @@
     <!-- Header -->
     <div class="header">
       <h1>Ellyn</h1>
-      <button id="sync-btn" class="sync-btn">↻ Sync</button>
+      <button id="sync-btn" class="sync-btn">&#x21bb; Sync</button>
     </div>
 
-    <!-- Input Section -->
-    <div class="input-section">
-      <h2>Discover Email</h2>
-      <form id="contact-form">
-        <label for="firstName">First Name *</label>
-        <input type="text" id="firstName" name="firstName" required placeholder="John">
+    <!-- LinkedIn Extraction UI (shown on LinkedIn profiles) -->
+    <div id="linkedin-mode" class="section" style="display: none;">
+      <div class="linkedin-banner">
+        <div class="linkedin-icon">in</div>
+        <div class="linkedin-banner-text">
+          <strong>LinkedIn Profile Detected</strong>
+          <span id="detected-name" class="detected-name"></span>
+        </div>
+      </div>
 
-        <label for="lastName">Last Name *</label>
-        <input type="text" id="lastName" name="lastName" required placeholder="Doe">
+      <button id="magic-extract-btn" class="magic-btn">
+        Extract Contact
+      </button>
 
-        <label for="company">Company *</label>
-        <input type="text" id="company" name="company" required placeholder="Acme Corp">
-
-        <label for="role">Role</label>
-        <input type="text" id="role" name="role" placeholder="CEO">
-
-        <button type="submit" class="primary-btn">🔍 Discover Email</button>
-        <div class="cost-note">Zero-cost enrichment using free APIs</div>
-      </form>
+      <p class="disclaimer">Extracts visible data only &mdash; 100% LinkedIn safe</p>
     </div>
 
-    <!-- Results Section (hidden by default) -->
-    <div id="results" class="results-section" style="display: none;">
+    <!-- Non-LinkedIn prompt -->
+    <div id="not-linkedin-prompt" class="section" style="display: none;">
+      <div class="prompt-box">
+        <p class="prompt-text">Visit a LinkedIn profile for one-click extraction</p>
+        <p class="prompt-sub">Or enter contact details manually below</p>
+      </div>
+    </div>
+
+    <!-- Loading / Progress -->
+    <div id="extract-progress" class="section" style="display: none;">
+      <div class="progress-card">
+        <div class="spinner"></div>
+        <p id="progress-text" class="progress-text">Extracting profile...</p>
+      </div>
+    </div>
+
+    <!-- Extraction Results -->
+    <div id="extract-results" class="section" style="display: none;">
+      <h2>Extracted Contact</h2>
+
+      <!-- Contact Card -->
+      <div class="contact-card">
+        <div class="contact-header">
+          <div class="contact-avatar" id="contact-avatar">?</div>
+          <div class="contact-info">
+            <div class="contact-name" id="contact-name">-</div>
+            <div class="contact-role" id="contact-role">-</div>
+            <div class="contact-company" id="contact-company">-</div>
+          </div>
+          <button id="edit-contact-btn" class="icon-btn" title="Edit extracted data">&#x270E;</button>
+        </div>
+      </div>
+
+      <!-- Edit Form (hidden by default) -->
+      <div id="edit-form" class="edit-form" style="display: none;">
+        <label>First Name
+          <input type="text" id="edit-firstName" />
+        </label>
+        <label>Last Name
+          <input type="text" id="edit-lastName" />
+        </label>
+        <label>Company
+          <input type="text" id="edit-company" />
+        </label>
+        <label>Role
+          <input type="text" id="edit-role" />
+        </label>
+        <div class="edit-actions">
+          <button id="edit-save-btn" class="primary-btn small">Update</button>
+          <button id="edit-cancel-btn" class="secondary-btn small">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Email Patterns -->
+      <h3 class="sub-heading">Email Patterns</h3>
+      <div id="email-list" class="email-list">
+        <!-- Email cards injected here -->
+      </div>
+
+      <!-- Draft Preview -->
+      <div id="draft-section" style="display: none;">
+        <h3 class="sub-heading">AI Draft</h3>
+        <div id="draft-preview" class="draft-preview"></div>
+        <div class="draft-actions">
+          <button id="copy-draft-btn" class="primary-btn">Copy Draft</button>
+          <button id="regenerate-btn" class="secondary-btn">Regenerate</button>
+        </div>
+      </div>
+
+      <!-- Save -->
+      <div class="actions">
+        <button id="save-btn" class="primary-btn">Save Contact</button>
+        <button id="open-web-app-btn" class="secondary-btn">Open in Web App</button>
+      </div>
+    </div>
+
+    <!-- Manual Input Fallback -->
+    <div id="manual-section" class="section">
+      <div class="section-toggle" id="manual-toggle">
+        <h2>Manual Entry</h2>
+        <span class="toggle-arrow" id="toggle-arrow">&#x25BC;</span>
+      </div>
+      <div id="manual-form-wrapper">
+        <form id="contact-form">
+          <label for="firstName">First Name *</label>
+          <input type="text" id="firstName" name="firstName" required placeholder="John">
+
+          <label for="lastName">Last Name *</label>
+          <input type="text" id="lastName" name="lastName" required placeholder="Doe">
+
+          <label for="company">Company *</label>
+          <input type="text" id="company" name="company" required placeholder="Acme Corp">
+
+          <label for="role">Role</label>
+          <input type="text" id="role" name="role" placeholder="CEO">
+
+          <button type="submit" class="primary-btn">Discover Email</button>
+          <div class="cost-note">Zero-cost enrichment using free APIs</div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Enrichment Results (manual flow) -->
+    <div id="results" class="section results-section" style="display: none;">
       <h2>Results</h2>
-
-      <!-- Company Info -->
       <div class="company-info">
         <div class="info-row">
           <span class="label">Domain:</span>
@@ -55,16 +151,12 @@
         </div>
       </div>
 
-      <!-- Email Patterns -->
       <h3 style="font-size: 14px; margin-bottom: 8px;">Select Email Pattern</h3>
-      <div id="email-list" class="email-list">
-        <!-- Email cards will be inserted here -->
-      </div>
+      <div id="manual-email-list" class="email-list"></div>
 
-      <!-- Actions -->
       <div class="actions">
-        <button id="save-btn" class="primary-btn">💾 Save Contact</button>
-        <button id="open-web-app-btn" class="secondary-btn">Open in Web App</button>
+        <button id="manual-save-btn" class="primary-btn">Save Contact</button>
+        <button id="manual-open-web-btn" class="secondary-btn">Open in Web App</button>
       </div>
     </div>
 
@@ -86,6 +178,7 @@
   <!-- Scripts -->
   <script src="../utils/storage.js"></script>
   <script src="../utils/api-client.js"></script>
+  <script src="../utils/email-inference.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

@@ -17,14 +17,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { User, Mail, Zap, Bell, Shield, Key, Link as LinkIcon, Save } from "lucide-react";
+import { syncOnboardingState } from "@/lib/onboarding";
 
 export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
+  const [isRestartingTour, setIsRestartingTour] = useState(false);
 
   const handleSave = async () => {
     setIsSaving(true);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     setIsSaving(false);
+  };
+
+  const handleRestartTour = async () => {
+    setIsRestartingTour(true);
+    await syncOnboardingState({
+      tourPending: true,
+      tourCompleted: false,
+      tourDismissed: false,
+    });
+    setIsRestartingTour(false);
+    window.location.href = "/dashboard";
   };
 
   return (
@@ -126,6 +139,15 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center"><LinkIcon className="h-5 w-5 text-primary" /></div><div><p className="font-medium">Chrome Extension</p><p className="text-sm text-muted-foreground">Add contacts from LinkedIn</p></div></div>
                   <Button variant="outline">Install</Button>
+                </div>
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div>
+                    <p className="font-medium">Onboarding Tour</p>
+                    <p className="text-sm text-muted-foreground">Replay the guided dashboard tour</p>
+                  </div>
+                  <Button variant="outline" onClick={handleRestartTour} disabled={isRestartingTour}>
+                    {isRestartingTour ? "Restarting..." : "Restart Tour"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

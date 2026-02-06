@@ -3,16 +3,24 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { UserPlus, Mail, MessageSquare, Zap, Clock, ArrowRight } from "lucide-react";
+import { UserPlus, Mail, MessageSquare, Zap, Clock, ArrowRight, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 
+type ActivityType =
+  | "contact_added"
+  | "email_sent"
+  | "reply_received"
+  | "sequence_created"
+  | "email_replied"
+  | "template_created";
+
 interface ActivityItem {
   id: string;
-  type: "contact_added" | "email_sent" | "reply_received" | "sequence_created";
+  type: ActivityType;
   title: string;
   description: string;
-  timestamp: Date;
+  timestamp: Date | string;
   metadata?: {
     contactName?: string;
     sequenceName?: string;
@@ -24,9 +32,15 @@ interface ActivityFeedProps {
   activities: ActivityItem[];
   onLoadMore?: () => void;
   hasMore?: boolean;
+  loading?: boolean;
 }
 
-export function ActivityFeed({ activities, onLoadMore, hasMore = false }: ActivityFeedProps) {
+export function ActivityFeed({
+  activities,
+  onLoadMore,
+  hasMore = false,
+  loading = false,
+}: ActivityFeedProps) {
   const getActivityIcon = (type: ActivityItem["type"]) => {
     switch (type) {
       case "contact_added":
@@ -34,9 +48,12 @@ export function ActivityFeed({ activities, onLoadMore, hasMore = false }: Activi
       case "email_sent":
         return <Mail className="h-4 w-4" />;
       case "reply_received":
+      case "email_replied":
         return <MessageSquare className="h-4 w-4" />;
       case "sequence_created":
         return <Zap className="h-4 w-4" />;
+      case "template_created":
+        return <FileText className="h-4 w-4" />;
     }
   };
 
@@ -47,9 +64,12 @@ export function ActivityFeed({ activities, onLoadMore, hasMore = false }: Activi
       case "email_sent":
         return "bg-purple-500/10 text-purple-500 border-purple-500/20";
       case "reply_received":
+      case "email_replied":
         return "bg-green-500/10 text-green-500 border-green-500/20";
       case "sequence_created":
         return "bg-orange-500/10 text-orange-500 border-orange-500/20";
+      case "template_created":
+        return "bg-indigo-500/10 text-indigo-500 border-indigo-500/20";
     }
   };
 
@@ -60,7 +80,19 @@ export function ActivityFeed({ activities, onLoadMore, hasMore = false }: Activi
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {activities.length === 0 ? (
+          {loading ? (
+            <div className="space-y-4 animate-pulse">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="flex gap-4">
+                  <div className="h-10 w-10 rounded-full bg-muted" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-1/3 rounded bg-muted" />
+                    <div className="h-3 w-2/3 rounded bg-muted" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : activities.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>No recent activity</p>
@@ -105,7 +137,12 @@ export function ActivityFeed({ activities, onLoadMore, hasMore = false }: Activi
                           )}
                         </div>
                         <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
+                          {formatDistanceToNow(
+                            activity.timestamp instanceof Date
+                              ? activity.timestamp
+                              : new Date(activity.timestamp),
+                            { addSuffix: true }
+                          )}
                         </span>
                       </div>
                     </div>

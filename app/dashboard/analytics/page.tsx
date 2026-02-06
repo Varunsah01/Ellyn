@@ -1,93 +1,102 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { MetricCard } from "@/components/analytics/metric-card";
-import { LineChart } from "@/components/analytics/line-chart";
-import { FunnelChart } from "@/components/analytics/funnel-chart";
-import { HeatMap } from "@/components/analytics/heat-map";
-import { DateRangePicker, DateRange } from "@/components/analytics/date-range-picker";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Users,
-  Mail,
-  TrendingUp,
-  Zap,
-  MessageSquare,
-  Eye,
-  Download,
-  BarChart3,
-  Clock,
-} from "lucide-react";
-import {
-  mockAnalyticsOverview,
-  mockTimeSeriesData,
-  mockFunnelData,
-  mockSequencePerformance,
-  mockTemplatePerformance,
-  mockContactSources,
-  mockResponseTimeDistribution,
-  mockBestSendTimesData,
-  mockCompanyAnalytics,
-} from "@/lib/data/mock-analytics";
-import { calculateMetricChange, formatPercentage, generateSparklineData } from "@/lib/utils/analytics-calculations";
-import { chartColors } from "@/lib/utils/chart-config";
+import { RefreshCw, TrendingUp, Users, BarChart, Activity } from "lucide-react";
+import { subDays, format } from "date-fns";
+import { DateRange } from "react-day-picker";
+
+// Analytics components
+import { OverviewMetrics } from "@/components/analytics/overview-metrics";
+import { TimeSeriesCharts } from "@/components/analytics/time-series-charts";
+import { SequencePerformanceTable } from "@/components/analytics/sequence-performance-table";
+import { ContactInsights } from "@/components/analytics/contact-insights";
+import { ActivityHeatmap } from "@/components/analytics/activity-heatmap";
+import { DateRangeFilter } from "@/components/analytics/date-range-filter";
+import { ExportMenu } from "@/components/analytics/export-menu";
+import { GoalTracker } from "@/components/analytics/goal-tracker";
+import { EmptyAnalytics } from "@/components/empty-state";
+import { showToast } from "@/lib/toast";
 
 export default function AnalyticsPage() {
-  const [dateRange, setDateRange] = useState<DateRange>({
-    from: new Date(new Date().setDate(new Date().getDate() - 30)),
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 30),
     to: new Date(),
   });
   const [compareEnabled, setCompareEnabled] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [hasData, setHasData] = useState(true);
 
-  // Calculate metrics
-  const contactsMetric = calculateMetricChange(
-    mockAnalyticsOverview.totalContacts.current,
-    mockAnalyticsOverview.totalContacts.previous
-  );
+  // Analytics data state
+  const [overviewData, setOverviewData] = useState<any>(null);
+  const [contactsOverTime, setContactsOverTime] = useState<any[]>([]);
+  const [sequencePerformance, setSequencePerformance] = useState<any[]>([]);
+  const [contactInsights, setContactInsights] = useState<any>(null);
+  const [activityHeatmap, setActivityHeatmap] = useState<any[]>([]);
 
-  const emailsMetric = calculateMetricChange(
-    mockAnalyticsOverview.emailsSent.current,
-    mockAnalyticsOverview.emailsSent.previous
-  );
+  const fetchAnalytics = async () => {
+    setLoading(true);
 
-  const responseRateMetric = calculateMetricChange(
-    mockAnalyticsOverview.responseRate.current,
-    mockAnalyticsOverview.responseRate.previous
-  );
+    try {
+      const params = new URLSearchParams();
+      if (dateRange?.from) params.set("startDate", format(dateRange.from, "yyyy-MM-dd"));
+      if (dateRange?.to) params.set("endDate", format(dateRange.to, "yyyy-MM-dd"));
+      if (compareEnabled) params.set("compareWith", "previous_period");
 
-  const activeSequencesMetric = calculateMetricChange(
-    mockAnalyticsOverview.activeSequences.current,
-    mockAnalyticsOverview.activeSequences.previous
-  );
+      // Fetch all analytics data in parallel
+      const [overview, contacts, sequences, insights, heatmap] = await Promise.all([
+        fetch(`/api/analytics?metric=overview&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/analytics?metric=contacts_over_time&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/analytics?metric=sequence_performance&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/analytics?metric=contact_insights&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/analytics?metric=activity_heatmap&${params.toString()}`).then((r) => r.json()),
+      ]);
 
-  const repliesMetric = calculateMetricChange(
-    mockAnalyticsOverview.newReplies.current,
-    mockAnalyticsOverview.newReplies.previous
-  );
+      setOverviewData(overview);
+      setContactsOverTime(contacts.data || []);
+      setSequencePerformance(sequences.data || []);
+      setContactInsights(insights.data || {});
+      setActivityHeatmap(heatmap.data || []);
 
-  const openRateMetric = calculateMetricChange(
-    mockAnalyticsOverview.openRate.current,
-    mockAnalyticsOverview.openRate.previous
-  );
+      // Check if there's any data
+      const hasAnyData =
+        (overview.data?.totalContacts ?? 0) > 0 ||
+        (contacts.data?.length ?? 0) > 0 ||
+        (sequences.data?.length ?? 0) > 0;
 
-  // Sparkline data
-  const contactsSparkline = generateSparklineData(
-    mockTimeSeriesData.map((d) => ({ date: d.date, value: d.contactsAdded }))
-  );
+      setHasData(hasAnyData);
+    } catch (error) {
+      console.error("Failed to fetch analytics:", error);
+      showToast.error("Failed to load analytics data");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const emailsSparkline = generateSparklineData(
-    mockTimeSeriesData.map((d) => ({ date: d.date, value: d.emailsSent }))
-  );
+  useEffect(() => {
+    fetchAnalytics();
+  }, [dateRange, compareEnabled]);
 
-  const repliesSparkline = generateSparklineData(
-    mockTimeSeriesData.map((d) => ({ date: d.date, value: d.repliesReceived }))
-  );
+  const handleRefresh = () => {
+    showToast.loading("Refreshing analytics...");
+    fetchAnalytics();
+  };
+
+  const breadcrumbs = [{ label: "Analytics" }];
+
+  // Show empty state if no data
+  if (!loading && !hasData) {
+    return (
+      <DashboardShell breadcrumbs={breadcrumbs}>
+        <EmptyAnalytics />
+      </DashboardShell>
+    );
+  }
 
   return (
-    <DashboardShell>
+    <DashboardShell breadcrumbs={breadcrumbs}>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -97,353 +106,97 @@ export default function AnalyticsPage() {
               Track your outreach performance and engagement
             </p>
           </div>
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Export Report
-          </Button>
+          <div className="flex items-center gap-2">
+            {overviewData && (
+              <ExportMenu
+                data={{
+                  overview: overviewData.data,
+                  sequences: sequencePerformance,
+                  contacts: contactInsights,
+                }}
+                dateRange={dateRange}
+              />
+            )}
+            <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
 
-        {/* Date Range Picker */}
-        <DateRangePicker
-          value={dateRange}
-          onChange={setDateRange}
+        {/* Date Range Filter */}
+        <DateRangeFilter
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
           compareEnabled={compareEnabled}
-          onCompareChange={setCompareEnabled}
+          onCompareToggle={setCompareEnabled}
         />
 
-        {/* Key Metrics */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <MetricCard
-            title="Total Contacts"
-            value={contactsMetric.current}
-            change={contactsMetric.change}
-            trend={contactsMetric.trend}
-            sparklineData={contactsSparkline}
-            icon={Users}
-            description="Contacts in your database"
-          />
-          <MetricCard
-            title="Emails Sent"
-            value={emailsMetric.current}
-            change={emailsMetric.change}
-            trend={emailsMetric.trend}
-            sparklineData={emailsSparkline}
-            icon={Mail}
-            description="Total outreach emails"
-          />
-          <MetricCard
-            title="Response Rate"
-            value={responseRateMetric.current}
-            change={responseRateMetric.change}
-            trend={responseRateMetric.trend}
-            format="percentage"
-            icon={TrendingUp}
-            description="Contacts who replied"
-          />
-          <MetricCard
-            title="Active Sequences"
-            value={activeSequencesMetric.current}
-            change={activeSequencesMetric.change}
-            trend={activeSequencesMetric.trend}
-            icon={Zap}
-            description="Running campaigns"
-          />
-          <MetricCard
-            title="New Replies"
-            value={repliesMetric.current}
-            change={repliesMetric.change}
-            trend={repliesMetric.trend}
-            sparklineData={repliesSparkline}
-            icon={MessageSquare}
-            description="Replies this period"
-          />
-          <MetricCard
-            title="Open Rate"
-            value={openRateMetric.current}
-            change={openRateMetric.change}
-            trend={openRateMetric.trend}
-            format="percentage"
-            icon={Eye}
-            description="Emails opened"
-          />
-        </div>
-
-        {/* Outreach Activity Chart */}
-        <LineChart
-          title="Outreach Activity"
-          description="Track your daily contact additions, emails sent, and replies received"
-          data={mockTimeSeriesData}
-          xAxisKey="date"
-          series={[
-            { name: "Contacts Added", dataKey: "contactsAdded", color: chartColors.primary },
-            { name: "Emails Sent", dataKey: "emailsSent", color: chartColors.secondary },
-            { name: "Replies Received", dataKey: "repliesReceived", color: chartColors.success },
-          ]}
-          height={350}
-        />
-
-        {/* Charts Grid */}
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Email Performance Funnel */}
-          <FunnelChart
-            title="Email Performance Funnel"
-            description="Conversion rates at each stage of your outreach"
-            stages={mockFunnelData}
-          />
-
-          {/* Contact Sources */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Contact Sources</CardTitle>
-              <CardDescription>Where your contacts are coming from</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {mockContactSources.map((source, index) => (
-                  <div key={source.source}>
-                    <div className="flex items-center justify-between text-sm mb-2">
-                      <span className="font-medium">{source.source}</span>
-                      <span className="text-muted-foreground">
-                        {source.count} ({formatPercentage(source.percentage, 1)})
-                      </span>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div
-                        className="h-2 rounded-full transition-all"
-                        style={{
-                          width: `${source.percentage}%`,
-                          backgroundColor: [
-                            chartColors.primary,
-                            chartColors.secondary,
-                            chartColors.success,
-                            chartColors.warning,
-                          ][index % 4],
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Sequence Performance Table */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Sequence Performance</CardTitle>
-                <CardDescription>Performance metrics for all your sequences</CardDescription>
-              </div>
-              <Button variant="outline" size="sm">
-                <BarChart3 className="mr-2 h-4 w-4" />
-                View All
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                      Sequence Name
-                    </th>
-                    <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                      Contacts
-                    </th>
-                    <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                      Emails Sent
-                    </th>
-                    <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                      Open Rate
-                    </th>
-                    <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                      Reply Rate
-                    </th>
-                    <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                      Avg. Response
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mockSequencePerformance.map((seq) => (
-                    <tr key={seq.id} className="border-b hover:bg-muted/50 transition-colors">
-                      <td className="p-3 font-medium">{seq.name}</td>
-                      <td className="p-3 text-right text-muted-foreground">
-                        {seq.contactsEnrolled}
-                      </td>
-                      <td className="p-3 text-right text-muted-foreground">
-                        {seq.emailsSent}
-                      </td>
-                      <td className="p-3 text-right">
-                        <span className="text-green-600 dark:text-green-500">
-                          {formatPercentage(seq.openRate, 1)}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right">
-                        <span className="text-blue-600 dark:text-blue-500">
-                          {formatPercentage(seq.replyRate, 1)}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right text-muted-foreground">
-                        {seq.avgResponseTime}h
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Advanced Analytics Tabs */}
-        <Tabs defaultValue="templates" className="space-y-4">
+        {/* Tabs for different views */}
+        <Tabs defaultValue="overview" className="space-y-6">
           <TabsList>
-            <TabsTrigger value="templates">Templates</TabsTrigger>
-            <TabsTrigger value="timing">Best Send Times</TabsTrigger>
-            <TabsTrigger value="companies">Companies</TabsTrigger>
-            <TabsTrigger value="response-time">Response Time</TabsTrigger>
+            <TabsTrigger value="overview" className="gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="sequences" className="gap-2">
+              <BarChart className="h-4 w-4" />
+              Sequences
+            </TabsTrigger>
+            <TabsTrigger value="contacts" className="gap-2">
+              <Users className="h-4 w-4" />
+              Contacts
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="gap-2">
+              <Activity className="h-4 w-4" />
+              Activity
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="templates" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Template Performance</CardTitle>
-                <CardDescription>
-                  See which email templates are performing best
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {mockTemplatePerformance.map((template) => (
-                    <div key={template.id} className="flex items-center gap-4">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{template.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {template.sendCount} sends
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-6 text-sm">
-                        <div className="text-right">
-                          <p className="font-medium text-green-600 dark:text-green-500">
-                            {formatPercentage(template.openRate, 1)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Open</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-medium text-blue-600 dark:text-blue-500">
-                            {formatPercentage(template.replyRate, 1)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">Reply</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+          {/* Overview Tab */}
+          <TabsContent value="overview" className="space-y-6">
+            {overviewData && (
+              <OverviewMetrics
+                data={overviewData.data}
+                comparison={overviewData.comparison}
+                loading={loading}
+              />
+            )}
+
+            <div className="grid gap-6 md:grid-cols-2">
+              <TimeSeriesCharts contactsData={contactsOverTime} loading={loading} />
+
+              {overviewData && (
+                <GoalTracker
+                  currentContacts={overviewData.data?.totalContacts || 0}
+                  currentEmails={overviewData.data?.emailsSent || 0}
+                  currentReplyRate={parseFloat(overviewData.data?.replyRate || "0")}
+                />
+              )}
+            </div>
           </TabsContent>
 
-          <TabsContent value="timing">
-            <HeatMap
-              title="Best Send Times"
-              description="Response rates by day of week and hour (9 AM - 4 PM shown)"
-              data={mockBestSendTimesData}
-              rowLabels={["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]}
-              colLabels={["9am", "10am", "11am", "12pm", "1pm", "2pm", "3pm", "4pm"]}
-              colorScheme="green"
-              unit="%"
-            />
+          {/* Sequences Tab */}
+          <TabsContent value="sequences" className="space-y-6">
+            <SequencePerformanceTable data={sequencePerformance} loading={loading} />
           </TabsContent>
 
-          <TabsContent value="companies">
-            <Card>
-              <CardHeader>
-                <CardTitle>Company Analysis</CardTitle>
-                <CardDescription>
-                  Engagement metrics by target company
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                          Company
-                        </th>
-                        <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                          Contacts Reached
-                        </th>
-                        <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                          Response Rate
-                        </th>
-                        <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                          Avg. Response Time
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mockCompanyAnalytics.map((company) => (
-                        <tr key={company.company} className="border-b hover:bg-muted/50">
-                          <td className="p-3 font-medium">{company.company}</td>
-                          <td className="p-3 text-right text-muted-foreground">
-                            {company.contactsReached}
-                          </td>
-                          <td className="p-3 text-right">
-                            <span className="text-green-600 dark:text-green-500">
-                              {formatPercentage(company.responseRate, 1)}
-                            </span>
-                          </td>
-                          <td className="p-3 text-right text-muted-foreground">
-                            {company.avgResponseTime}h
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Contacts Tab */}
+          <TabsContent value="contacts" className="space-y-6">
+            {contactInsights && (
+              <ContactInsights
+                topCompanies={contactInsights.topCompanies || []}
+                topRoles={contactInsights.topRoles || []}
+                sourceBreakdown={contactInsights.sourceBreakdown || []}
+                topTags={contactInsights.topTags || []}
+                loading={loading}
+              />
+            )}
           </TabsContent>
 
-          <TabsContent value="response-time">
-            <Card>
-              <CardHeader>
-                <CardTitle>Response Time Distribution</CardTitle>
-                <CardDescription>
-                  How quickly contacts are responding to your outreach
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {mockResponseTimeDistribution.map((bucket, index) => {
-                    const maxCount = Math.max(...mockResponseTimeDistribution.map((b) => b.count));
-                    const percentage = (bucket.count / maxCount) * 100;
-
-                    return (
-                      <div key={bucket.bucket}>
-                        <div className="flex items-center justify-between text-sm mb-2">
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">{bucket.bucket}</span>
-                          </div>
-                          <span className="text-muted-foreground">{bucket.count} responses</span>
-                        </div>
-                        <div className="w-full bg-muted rounded-full h-2">
-                          <div
-                            className="h-2 rounded-full transition-all bg-primary"
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+          {/* Activity Tab */}
+          <TabsContent value="activity" className="space-y-6">
+            <ActivityHeatmap data={activityHeatmap} loading={loading} />
           </TabsContent>
         </Tabs>
       </div>

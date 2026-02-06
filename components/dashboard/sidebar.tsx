@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,6 +18,8 @@ import {
 import { mainNavItems } from "@/lib/constants/navigation";
 import { ChevronLeft, LogOut, User } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useDashboardStats } from "@/lib/hooks/useAnalytics";
+import { useSequenceStats } from "@/lib/hooks/useSequences";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -25,6 +28,8 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
+  const { stats } = useDashboardStats();
+  const { stats: sequenceStats } = useSequenceStats();
 
   return (
     <motion.aside
@@ -68,11 +73,30 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
         {mainNavItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
+          const tourId =
+            item.href === "/dashboard/contacts"
+              ? "contacts"
+              : item.href === "/dashboard/sequences"
+              ? "sequences"
+              : item.href === "/dashboard/analytics"
+              ? "analytics"
+              : undefined;
+
+          // Get dynamic counts for nav items
+          let count: number | undefined;
+          if (item.href === "/dashboard/contacts") {
+            count = stats.totalContacts;
+          } else if (item.href === "/dashboard/sequences") {
+            count = sequenceStats.totalTemplates;
+          } else if (item.href === "/compose") {
+            count = sequenceStats.pendingDrafts;
+          }
 
           return (
             <Link
               key={item.href}
               href={item.href}
+              data-tour={tourId}
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all hover:bg-accent",
                 isActive
@@ -94,7 +118,15 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                   </motion.span>
                 )}
               </AnimatePresence>
-              {item.badge && !collapsed && (
+              {count !== undefined && count > 0 && !collapsed && (
+                <Badge
+                  variant={isActive ? "secondary" : "outline"}
+                  className="ml-auto text-[10px] h-5 px-1.5"
+                >
+                  {count}
+                </Badge>
+              )}
+              {item.badge && !collapsed && !count && (
                 <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
                   {item.badge}
                 </span>

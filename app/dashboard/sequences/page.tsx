@@ -1,182 +1,191 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { PageHeader } from "@/components/dashboard/page-header";
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Plus, Rocket } from "lucide-react";
-import { SequenceCard } from "@/components/sequences/sequence-card";
-import { mockSequences } from "@/lib/data/mock-sequences";
-import { Sequence } from "@/lib/types/sequence";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react"
+import { DashboardShell } from "@/components/dashboard/dashboard-shell"
+import { PageHeader } from "@/components/dashboard/page-header"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { SequenceCard } from "@/components/sequences/sequence-card"
+import { buildGmailLink, buildOutlookLink } from "@/lib/sequence-engine"
+import { Sequence } from "@/lib/types/sequence"
+import { AlertCircle, CalendarCheck, Mail, RefreshCw } from "lucide-react"
+import Link from "next/link"
+
+interface DigestItem {
+  enrollmentStepId: string
+  sequenceId: string
+  sequenceName: string
+  contactName: string
+  contactEmail: string
+  subject: string
+  body: string
+  scheduledFor: string
+}
 
 export default function SequencesPage() {
-  const router = useRouter();
-  const [sequences, setSequences] = useState<Sequence[]>(mockSequences);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("updated");
+  const [sequences, setSequences] = useState<Sequence[]>([])
+  const [digest, setDigest] = useState<DigestItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filteredSequences = sequences.filter((seq) => {
-    if (statusFilter === "all") return true;
-    return seq.status === statusFilter;
-  });
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true)
+      const [sequencesRes, digestRes] = await Promise.all([
+        fetch("/api/sequences"),
+        fetch("/api/sequences/execute"),
+      ])
 
-  const sortedSequences = [...filteredSequences].sort((a, b) => {
-    if (sortBy === "name") {
-      return a.name.localeCompare(b.name);
+      if (!sequencesRes.ok) {
+        const data = await sequencesRes.json()
+        throw new Error(data.error || "Failed to load sequences")
+      }
+
+      const sequencesData = await sequencesRes.json()
+      const digestData = digestRes.ok ? await digestRes.json() : { items: [] }
+
+      setSequences(sequencesData.sequences || [])
+      setDigest(digestData.items || [])
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load sequences")
+    } finally {
+      setLoading(false)
     }
-    if (sortBy === "created") {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    }
-    // Default: updated
-    return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-  });
+  }, [])
 
-  const handlePause = (id: string) => {
-    setSequences(
-      sequences.map((seq) =>
-        seq.id === id ? { ...seq, status: "paused" as const } : seq
-      )
-    );
-  };
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
-  const handleResume = (id: string) => {
-    setSequences(
-      sequences.map((seq) =>
-        seq.id === id ? { ...seq, status: "active" as const } : seq
-      )
-    );
-  };
-
-  const handleDuplicate = (id: string) => {
-    const original = sequences.find((seq) => seq.id === id);
-    if (original) {
-      const duplicate: Sequence = {
-        ...original,
-        id: `seq_${Date.now()}`,
-        name: `${original.name} (Copy)`,
-        status: "draft",
-        stats: {
-          ...original.stats,
-          totalContacts: 0,
-          emailsSent: 0,
-          opened: 0,
-          replied: 0,
-          bounced: 0,
-          unsubscribed: 0,
-          inProgress: 0,
-        },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setSequences([...sequences, duplicate]);
-    }
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to archive this sequence?")) {
-      setSequences(sequences.filter((seq) => seq.id !== id));
-    }
-  };
-
-  // Empty State
-  if (sequences.length === 0) {
-    return (
-      <DashboardShell>
-        <PageHeader title="Email Sequences" description="Create and manage multi-step email campaigns" />
-
-        <div className="flex flex-col items-center justify-center min-h-[500px] text-center">
-          <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center mb-6">
-            <Rocket className="h-12 w-12 text-primary" />
-          </div>
-          <h3 className="text-2xl font-bold mb-2">Create your first sequence</h3>
-          <p className="text-muted-foreground mb-4 max-w-md">
-            Email sequences help you automate your outreach and follow-ups. Set up
-            multi-step campaigns to engage with contacts systematically.
-          </p>
-          <ul className="text-sm text-muted-foreground space-y-2 mb-6 text-left">
-            <li>✓ Schedule multiple follow-ups automatically</li>
-            <li>✓ Track opens, replies, and engagement</li>
-            <li>✓ Personalize messages with variables</li>
-            <li>✓ Pause or stop sequences based on responses</li>
-          </ul>
-          <Button size="lg" onClick={() => router.push("/dashboard/sequences/create")}>
-            <Plus className="mr-2 h-5 w-5" />
-            Create Your First Sequence
-          </Button>
-        </div>
-      </DashboardShell>
-    );
+  const handleMarkSent = async (enrollmentStepId: string) => {
+    await fetch("/api/sequences/execute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "mark_sent", enrollmentStepId }),
+    })
+    fetchData()
   }
 
   return (
     <DashboardShell>
       <PageHeader
-        title="Email Sequences"
-        description={`${sequences.length} sequence${sequences.length !== 1 ? "s" : ""} • ${sequences.filter((s) => s.status === "active").length} active`}
+        title="Sequences"
+        description="Automate follow-ups and track performance"
         actions={
-          <Button onClick={() => router.push("/dashboard/sequences/create")}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Sequence
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button asChild>
+              <Link href="/dashboard/sequences/create">
+                <Mail className="mr-2 h-4 w-4" />
+                Create Sequence
+              </Link>
+            </Button>
+          </div>
         }
       />
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        <div className="flex-1">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Sequences</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="paused">Paused</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Select value={sortBy} onValueChange={setSortBy}>
-          <SelectTrigger className="w-full sm:w-[200px]">
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="updated">Recently Updated</SelectItem>
-            <SelectItem value="created">Recently Created</SelectItem>
-            <SelectItem value="name">Name (A-Z)</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Sequences Grid */}
-      {sortedSequences.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          No sequences found matching your filters
-        </div>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {sortedSequences.map((sequence) => (
-            <SequenceCard
-              key={sequence.id}
-              sequence={sequence}
-              onPause={handlePause}
-              onResume={handleResume}
-              onDuplicate={handleDuplicate}
-              onDelete={handleDelete}
-            />
-          ))}
+      {error && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2 mb-6">
+          <AlertCircle className="h-4 w-4" />
+          {error}
         </div>
       )}
+
+      <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarCheck className="h-4 w-4 text-primary" />
+              Today&apos;s emails
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {digest.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No emails scheduled for today.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {digest.map((item) => (
+                  <div key={item.enrollmentStepId} className="rounded-lg border p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-medium">{item.contactName}</p>
+                        <p className="text-xs text-muted-foreground">{item.contactEmail}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {item.sequenceName}
+                        </p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(item.scheduledFor).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <p className="text-sm mt-3">{item.subject}</p>
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        asChild
+                      >
+                        <a
+                          href={buildGmailLink({
+                            to: item.contactEmail,
+                            subject: item.subject,
+                            body: item.body,
+                          })}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open in Gmail
+                        </a>
+                      </Button>
+                      <Button size="sm" variant="outline" asChild>
+                        <a
+                          href={buildOutlookLink({
+                            to: item.contactEmail,
+                            subject: item.subject,
+                            body: item.body,
+                          })}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open in Outlook
+                        </a>
+                      </Button>
+                      <Button size="sm" onClick={() => handleMarkSent(item.enrollmentStepId)}>
+                        Mark Sent
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Sequence Overview</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {loading ? (
+              <p className="text-sm text-muted-foreground">Loading sequences...</p>
+            ) : sequences.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No sequences yet. Create your first one to get started.
+              </p>
+            ) : (
+              sequences.map((sequence) => (
+                <SequenceCard key={sequence.id} sequence={sequence} />
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </DashboardShell>
-  );
+  )
 }

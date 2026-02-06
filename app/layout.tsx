@@ -3,6 +3,7 @@ import { DM_Sans, Fraunces } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as HotToaster } from "react-hot-toast";
 
 // Initialize DM Sans
 const dm_sans = DM_Sans({
@@ -64,6 +65,7 @@ export default function RootLayout({
         >
           {children}
           <Toaster />
+          <HotToaster position="top-right" />
         </ThemeProvider>
       </body>
     </html>
