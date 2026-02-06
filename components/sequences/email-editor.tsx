@@ -72,7 +72,7 @@ export function EmailEditor({
     if (text.includes("click here")) score += 20;
     if (text.includes("urgent")) score += 10;
     if (text.includes("!!!")) score += 15;
-    if (text.match(/\$/g)?.length > 2) score += 10;
+    if ((text.match(/\$/g) || []).length > 2) score += 10;
     if (subject.length > 60) score += 10;
     if (text.includes("guarantee")) score += 10;
     if (body.length < 50) score += 15;

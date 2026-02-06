@@ -54,15 +54,16 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        IconLeft: ({ className: iconClassName, ...iconProps }) => (
-          <ChevronLeft className={cn("h-4 w-4", iconClassName)} {...iconProps} />
-        ),
-        IconRight: ({ className: iconClassName, ...iconProps }) => (
-          <ChevronRight
-            className={cn("h-4 w-4", iconClassName)}
-            {...iconProps}
-          />
-        ),
+        // @ts-ignore
+        Chevron: ({ name, ...props }) => {
+          if (name === "previous-month") {
+            return <ChevronLeft className="h-4 w-4" {...props} />;
+          }
+          if (name === "next-month") {
+            return <ChevronRight className="h-4 w-4" {...props} />;
+          }
+          return <></>;
+        },
       }}
       {...props}
     />

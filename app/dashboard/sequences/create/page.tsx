@@ -280,6 +280,7 @@ function EmailStepsStep({
       delay_days: formData.steps.length === 0 ? 0 : 3,
       subject: "",
       body: "",
+      status: "draft",
     };
     setFormData({ ...formData, steps: [...formData.steps, newStep] });
   };

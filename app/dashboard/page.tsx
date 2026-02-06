@@ -100,7 +100,7 @@ export default function DashboardPage() {
 
           <StatCard title="Active Sequences" value={12} change={33} trend="up" icon={Zap} description="4 paused sequences" />
           <StatCard title="Pending Actions" value={tasks.filter((t) => !t.completed).length} icon={Mail} description="Tasks requiring attention" />
-          <StatCard title="Performance Score" value={87} change={5} trend="up" icon={TrendingUp} format="number" description="Above average" />
+          <StatCard title="Performance Score" value={87} change={5} trend="up" icon={TrendingUp} description="Above average" />
         </div>
 
         {/* Main Content */}

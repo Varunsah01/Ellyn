@@ -28,6 +28,20 @@ export const supabase: SupabaseClient = isSupabaseConfigured
 // Database Types
 
 // ============================================================================
+// Lead Management (From a previous implementation, may overlap with Contact)
+// ============================================================================
+export interface Lead {
+  id: string;
+  person_name: string;
+  company_name: string;
+  discovered_emails: EmailResult[];
+  selected_email: string | null;
+  status: "discovered" | "sent" | "bounced" | "replied";
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // Contact Management
 // ============================================================================
 

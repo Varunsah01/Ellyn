@@ -45,6 +45,7 @@ export function StepBuilder({ steps, onChange }: StepBuilderProps) {
       delay_days: steps.length === 0 ? 0 : 3,
       subject: "",
       body: "",
+      status: "draft",
     };
     setEditingStep(newStep);
     setIsDialogOpen(true);
