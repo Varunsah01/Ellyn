@@ -13,6 +13,7 @@ import { Download, FileText, FileSpreadsheet, Mail } from "lucide-react";
 import { showToast } from "@/lib/toast";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { DateRange } from "react-day-picker";
 
 interface ExportData {
   overview: any;
@@ -22,7 +23,7 @@ interface ExportData {
 
 interface ExportMenuProps {
   data: ExportData;
-  dateRange?: { from: Date; to: Date };
+  dateRange?: DateRange;
 }
 
 export function ExportMenu({ data, dateRange }: ExportMenuProps) {
@@ -34,7 +35,7 @@ export function ExportMenu({ data, dateRange }: ExportMenuProps) {
     doc.text("Analytics Report", 14, 20);
 
     // Date range
-    if (dateRange) {
+    if (dateRange?.from && dateRange?.to) {
       doc.setFontSize(10);
       doc.text(
         `Period: ${dateRange.from.toLocaleDateString()} - ${dateRange.to.toLocaleDateString()}`,
