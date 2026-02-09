@@ -96,10 +96,12 @@ async function getOverviewMetrics(start: Date, end: Date, withComparison: boolea
   const replyRate = totalSent > 0 ? ((repliedCount / totalSent) * 100).toFixed(1) : "0.0";
 
   // Best performing sequence
-  const { data: sequencePerf } = await supabase.rpc("get_sequence_performance", {
+  const { data: sequencePerfData } = await supabase.rpc("get_sequence_performance", {
     start_date: startStr,
     end_date: endStr,
   }).limit(1).single();
+
+  const sequencePerf = sequencePerfData as any;
 
   // Most active day/time
   const { data: activityData } = await supabase
