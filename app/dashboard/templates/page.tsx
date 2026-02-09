@@ -152,18 +152,19 @@ export default function TemplatesPage() {
         <PageHeader
           title="Email Templates"
           description="Manage your email templates for outreach and follow-ups."
-        >
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setIsPickerOpen(true)}>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Template Library
-            </Button>
-            <Button onClick={handleCreateNew}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Template
-            </Button>
-          </div>
-        </PageHeader>
+          actions={
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setIsPickerOpen(true)}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Template Library
+              </Button>
+              <Button onClick={handleCreateNew}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create Template
+              </Button>
+            </div>
+          }
+        />
 
         <div className="flex items-center gap-4">
           <div className="relative flex-1">
