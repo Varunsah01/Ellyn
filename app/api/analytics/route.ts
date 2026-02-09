@@ -136,10 +136,10 @@ async function getOverviewMetrics(start: Date, end: Date, withComparison: boolea
     const prevData = await prevMetrics.json();
 
     comparison = {
-      contacts: totalContacts - prevData.data.totalContacts,
-      drafts: totalDrafts - prevData.data.totalDrafts,
-      emailsSent: emailsSent - prevData.data.emailsSent,
-      replyRate: parseFloat(replyRate) - parseFloat(prevData.data.replyRate),
+      contacts: (totalContacts || 0) - (prevData.data.totalContacts || 0),
+      drafts: (totalDrafts || 0) - (prevData.data.totalDrafts || 0),
+      emailsSent: (emailsSent || 0) - (prevData.data.emailsSent || 0),
+      replyRate: parseFloat(replyRate || "0") - parseFloat(prevData.data.replyRate || "0"),
     };
   }
 
