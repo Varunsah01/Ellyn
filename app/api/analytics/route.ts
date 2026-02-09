@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 }
 
 // Overview Metrics
-async function getOverviewMetrics(start: Date, end: Date, withComparison: boolean) {
+async function getOverviewMetrics(start: Date, end: Date, withComparison: boolean): Promise<NextResponse> {
   const startStr = format(start, "yyyy-MM-dd");
   const endStr = format(end, "yyyy-MM-dd");
 
