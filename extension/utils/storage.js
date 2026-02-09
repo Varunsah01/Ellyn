@@ -35,6 +35,17 @@ class StorageHelper {
     return recentContacts;
   }
 
+  // Save user profile
+  async saveUserProfile(profile) {
+    await this.storage.set({ userProfile: profile });
+  }
+
+  // Get user profile
+  async getUserProfile() {
+    const { userProfile = null } = await this.storage.get(['userProfile']);
+    return userProfile;
+  }
+
   // Clear all data
   async clear() {
     await this.storage.clear();

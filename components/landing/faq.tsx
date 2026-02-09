@@ -49,7 +49,7 @@ const faqs = [
 
 export function FAQ() {
   return (
-    <section id="faq" className="py-20 md:py-32 bg-midnight-violet text-canvas-white">
+    <section id="faq" className="py-20 md:py-32 bg-[#FAFAFA] text-foreground">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <motion.div
@@ -59,11 +59,11 @@ export function FAQ() {
           variants={fadeInUp}
           className="text-center mb-16"
         >
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-canvas-white mb-4">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-foreground mb-4">
             Your{" "}
-            <span className="text-electric-rose">Burning Questions</span>, Answered
+            <span className="text-primary">Burning Questions</span>, Answered
           </h2>
-          <p className="text-xl font-dm-sans text-canvas-white/90">
+          <p className="text-xl font-dm-sans text-muted-foreground">
             The honest answers to what you're really wondering.
           </p>
         </motion.div>
@@ -77,11 +77,11 @@ export function FAQ() {
         >
           <Accordion type="single" collapsible className="w-full">
             {faqs.map((faq, index) => (
-              <AccordionItem key={index} value={`item-${index}`} className="border-b border-muted">
-                <AccordionTrigger className="text-left text-lg font-fraunces font-semibold text-canvas-white hover:text-electric-rose">
+              <AccordionItem key={index} value={`item-${index}`} className="border-b border-border/50">
+                <AccordionTrigger className="text-left text-lg font-fraunces font-semibold text-foreground hover:text-primary transition-colors py-6">
                   {faq.question}
                 </AccordionTrigger>
-                <AccordionContent className="font-dm-sans text-canvas-white/70 leading-relaxed">
+                <AccordionContent className="font-dm-sans text-muted-foreground leading-relaxed pb-6 text-base">
                   {faq.answer}
                 </AccordionContent>
               </AccordionItem>
@@ -97,11 +97,11 @@ export function FAQ() {
           transition={{ delay: 0.4 }}
           className="text-center mt-12"
         >
-          <p className="font-dm-sans text-canvas-white/90 font-semibold mb-2">Still not convinced?</p>
-          <p className="font-dm-sans text-canvas-white/70 mb-4">Try it free. No credit card. Takes 30 seconds to install. If it doesn't work for you, uninstall it. No hard feelings.</p>
+          <p className="font-dm-sans text-foreground font-semibold mb-2">Still not convinced?</p>
+          <p className="font-dm-sans text-muted-foreground mb-4">Try it free. No credit card. Takes 30 seconds to install.</p>
           <a
             href="mailto:support@ellyn.app"
-            className="text-electric-rose hover:underline font-dm-sans font-medium"
+            className="text-primary hover:underline font-dm-sans font-medium"
           >
             Or email us your questions →
           </a>

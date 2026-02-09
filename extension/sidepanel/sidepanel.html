@@ -11,7 +11,22 @@
     <!-- Header -->
     <div class="header">
       <h1>Ellyn</h1>
-      <button id="sync-btn" class="sync-btn">&#x21bb; Sync</button>
+      <div class="header-actions">
+        <button id="sync-btn" class="sync-btn">&#x21bb; Sync</button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs" id="nav-tabs" style="display: none;">
+      <button class="nav-tab active" data-view="queue">
+        📋 Queue
+      </button>
+      <button class="nav-tab" data-view="drafts">
+        📧 Drafts
+      </button>
+      <button class="nav-tab" data-view="analytics">
+        📊 Analytics
+      </button>
     </div>
 
     <!-- LinkedIn Extraction UI (shown on LinkedIn profiles) -->
@@ -25,7 +40,11 @@
       </div>
 
       <button id="magic-extract-btn" class="magic-btn">
-        Extract Contact
+        <span class="magic-btn-icon">✨</span>
+        <span class="magic-btn-content">
+          <span class="magic-btn-title">Extract & Generate Draft</span>
+          <span class="magic-btn-subtitle">One-click complete setup</span>
+        </span>
       </button>
 
       <p class="disclaimer">Extracts visible data only &mdash; 100% LinkedIn safe</p>
@@ -39,7 +58,23 @@
       </div>
     </div>
 
-    <!-- Loading / Progress -->
+    <!-- Magic Progress UI -->
+    <div id="magic-progress-container" class="section" style="display: none;">
+      <div class="magic-progress-card">
+        <div class="magic-progress-header">
+          <div class="magic-spinner"></div>
+          <div class="magic-progress-info">
+            <p id="magic-progress-text" class="magic-progress-text">Starting workflow...</p>
+            <p id="magic-progress-step" class="magic-progress-step">Step 1 of 5</p>
+          </div>
+        </div>
+        <div class="magic-progress-bar-container">
+          <div id="magic-progress-bar" class="magic-progress-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading / Progress (Legacy) -->
     <div id="extract-progress" class="section" style="display: none;">
       <div class="progress-card">
         <div class="spinner"></div>
@@ -84,13 +119,91 @@
         </div>
       </div>
 
+      <!-- Template Selector -->
+      <div id="template-selector-section" style="display: none;">
+        <h3 class="sub-heading">Choose Outreach Type</h3>
+        <div class="template-selector">
+          <div class="template-options" id="template-options">
+            <!-- Template buttons injected here -->
+          </div>
+        </div>
+      </div>
+
       <!-- Email Patterns -->
       <h3 class="sub-heading">Email Patterns</h3>
       <div id="email-list" class="email-list">
         <!-- Email cards injected here -->
       </div>
 
-      <!-- Draft Preview -->
+      <!-- Magic Results -->
+      <div id="magic-results-container" class="section" style="display: none;">
+        <div class="magic-results-card">
+          <div class="magic-results-header">
+            <h3 class="sub-heading">Draft Ready!</h3>
+            <div class="magic-header-actions">
+              <button id="magic-undo" class="icon-btn" title="Undo (Ctrl+Z)" disabled>↶</button>
+              <button id="magic-redo" class="icon-btn" title="Redo (Ctrl+Y)" disabled>↷</button>
+              <button id="magic-quick-edit" class="icon-btn" title="Quick edit (Ctrl+E)">✏️</button>
+            </div>
+          </div>
+
+          <div id="magic-draft-preview" class="magic-draft-preview">
+            <!-- Subject Line with Alternatives -->
+            <div class="magic-draft-subject-row">
+              <label>Subject:</label>
+              <input type="text" id="magic-draft-subject" class="magic-subject-input" readonly />
+              <button id="show-alt-subjects" class="icon-btn" title="Show alternative subject lines" style="display: none;">↔️</button>
+            </div>
+
+            <!-- Alternative Subjects (hidden by default) -->
+            <div id="alt-subjects-container" class="alt-subjects-container" style="display: none;">
+              <p class="alt-subjects-label">Alternative subject lines:</p>
+              <div id="alt-subjects-list" class="alt-subjects-list">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <!-- Body -->
+            <textarea id="magic-draft-body" class="magic-body-input" readonly></textarea>
+
+            <!-- Personalization Insights -->
+            <div id="personalization-insights" class="personalization-insights" style="display: none;">
+              <div class="insights-header">
+                <span>💡 Personalization Details</span>
+                <button id="toggle-insights" class="icon-btn-small">▼</button>
+              </div>
+              <div id="insights-content" class="insights-content" style="display: none;">
+                <!-- Populated dynamically -->
+              </div>
+            </div>
+
+            <!-- Draft Meta -->
+            <div class="magic-draft-meta">
+              <span id="magic-word-count">0 words</span>
+              <span id="magic-char-count">0 characters</span>
+              <span id="magic-draft-source" class="draft-source-badge"></span>
+            </div>
+          </div>
+
+          <div class="magic-quick-actions">
+            <button id="magic-send-gmail" class="magic-primary-btn">
+              📧 Send via Gmail
+            </button>
+            <button id="magic-send-outlook" class="magic-secondary-btn">
+              📧 Send via Outlook
+            </button>
+            <button id="magic-copy-draft" class="magic-tertiary-btn">
+              📋 Copy to Clipboard
+            </button>
+          </div>
+
+          <div class="magic-keyboard-hint">
+            Press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send • <kbd>Ctrl</kbd>+<kbd>E</kbd> to edit • <kbd>Ctrl</kbd>+<kbd>Z</kbd>/<kbd>Y</kbd> undo/redo • <kbd>Ctrl</kbd>+<kbd>/</kbd> for all shortcuts
+          </div>
+        </div>
+      </div>
+
+      <!-- Draft Preview (Legacy) -->
       <div id="draft-section" style="display: none;">
         <h3 class="sub-heading">AI Draft</h3>
         <div id="draft-preview" class="draft-preview"></div>
@@ -160,6 +273,62 @@
       </div>
     </div>
 
+    <!-- Contact Queue -->
+    <div id="queue-view-container" class="section">
+      <div class="contact-queue">
+        <div class="queue-header">
+          <h3>Contact Queue</h3>
+          <div class="queue-header-actions">
+            <span id="queue-count" class="queue-count">0 contacts</span>
+            <button id="view-drafts-btn" class="secondary-btn small">📋 View Drafts</button>
+            <button id="clear-queue-btn" class="icon-btn" title="Clear all">🗑️</button>
+          </div>
+        </div>
+
+        <div id="queue-list" class="queue-list">
+          <div class="empty-queue">
+            <p>No contacts in queue</p>
+            <p class="queue-hint">Extract LinkedIn profiles and add them to queue for batch processing</p>
+          </div>
+        </div>
+
+        <div id="queue-footer" class="queue-footer" style="display: none;">
+          <button id="batch-generate-btn" class="primary-btn">
+            ✨ Generate All Drafts (<span id="pending-count">0</span>)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drafts View (hidden by default) -->
+    <div id="drafts-view-container" class="section" style="display: none;">
+      <!-- Rendered by drafts-view.js -->
+    </div>
+
+    <!-- Batch Progress Modal -->
+    <div id="batch-progress-modal" class="modal" style="display: none;">
+      <div class="modal-overlay"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Generating Drafts...</h3>
+        </div>
+        <div class="modal-body">
+          <div class="batch-progress">
+            <div class="batch-progress-text" id="batch-progress-text">Starting...</div>
+            <div class="batch-progress-bar-container">
+              <div id="batch-progress-bar" class="batch-progress-bar"></div>
+            </div>
+            <div class="batch-progress-count" id="batch-progress-count">0 / 0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analytics View (hidden by default) -->
+    <div id="analytics-view-container" class="section" style="display: none;">
+      <!-- Rendered by analytics-view.js -->
+    </div>
+
     <!-- Recent Contacts -->
     <div class="recent-section">
       <h3>Recent Contacts</h3>
@@ -179,6 +348,23 @@
   <script src="../utils/storage.js"></script>
   <script src="../utils/api-client.js"></script>
   <script src="../utils/email-inference.js"></script>
+  <script src="../utils/role-detector.js"></script>
+  <script src="../utils/company-context.js"></script>
+  <script src="../utils/context-extractor.js"></script>
+  <script src="../utils/icebreaker-generator.js"></script>
+  <script src="../utils/company-insights.js"></script>
+  <script src="../utils/subject-line-generator.js"></script>
+  <script src="../utils/contact-queue.js"></script>
+  <script src="../utils/keyboard-shortcuts.js"></script>
+  <script src="../templates/recruiter-templates.js"></script>
+  <script src="../onboarding/tour.js"></script>
+  <script src="../onboarding/checklist.js"></script>
+  <script src="../onboarding/empty-states.js"></script>
+  <script src="../analytics/tracker.js"></script>
+  <script src="../analytics/insights.js"></script>
+  <script src="magic-workflow.js"></script>
+  <script src="drafts-view.js"></script>
+  <script src="analytics-view.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>

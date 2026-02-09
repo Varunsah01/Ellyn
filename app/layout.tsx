@@ -59,8 +59,8 @@ export default function RootLayout({
       <body className={`${dm_sans.variable} ${fraunces.variable}`}>
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
-          enableSystem
+          defaultTheme="light"
+          forcedTheme="light"
           disableTransitionOnChange
         >
           {children}

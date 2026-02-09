@@ -37,7 +37,7 @@ const testimonials = [
 
 export function Testimonials() {
   return (
-    <section className="py-20 md:py-32 bg-midnight-violet text-canvas-white">
+    <section className="py-20 md:py-32 bg-white text-foreground">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <motion.div
@@ -47,11 +47,11 @@ export function Testimonials() {
           variants={fadeInUp}
           className="text-center mb-16"
         >
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-canvas-white mb-4">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-foreground mb-4">
             Real People.{" "}
-            <span className="text-electric-rose">Real Results.</span>
+            <span className="text-primary">Real Results.</span>
           </h2>
-          <p className="text-xl font-dm-sans text-canvas-white/90 max-w-2xl mx-auto">
+          <p className="text-xl font-dm-sans text-muted-foreground max-w-2xl mx-auto">
             Job seekers are landing interviews faster with direct email outreach.
           </p>
         </motion.div>
@@ -66,48 +66,48 @@ export function Testimonials() {
         >
           {testimonials.map((testimonial, index) => (
             <motion.div key={index} variants={fadeInUp}>
-              <Card className="h-full border-2 border-muted hover:border-electric-rose transition-all duration-300 hover:shadow-lg group relative overflow-hidden rounded-lg">
+              <Card className="h-full border border-border hover:border-primary/50 transition-all duration-300 hover:shadow-lg group relative overflow-hidden rounded-xl bg-[#FAFAFA]">
                 {/* Quote icon background */}
-                <div className="absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <Quote className="h-20 w-20 text-electric-rose" />
+                <div className="absolute top-4 right-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Quote className="h-20 w-20 text-primary" />
                 </div>
 
-                <CardContent className="p-6 relative">
+                <CardContent className="p-8 relative">
                   {/* Metric Badge */}
-                  <div className="inline-block bg-electric-rose/10 rounded-lg px-3 py-1 mb-4">
-                    <p className="text-sm font-dm-sans font-semibold text-electric-rose">
+                  <div className="inline-block bg-primary/10 rounded-lg px-3 py-1 mb-6">
+                    <p className="text-sm font-dm-sans font-semibold text-primary">
                       {testimonial.metric}
                     </p>
                   </div>
 
                   {/* Quote */}
-                  <div className="mb-6">
-                    <Quote className="h-8 w-8 text-electric-rose mb-3" />
-                    <p className="font-dm-sans text-canvas-white/90 leading-relaxed">
+                  <div className="mb-8">
+                    <Quote className="h-6 w-6 text-primary/50 mb-3" />
+                    <p className="font-dm-sans text-foreground/80 leading-relaxed text-lg">
                       "{testimonial.quote}"
                     </p>
                   </div>
 
                   {/* Author */}
-                  <div className="flex items-center gap-4 pt-4 border-t border-muted">
+                  <div className="flex items-center gap-4 pt-6 border-t border-border/50">
                     {/* Avatar */}
                     <div
-                      className={`w-12 h-12 rounded-full bg-muted flex items-center justify-center flex-shrink-0`}
+                      className={`w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0`}
                     >
-                      <span className="text-canvas-white font-bold text-lg">
+                      <span className="text-primary font-bold text-lg">
                         {testimonial.initials}
                       </span>
                     </div>
 
                     {/* Info */}
                     <div>
-                      <p className="font-fraunces font-semibold text-canvas-white">
+                      <p className="font-fraunces font-semibold text-foreground">
                         {testimonial.name}
                       </p>
-                      <p className="text-sm font-dm-sans text-canvas-white/70">
+                      <p className="text-sm font-dm-sans text-muted-foreground">
                         {testimonial.role}
                       </p>
-                      <p className="text-xs font-dm-sans text-electric-rose">
+                      <p className="text-xs font-dm-sans text-primary font-medium mt-0.5">
                         {testimonial.company}
                       </p>
                     </div>
@@ -130,15 +130,15 @@ export function Testimonials() {
             {[...Array(5)].map((_, i) => (
               <svg
                 key={i}
-                className="w-6 h-6 text-electric-rose fill-current"
+                className="w-6 h-6 text-amber-400 fill-current"
                 viewBox="0 0 24 24"
               >
                 <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
               </svg>
             ))}
           </div>
-          <p className="font-dm-sans text-canvas-white/70">
-            Rated <span className="font-semibold text-canvas-white">4.9/5</span> by 2,000+ job seekers • <span className="font-semibold text-canvas-white">850+</span> landed interviews in the last 90 days
+          <p className="font-dm-sans text-muted-foreground">
+            Rated <span className="font-semibold text-foreground">4.9/5</span> by 2,000+ job seekers • <span className="font-semibold text-foreground">850+</span> landed interviews in the last 90 days
           </p>
         </motion.div>
       </div>

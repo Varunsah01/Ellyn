@@ -2,7 +2,6 @@
 
 import { Menu, Search, Command } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "./theme-toggle";
 import {
   Sheet,
   SheetContent,
@@ -88,7 +87,6 @@ export function Header({ breadcrumbs }: HeaderProps) {
             onMarkAsRead={(id) => setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n))}
             onMarkAllAsRead={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
           />
-          <ThemeToggle />
         </div>
       </div>
 

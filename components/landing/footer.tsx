@@ -1,7 +1,8 @@
 "use client";
 
-import { Twitter, Linkedin, Github } from "lucide-react"; // Mail removed as it's not part of Ellyn's social presence
+import { Twitter, Linkedin, Github } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 const footerLinks = {
   product: [
@@ -12,7 +13,7 @@ const footerLinks = {
   ],
   company: [
     { name: "About Us", href: "#about" },
-    { name: "Contact Us", href: "mailto:support@outreachassistant.com" }, // Updated email
+    { name: "Contact Us", href: "mailto:support@useellyn.com" },
     { name: "Blog", href: "#" },
     { name: "Community", href: "#" },
   ],
@@ -39,20 +40,21 @@ export function Footer() {
   };
 
   return (
-    <footer className="bg-midnight-violet text-canvas-white">
+    <footer className="bg-[#F5F5F7] text-foreground border-t border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
           {/* Brand Column */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              {/* Ellyn Swatch Icon */}
-              <div className="w-10 h-10 bg-midnight-violet rounded-lg flex items-center justify-center">
-                {/* No Mail icon, as the Swatch is the icon itself */}
+            <Link href="/" className="flex items-center">
+              <div className="relative h-10 w-[140px]">
+                <img
+                  src="https://subsnacks.sirv.com/Ellyn_logo.png"
+                  alt="Ellyn logo"
+                  className="h-full w-full object-contain"
+                />
               </div>
-              {/* Ellyn Wordmark */}
-              <span className="text-3xl font-fraunces font-bold text-canvas-white lowercase">ellyn</span>
-            </div>
-            <p className="font-dm-sans text-canvas-white/70 text-sm">
+            </Link>
+            <p className="font-dm-sans text-muted-foreground text-sm leading-relaxed">
               Your safe and effective outreach assistant for job seeking.
             </p>
             <div className="flex gap-3">
@@ -61,7 +63,7 @@ export function Footer() {
                   key={index}
                   href={social.href}
                   aria-label={social.label}
-                  className="w-10 h-10 rounded-lg bg-muted hover:bg-muted-foreground/30 flex items-center justify-center transition-colors text-canvas-white"
+                  className="w-10 h-10 rounded-lg bg-white border border-border hover:border-primary/50 hover:text-primary flex items-center justify-center transition-all text-muted-foreground shadow-sm"
                 >
                   <social.icon className="h-5 w-5" />
                 </a>
@@ -71,21 +73,21 @@ export function Footer() {
 
           {/* Product Column */}
           <div>
-            <h3 className="font-fraunces font-semibold text-canvas-white mb-4">Product</h3>
+            <h3 className="font-fraunces font-semibold text-foreground mb-4">Product</h3>
             <ul className="space-y-3">
               {footerLinks.product.map((link, index) => (
                 <li key={index}>
                   {link.href.startsWith("#") ? (
                     <button
                       onClick={() => scrollToSection(link.href)}
-                      className="font-dm-sans text-canvas-white/70 hover:text-electric-rose transition-colors text-sm"
+                      className="font-dm-sans text-muted-foreground hover:text-primary transition-colors text-sm"
                     >
                       {link.name}
                     </button>
                   ) : (
                     <Link
                       href={link.href}
-                      className="font-dm-sans text-canvas-white/70 hover:text-electric-rose transition-colors text-sm"
+                      className="font-dm-sans text-muted-foreground hover:text-primary transition-colors text-sm"
                     >
                       {link.name}
                     </Link>
@@ -97,21 +99,21 @@ export function Footer() {
 
           {/* Company Column */}
           <div>
-            <h3 className="font-fraunces font-semibold text-canvas-white mb-4">Company</h3>
+            <h3 className="font-fraunces font-semibold text-foreground mb-4">Company</h3>
             <ul className="space-y-3">
               {footerLinks.company.map((link, index) => (
                 <li key={index}>
                   {link.href.startsWith("#") && link.href !== "#" ? (
                     <button
                       onClick={() => scrollToSection(link.href)}
-                      className="font-dm-sans text-canvas-white/70 hover:text-electric-rose transition-colors text-sm"
+                      className="font-dm-sans text-muted-foreground hover:text-primary transition-colors text-sm"
                     >
                       {link.name}
                     </button>
                   ) : (
                     <a
                       href={link.href}
-                      className="font-dm-sans text-canvas-white/70 hover:text-electric-rose transition-colors text-sm"
+                      className="font-dm-sans text-muted-foreground hover:text-primary transition-colors text-sm"
                     >
                       {link.name}
                     </a>
@@ -123,13 +125,13 @@ export function Footer() {
 
           {/* Legal Column */}
           <div>
-            <h3 className="font-fraunces font-semibold text-canvas-white mb-4">Legal</h3>
+            <h3 className="font-fraunces font-semibold text-foreground mb-4">Legal</h3>
             <ul className="space-y-3">
               {footerLinks.legal.map((link, index) => (
                 <li key={index}>
                   <a
                     href={link.href}
-                    className="font-dm-sans text-canvas-white/70 hover:text-electric-rose transition-colors text-sm"
+                    className="font-dm-sans text-muted-foreground hover:text-primary transition-colors text-sm"
                   >
                     {link.name}
                   </a>
@@ -140,13 +142,13 @@ export function Footer() {
         </div>
 
         {/* Bottom Bar */}
-        <div className="pt-8 border-t border-muted">
+        <div className="pt-8 border-t border-border">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="font-dm-sans text-canvas-white/70 text-sm">
-              © 2024 Outreach Assistant. All rights reserved.
+            <p className="font-dm-sans text-muted-foreground text-sm">
+              © 2026 Eigenspace Technologies PVT.Ltd. All rights reserved.
             </p>
-            <p className="font-dm-sans text-canvas-white/70 text-sm">
-              Built with ❤️ for jobseekers worldwide
+            <p className="font-dm-sans text-muted-foreground text-sm flex items-center gap-1">
+              Built with <span className="text-red-500">❤️</span> for jobseekers worldwide
             </p>
           </div>
         </div>

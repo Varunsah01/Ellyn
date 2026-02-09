@@ -22,14 +22,15 @@ export default function LoginPage() {
       {/* Logo */}
       <Link
         href="/"
-        className="absolute top-8 left-8 flex items-center gap-2 group"
+        className="absolute top-8 left-8 flex items-center group"
       >
-        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-          <Mail className="h-6 w-6 text-white" />
+        <div className="relative h-12 w-[160px]">
+          <img
+            src="https://subsnacks.sirv.com/Ellyn_logo.png"
+            alt="Ellyn logo"
+            className="h-full w-full object-contain"
+          />
         </div>
-        <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          EmailFinder
-        </span>
       </Link>
 
       <Card className="w-full max-w-md shadow-2xl">

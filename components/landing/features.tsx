@@ -2,12 +2,12 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  UserCheck, // For Safe Contact Saving
-  BrainCircuit, // For Heuristic Email Inference
-  FileText, // For Template-Based Drafting
-  ListChecks, // For Outreach Tracking
-  ShieldCheck, // For No LinkedIn Automation
-  PartyPopper, // For 100% Free
+  UserCheck,
+  BrainCircuit,
+  FileText,
+  ListChecks,
+  ShieldCheck,
+  PartyPopper,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
@@ -23,37 +23,37 @@ const features = [
     icon: BrainCircuit,
     title: "Know Before You Send",
     description:
-      "See which email patterns are most likely to work before you hit send. Our confidence scores are based on 50,000+ verified patterns. Example: \"first.last@company.com\" scores 85% for tech companies.",
+      "See which email patterns are most likely to work before you hit send. Our confidence scores are based on 50,000+ verified patterns.",
   },
   {
     icon: FileText,
-    title: "Sound Professional, Not Desperate",
+    title: "Sound Professional",
     description:
-      "Pre-written templates proven to get responses. No more staring at a blank screen wondering what to write. Example: Average response rate of 34% vs. 8% for generic outreach.",
+      "Pre-written templates proven to get responses. No more staring at a blank screen wondering what to write.",
   },
   {
     icon: ListChecks,
-    title: "Never Lose Track Again",
+    title: "Never Lose Track",
     description:
-      "Remember who you contacted and when. No awkward double-messages. Your networking pipeline, organized automatically. Example: \"Followed up with Sarah exactly 5 days later—got the interview.\"",
+      "Remember who you contacted and when. No awkward double-messages. Your networking pipeline, organized automatically.",
   },
   {
     icon: ShieldCheck,
-    title: "Keep Your LinkedIn Safe",
+    title: "Keep LinkedIn Safe",
     description:
-      "Sleep easy knowing you'll never get banned. We don't touch LinkedIn's automation limits because we don't automate anything. Example: \"Used this for 3 months, still have my account.\"",
+      "Sleep easy knowing you'll never get banned. We don't touch LinkedIn's automation limits because we don't automate anything.",
   },
   {
     icon: PartyPopper,
     title: "Zero Cost, Forever",
     description:
-      "Other tools charge $49-99/month. We're free because we don't use expensive APIs. Example: \"Saved $588/year compared to Hunter.io while getting better results.\"",
+      "Other tools charge $49-99/month. We're free because we don't use expensive APIs. Save money while getting better results.",
   },
 ];
 
 export function Features() {
   return (
-    <section id="features" className="py-20 md:py-32 bg-midnight-violet text-canvas-white">
+    <section id="features" className="py-20 md:py-32 bg-white text-foreground">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
         <motion.div
@@ -63,11 +63,16 @@ export function Features() {
           variants={fadeInUp}
           className="text-center mb-16"
         >
-          <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-canvas-white mb-4">
+          <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-foreground mb-4">
             Stop Applying.{" "}
-            <span className="text-electric-rose">Start Connecting.</span>
+            <span className="text-primary relative">
+              Start Connecting.
+              <svg className="absolute w-full h-3 -bottom-1 left-0 text-primary/20 -z-10" viewBox="0 0 100 10" preserveAspectRatio="none">
+                <path d="M0 5 Q 50 10 100 5" stroke="currentColor" strokeWidth="8" fill="none" />
+              </svg>
+            </span>
           </h2>
-          <p className="text-xl font-dm-sans text-canvas-white/90 max-w-2xl mx-auto">
+          <p className="text-xl font-dm-sans text-muted-foreground max-w-2xl mx-auto">
             Referrals get you hired 3-5x faster than cold applications. Here's how we help you get them.
           </p>
         </motion.div>
@@ -82,22 +87,22 @@ export function Features() {
         >
           {features.map((feature, index) => (
             <motion.div key={index} variants={fadeInUp}>
-              <Card className="h-full border-2 border-muted hover:border-electric-rose transition-all duration-300 hover:shadow-lg hover:-translate-y-1 group">
-                <CardContent className="p-6">
+              <Card className="h-full border border-border shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 group bg-background">
+                <CardContent className="p-8">
                   {/* Icon */}
                   <div
-                    className={`w-14 h-14 rounded-lg bg-electric-rose flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
+                    className={`w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-6 group-hover:bg-primary/20 transition-colors`}
                   >
-                    <feature.icon className="h-7 w-7 text-canvas-white" />
+                    <feature.icon className="h-7 w-7 text-primary" />
                   </div>
 
                   {/* Title */}
-                  <h3 className="text-xl font-fraunces font-semibold text-canvas-white mb-3">
+                  <h3 className="text-xl font-fraunces font-semibold text-foreground mb-3">
                     {feature.title}
                   </h3>
 
                   {/* Description */}
-                  <p className="font-dm-sans text-canvas-white/70 leading-relaxed">
+                  <p className="font-dm-sans text-muted-foreground leading-relaxed">
                     {feature.description}
                   </p>
                 </CardContent>
@@ -114,7 +119,7 @@ export function Features() {
           transition={{ delay: 0.6 }}
           className="text-center mt-12"
         >
-          <p className="font-dm-sans text-canvas-white/70">
+          <p className="font-dm-sans text-muted-foreground font-medium">
             All of this, completely free. No trials, no upgrades required.
           </p>
         </motion.div>

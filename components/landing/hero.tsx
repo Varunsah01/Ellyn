@@ -1,83 +1,85 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Play } from "lucide-react"; // Sparkles icon removed as it's part of the old badge
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { fadeInUp } from "@/lib/animations"; // slideInRight removed as illustration is removed
+import { fadeInUp } from "@/lib/animations";
+import { CheckCircle2 } from "lucide-react";
 
 export function Hero() {
   return (
-    <section className="relative pt-32 pb-20 md:pt-40 md:pb-32 overflow-hidden bg-midnight-violet text-canvas-white">
+    <section className="relative pt-32 pb-20 md:pt-40 md:pb-32 overflow-hidden bg-[#FAFAFA]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-1 gap-12 items-center">
-          {/* Left Content */}
+        <div className="flex flex-col items-center text-center max-w-4xl mx-auto">
+          {/* Badge */}
           <motion.div
             initial="hidden"
             animate="visible"
             variants={fadeInUp}
-            className="text-center"
+            className="inline-flex items-center gap-2 px-4 py-1.5 bg-primary/10 text-primary rounded-full text-sm font-dm-sans font-medium mb-8"
           >
-            {/* Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-electric-rose text-canvas-white rounded-lg text-sm font-dm-sans font-medium mb-6"
-            >
-              Zero Risk • 100% Free • Proven Email Patterns
-            </motion.div>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+            </span>
+            The Calm Way to Get Referrals
+          </motion.div>
 
-            {/* Headline */}
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-fraunces font-bold mb-6 leading-tight">
-              Stop Sending Your Resume
-              <br />
-              Into the <span className="text-electric-rose">Void</span>
-            </h1>
+          {/* Headline */}
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-4xl md:text-6xl lg:text-7xl font-fraunces font-bold mb-6 leading-[1.1] text-foreground tracking-tight"
+          >
+            Stop Applying Blindly. <br className="hidden md:block" />
+            Start <span className="text-primary relative whitespace-nowrap">
+              Connecting
+              <svg className="absolute w-full h-3 -bottom-1 left-0 text-primary/20 -z-10" viewBox="0 0 100 10" preserveAspectRatio="none">
+                <path d="M0 5 Q 50 10 100 5" stroke="currentColor" strokeWidth="8" fill="none" />
+              </svg>
+            </span>.
+          </motion.h1>
 
-            {/* Subheadline */}
-            <p className="text-xl font-dm-sans text-canvas-white/90 mb-8 leading-relaxed max-w-2xl mx-auto">
-              Get referrals from real people at your dream companies. Find their emails, draft personalized outreach, and skip the LinkedIn ban risk—all completely free.
-            </p>
+          {/* Subheadline */}
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="text-xl text-muted-foreground mb-10 leading-relaxed max-w-2xl font-dm-sans"
+          >
+            Find decision-makers' emails, write thoughtful outreach, and land interviews—without the anxiety of "sales" tools.
+          </motion.p>
 
-            {/* CTAs */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/auth/signup">
-                <Button
-                  size="lg"
-                  className="text-lg px-8 h-14 shadow-lg hover:shadow-xl transition-all font-dm-sans"
-                >
-                  Start Getting Referrals Free
-                </Button>
-              </Link>
-            </div>
+          {/* CTAs */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto"
+          >
+            <Link href="/auth/signup">
+              <Button
+                size="lg"
+                className="w-full sm:w-auto text-lg px-8 h-14 bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 rounded-xl font-dm-sans transition-all hover:scale-105"
+              >
+                Write Your First Email
+              </Button>
+            </Link>
+          </motion.div>
 
-            {/* Trust badge */}
-            <p className="mt-6 text-sm text-canvas-white/70 font-dm-sans">
-              No credit card • No automation • No LinkedIn ban risk
-            </p>
+          {/* Trust Indicators */}
+          <motion.div
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
+             transition={{ delay: 0.6 }}
+             className="mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm text-muted-foreground font-dm-sans"
+          >
+             <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-primary" /> Free forever</span>
+             <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-primary" /> No credit card</span>
+             <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-primary" /> No automation spam</span>
           </motion.div>
         </div>
-
-        {/* Social Proof */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.8 }}
-          className="mt-16 text-center"
-        >
-          <p className="text-sm text-canvas-white/70 mb-6 font-dm-sans font-medium">
-            Trusted by 2,000+ job seekers who landed referrals
-          </p>
-          <div className="flex flex-wrap justify-center items-center gap-8 opacity-50">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div
-                key={i}
-                className="w-32 h-12 bg-muted rounded-lg" // Using muted for placeholder
-              />
-            ))}
-          </div>
-        </motion.div>
       </div>
     </section>
   );

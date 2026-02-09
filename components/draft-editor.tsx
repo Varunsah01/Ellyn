@@ -12,9 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Mail, Save } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, Mail, Save, Eye, PenSquare } from 'lucide-react';
+import { cn } from "@/lib/utils";
 
 interface Template {
   id: string;
@@ -51,6 +53,7 @@ export function DraftEditor({ contactId, draftId }: DraftEditorProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeTab, setActiveTab] = useState("write");
 
   // Load templates and contacts
   useEffect(() => {
@@ -226,8 +229,6 @@ export function DraftEditor({ contactId, draftId }: DraftEditorProps) {
 
       if (data.success) {
         setSuccess('Marked as sent!');
-
-        // Open mailto link
         window.location.href = generateMailtoLink();
       } else {
         setError(data.error || 'Failed to mark as sent');
@@ -252,174 +253,133 @@ export function DraftEditor({ contactId, draftId }: DraftEditorProps) {
   const preview = getPreview();
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      {/* Editor */}
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Compose Email</CardTitle>
-            <CardDescription>
-              Select a template and customize your message
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Template selector */}
-            <div className="space-y-2">
-              <Label>Template</Label>
-              <Select value={selectedTemplateId} onValueChange={handleTemplateSelect}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a template" />
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
-                      {template.name} {template.is_default && '(Default)'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+    <div className="max-w-3xl mx-auto pb-20">
+      {/* Context Bar */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-6 items-start sm:items-center justify-between">
+        <div className="flex gap-4 flex-1 w-full sm:w-auto">
+          <Select value={selectedContactId} onValueChange={setSelectedContactId}>
+            <SelectTrigger className="w-[200px] bg-background">
+              <SelectValue placeholder="To: Select Contact" />
+            </SelectTrigger>
+            <SelectContent>
+              {contacts.map((contact) => (
+                <SelectItem key={contact.id} value={contact.id}>
+                  {contact.full_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            {/* Contact selector */}
-            <div className="space-y-2">
-              <Label>Contact</Label>
-              <Select value={selectedContactId} onValueChange={setSelectedContactId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a contact" />
-                </SelectTrigger>
-                <SelectContent>
-                  {contacts.map((contact) => (
-                    <SelectItem key={contact.id} value={contact.id}>
-                      {contact.full_name} - {contact.company || 'No company'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <Select value={selectedTemplateId} onValueChange={handleTemplateSelect}>
+            <SelectTrigger className="w-[200px] bg-background">
+              <SelectValue placeholder="Template: None" />
+            </SelectTrigger>
+            <SelectContent>
+              {templates.map((template) => (
+                <SelectItem key={template.id} value={template.id}>
+                  {template.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-            {/* Subject */}
-            <div className="space-y-2">
-              <Label>Subject</Label>
-              <Input
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Email subject"
-              />
-            </div>
-
-            {/* Body */}
-            <div className="space-y-2">
-              <Label>Body</Label>
-              <Textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Email body (use {{firstName}}, {{lastName}}, {{companyName}}, {{role}})"
-                rows={12}
-                className="font-mono text-sm"
-              />
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-2">
-              <Button
-                onClick={handleSaveDraft}
-                disabled={saving || !selectedContactId}
-                variant="outline"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save Draft
-                  </>
-                )}
-              </Button>
-
-              <Button
-                onClick={handleMarkAsSent}
-                disabled={saving || !selectedContactId}
-              >
-                <Mail className="mr-2 h-4 w-4" />
-                Open in Email Client
-              </Button>
-            </div>
-
-            {/* Status messages */}
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
-            {success && (
-              <Alert>
-                <AlertDescription className="text-green-600">{success}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="write">
+              <PenSquare className="mr-2 h-4 w-4" /> Write
+            </TabsTrigger>
+            <TabsTrigger value="preview">
+              <Eye className="mr-2 h-4 w-4" /> Preview
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      {/* Preview */}
-      <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Preview</CardTitle>
-            <CardDescription>
-              How the email will look with variables replaced
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {selectedContact ? (
-              <>
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">To</Label>
-                  <div className="text-sm">
-                    {selectedContact.full_name} ({selectedContact.confirmed_email || selectedContact.inferred_email})
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Subject</Label>
-                  <div className="rounded-md border bg-muted/50 p-3 text-sm">
-                    {preview.subject || <span className="text-muted-foreground">No subject</span>}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Body</Label>
-                  <div className="rounded-md border bg-muted/50 p-3 text-sm whitespace-pre-wrap">
-                    {preview.body || <span className="text-muted-foreground">No body</span>}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="text-center text-sm text-muted-foreground py-8">
-                Select a contact to see preview
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Available variables */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Available Variables</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1 text-xs">
-              <div className="font-mono">{'{{firstName}}'} - Contact's first name</div>
-              <div className="font-mono">{'{{lastName}}'} - Contact's last name</div>
-              <div className="font-mono">{'{{fullName}}'} - Contact's full name</div>
-              <div className="font-mono">{'{{companyName}}'} - Company name</div>
-              <div className="font-mono">{'{{role}}'} - Contact's role</div>
+      <div className="bg-card shadow-sm border rounded-lg min-h-[600px] p-8 md:p-12 relative">
+        <Tabs value={activeTab} className="w-full">
+          <TabsContent value="write" className="mt-0 space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+             {/* Subject - Minimalist */}
+            <div className="space-y-2">
+               <Input
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Subject Line"
+                className="text-2xl font-fraunces font-bold border-none shadow-none px-0 focus-visible:ring-0 placeholder:text-muted-foreground/40"
+              />
+              <div className="h-px w-20 bg-border/50" />
             </div>
-          </CardContent>
-        </Card>
+
+            {/* Body - Clean Notebook */}
+            <Textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Hi {{firstName}}..."
+              className="min-h-[400px] resize-none border-none shadow-none px-0 focus-visible:ring-0 text-base leading-relaxed font-dm-sans placeholder:text-muted-foreground/40"
+            />
+          </TabsContent>
+
+          <TabsContent value="preview" className="mt-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+             {selectedContact ? (
+              <div className="space-y-6">
+                 <div className="border-b pb-4">
+                  <p className="text-sm text-muted-foreground mb-1">Subject</p>
+                  <h3 className="text-xl font-bold font-fraunces">{preview.subject || <span className="text-muted-foreground opacity-50">No subject</span>}</h3>
+                 </div>
+                 <div className="prose prose-slate max-w-none">
+                   <p className="text-base leading-relaxed whitespace-pre-wrap font-dm-sans text-foreground">
+                    {preview.body || <span className="text-muted-foreground opacity-50">No content yet...</span>}
+                   </p>
+                 </div>
+              </div>
+             ) : (
+                <div className="flex flex-col items-center justify-center h-[400px] text-muted-foreground">
+                   <Eye className="h-12 w-12 mb-4 opacity-20" />
+                   <p>Select a contact to see the preview</p>
+                </div>
+             )}
+          </TabsContent>
+        </Tabs>
+      </div>
+      
+       {/* Feedback & Actions */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-background/80 backdrop-blur-md p-2 rounded-full border shadow-lg z-50">
+          <Button
+            onClick={handleSaveDraft}
+            disabled={saving || !selectedContactId}
+            variant="ghost"
+            size="sm"
+            className="rounded-full px-4"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 text-muted-foreground" />}
+            <span className="ml-2">Save</span>
+          </Button>
+          
+          <div className="h-4 w-px bg-border" />
+
+          <Button
+            onClick={handleMarkAsSent}
+            disabled={saving || !selectedContactId}
+            size="sm"
+            className="rounded-full px-6"
+          >
+            <Mail className="mr-2 h-4 w-4" />
+            Send Email
+          </Button>
+      </div>
+
+      {/* Messages */}
+      <div className="fixed bottom-24 right-6 z-50">
+        {error && (
+          <Alert variant="destructive" className="animate-in slide-in-from-right">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {success && (
+          <Alert className="bg-green-50 border-green-200 text-green-800 animate-in slide-in-from-right">
+            <AlertDescription>{success}</AlertDescription>
+          </Alert>
+        )}
       </div>
     </div>
   );
