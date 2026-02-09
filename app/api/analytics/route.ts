@@ -2,12 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { startOfDay, endOfDay, subDays, format, startOfWeek, endOfWeek } from "date-fns";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) || '';
+
+const supabase = supabaseUrl && supabaseKey
+  ? createClient(supabaseUrl, supabaseKey)
+  : null;
 
 export async function GET(request: NextRequest) {
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables." },
+      { status: 503 }
+    );
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const metric = searchParams.get("metric");
@@ -58,6 +67,10 @@ export async function GET(request: NextRequest) {
 
 // Overview Metrics
 async function getOverviewMetrics(start: Date, end: Date, withComparison: boolean): Promise<NextResponse> {
+  if (!supabase) {
+    throw new Error("Supabase not configured");
+  }
+
   const startStr = format(start, "yyyy-MM-dd");
   const endStr = format(end, "yyyy-MM-dd");
 
@@ -162,6 +175,10 @@ async function getOverviewMetrics(start: Date, end: Date, withComparison: boolea
 
 // Contacts Over Time
 async function getContactsOverTime(start: Date, end: Date) {
+  if (!supabase) {
+    throw new Error("Supabase not configured");
+  }
+
   const { data, error } = await supabase
     .from("contacts")
     .select("created_at")
@@ -189,6 +206,10 @@ async function getContactsOverTime(start: Date, end: Date) {
 
 // Sequence Performance
 async function getSequencePerformance(start: Date, end: Date) {
+  if (!supabase) {
+    throw new Error("Supabase not configured");
+  }
+
   const { data: sequences } = await supabase
     .from("sequences")
     .select("id, name, created_at");
@@ -236,6 +257,10 @@ async function getSequencePerformance(start: Date, end: Date) {
 
 // Contact Insights
 async function getContactInsights(start: Date, end: Date) {
+  if (!supabase) {
+    throw new Error("Supabase not configured");
+  }
+
   // Top companies
   const { data: contacts } = await supabase
     .from("contacts")
@@ -306,6 +331,10 @@ async function getContactInsights(start: Date, end: Date) {
 
 // Email Patterns
 async function getEmailPatterns(start: Date, end: Date) {
+  if (!supabase) {
+    throw new Error("Supabase not configured");
+  }
+
   const { data: contacts } = await supabase
     .from("contacts")
     .select("confirmed_email, inferred_email, inference_pattern, confidence_score")
@@ -377,6 +406,10 @@ async function getEmailPatterns(start: Date, end: Date) {
 
 // Activity Heatmap
 async function getActivityHeatmap(start: Date, end: Date) {
+  if (!supabase) {
+    throw new Error("Supabase not configured");
+  }
+
   const { data } = await supabase
     .from("outreach")
     .select("sent_at")
@@ -418,6 +451,10 @@ async function getActivityHeatmap(start: Date, end: Date) {
 
 // Top Performing (Best sequences, templates, etc.)
 async function getTopPerforming(start: Date, end: Date) {
+  if (!supabase) {
+    throw new Error("Supabase not configured");
+  }
+
   // Get top 3 sequences by reply rate
   const { data: sequencePerf } = await supabase
     .from("sequences")

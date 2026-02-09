@@ -113,13 +113,6 @@ export const commonShortcuts = {
  * Hook for detecting if user is on Mac
  */
 export function useIsMac() {
-  useEffect(() => {
-    const isMac =
-      typeof window !== "undefined" &&
-      navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-    return isMac;
-  }, []);
-
   return typeof window !== "undefined" &&
     navigator.platform.toUpperCase().indexOf("MAC") >= 0;
 }
