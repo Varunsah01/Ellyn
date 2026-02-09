@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Card, CardProps } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
-interface AnimatedCardProps extends CardProps {
+interface AnimatedCardProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   hoverScale?: number;
   hoverLift?: boolean;
