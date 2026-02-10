@@ -101,7 +101,9 @@ function detectCurrentPage() {
 }
 
 function updateUIForUrl(url) {
-  if (url && url.includes('linkedin.com/in/')) {
+  const eligibility = window.EllynPageDetector.detectEligibility(url);
+  
+  if (eligibility.eligible) {
     showLinkedInUI(url);
     // Track LinkedIn visit
     trackOnboardingProgress('linkedin-visit');
@@ -154,87 +156,8 @@ function toggleManualSection() {
 // ==========================================
 
 async function magicExtract() {
-  const btn = document.getElementById('magic-extract-btn');
-  btn.disabled = true;
-
-  showProgress('Extracting profile...');
-
-  try {
-    // Step 1: Extract profile data from LinkedIn
-    const extractResult = await sendMessage({ action: 'extractProfile' });
-
-    if (!extractResult || !extractResult.success) {
-      throw new Error(extractResult?.error || 'Extraction failed');
-    }
-
-    extractedData = extractResult.data;
-
-    // Step 2: Generate email patterns locally
-    showProgress('Finding email patterns...');
-    const emails = emailInference.generatePatterns({
-      firstName: extractedData.firstName,
-      lastName: extractedData.lastName,
-      company: extractedData.company,
-    });
-
-    // Step 3: Try API enrichment for better results
-    showProgress('Enriching contact data...');
-    let enrichment = null;
-    try {
-      const apiResult = await apiClient.enrichContact({
-        firstName: extractedData.firstName,
-        lastName: extractedData.lastName,
-        company: extractedData.company,
-        role: extractedData.role,
-      });
-      if (apiResult.success) {
-        enrichment = apiResult.enrichment;
-        // Merge API emails with local patterns (API results take priority)
-        if (apiResult.emails && apiResult.emails.length > 0) {
-          emails.unshift(...apiResult.emails);
-          // Deduplicate by email
-          const seen = new Set();
-          const unique = [];
-          for (const e of emails) {
-            if (!seen.has(e.email)) {
-              seen.add(e.email);
-              unique.push(e);
-            }
-          }
-          emails.length = 0;
-          emails.push(...unique.slice(0, 5));
-        }
-      }
-    } catch {
-      // API enrichment is optional - local patterns are enough
-      console.log('[Ellyn] API enrichment unavailable, using local patterns');
-    }
-
-    // Step 4: Store contact
-    currentContact = {
-      firstName: extractedData.firstName,
-      lastName: extractedData.lastName,
-      company: extractedData.company,
-      role: extractedData.role,
-      headline: extractedData.headline,
-      location: extractedData.location,
-      profileUrl: extractedData.profileUrl,
-      enrichment: enrichment || {},
-      emails,
-      source: 'linkedin',
-    };
-
-    // Step 5: Show results
-    hideProgress();
-    displayExtractionResults(currentContact);
-
-  } catch (error) {
-    console.error('[Ellyn] Magic extract error:', error);
-    hideProgress();
-    alert('Extraction failed: ' + error.message + '\n\nMake sure you are on a LinkedIn profile page.');
-  } finally {
-    btn.disabled = false;
-  }
+  console.warn('[Ellyn] Legacy magicExtract is disabled.');
+  showToast('Legacy extraction disabled. Please use the new workflow.');
 }
 
 // ==========================================
@@ -490,7 +413,7 @@ function saveEditedContact() {
 
 async function handleSaveExtracted() {
   if (!selectedEmail || !currentContact) {
-    alert('Please select an email pattern first');
+    showToast('Please select an email pattern first');
     return;
   }
 
@@ -537,7 +460,7 @@ async function handleSaveExtracted() {
     }
   } catch (error) {
     console.error('[Ellyn] Save error:', error);
-    alert('Failed to save: ' + error.message);
+    showToast('Failed to save: ' + error.message);
     btn.textContent = 'Save Contact';
     btn.disabled = false;
   }
@@ -589,7 +512,7 @@ async function handleManualSubmit(e) {
       };
       displayManualResults({ enrichment: {}, emails });
     } else {
-      alert('Failed to discover email: ' + error.message);
+      showToast('Failed to discover email: ' + error.message);
     }
   } finally {
     showFormLoading(false);
@@ -747,10 +670,10 @@ async function handleSync() {
     }
 
     await loadRecentContacts();
-    alert('Synced with web app');
+    showToast(UIMessages.sync.success);
   } catch (error) {
     console.error('[Ellyn] Sync error:', error);
-    alert('Sync failed: ' + error.message);
+    showToast(UIMessages.sync.error + error.message);
   }
 }
 
@@ -887,7 +810,7 @@ async function addContactToQueue(contact) {
     showToast(`${contact.firstName} ${contact.lastName} added to queue`);
   } catch (error) {
     console.error('[Queue] Add error:', error);
-    alert(error.message);
+    showToast(error.message);
   }
 }
 
@@ -901,7 +824,7 @@ async function removeFromQueue(contactId) {
     showToast('Contact removed from queue');
   } catch (error) {
     console.error('[Queue] Remove error:', error);
-    alert('Failed to remove contact');
+    showToast('Failed to remove contact');
   }
 }
 
@@ -918,7 +841,7 @@ async function clearContactQueue() {
     showToast('Queue cleared');
   } catch (error) {
     console.error('[Queue] Clear error:', error);
-    alert('Failed to clear queue');
+    showToast('Failed to clear queue');
   }
 }
 
@@ -928,7 +851,7 @@ async function generateSingleDraft(contactId) {
     const contact = queue.find(c => c.id === contactId);
 
     if (!contact) {
-      alert('Contact not found');
+      showToast(UIMessages.queue.notFound);
       return;
     }
 
@@ -943,12 +866,12 @@ async function generateSingleDraft(contactId) {
     await contactQueue.updateContactStatus(contactId, 'ready', { draft });
     await loadContactQueue();
 
-    showToast(`Draft generated for ${contact.firstName}`);
+    showToast(UIMessages.queue.generationSuccess.replace('Drafts', 'Draft'));
   } catch (error) {
     console.error('[Queue] Generate error:', error);
     await contactQueue.updateContactStatus(contactId, 'error', { error: error.message });
     await loadContactQueue();
-    alert('Draft generation failed: ' + error.message);
+    showToast(UIMessages.queue.generationError + error.message);
   }
 }
 
@@ -957,7 +880,7 @@ async function viewQueueDraft(contactId) {
   const contact = queue.find(c => c.id === contactId);
 
   if (!contact || !contact.draft) {
-    alert('Draft not found');
+    showToast(UIMessages.queue.notFound);
     return;
   }
 
@@ -1020,7 +943,7 @@ async function batchGenerateDrafts() {
   const stats = await contactQueue.getQueueStats();
 
   if (stats.pending === 0) {
-    alert('No pending contacts to generate drafts for');
+    showToast(UIMessages.queue.empty);
     return;
   }
 
@@ -1047,14 +970,7 @@ async function batchGenerateDrafts() {
     modal.style.display = 'none';
 
     // Show results
-    alert(
-      `Batch generation complete!\n\n` +
-      `✓ Success: ${results.success}\n` +
-      `✗ Failed: ${results.failed}\n\n` +
-      (results.errors.length > 0
-        ? `Errors:\n${results.errors.map(e => `- ${e.contact}: ${e.error}`).join('\n')}`
-        : '')
-    );
+    showToast(UIMessages.queue.generationSuccess + ` (${results.success} sent, ${results.failed} failed)`);
 
     // Reload queue
     await loadContactQueue();
@@ -1070,7 +986,7 @@ async function batchGenerateDrafts() {
   } catch (error) {
     console.error('[Queue] Batch generate error:', error);
     modal.style.display = 'none';
-    alert('Batch generation failed: ' + error.message);
+    showToast(UIMessages.queue.generationError + error.message);
   }
 }
 
@@ -1157,35 +1073,102 @@ async function runMagicWorkflow() {
     <span class="magic-btn-icon">⏳</span>
     <span class="magic-btn-content">
       <span class="magic-btn-title">Working Magic...</span>
-      <span class="magic-btn-subtitle">This will take ~6 seconds</span>
+      <span class="magic-btn-subtitle">Orchestrating workflow...</span>
     </span>
   `;
 
-  // Hide LinkedIn mode, show progress
   document.getElementById('linkedin-mode').style.display = 'none';
   document.getElementById('magic-progress-container').style.display = 'block';
 
   try {
-    // Run magic workflow
-    const result = await magicWorkflow.execute();
+    // 1. Run Workflow Orchestrator
+    const result = await sendMessage({ action: 'runOrchestrator' });
 
-    if (result.success) {
-      // Track progress
-      await trackOnboardingProgress('extract');
-      await trackOnboardingProgress('generate');
-
-      // Display results
-      displayMagicResults(result);
-
-      // Save contact for later
-      currentContact = result.contact;
-      selectedEmail = result.email;
-      selectedTemplate = result.template;
+    if (!result || result.status === 'blocked') {
+      throw new Error(result?.error || 'Workflow blocked by orchestrator');
     }
+
+    // 2. Map Data
+    const data = result.data || {};
+    const fullName = data.name?.value || '';
+    const nameParts = fullName.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+
+    const contact = {
+      firstName,
+      lastName,
+      company: data.company?.value || '',
+      role: data.role?.value || '',
+      headline: '', // Future: Extract via Orchestrator
+      location: '', // Future: Extract via Orchestrator
+      profileUrl: '', // Future: Pass from content script
+      source: 'linkedin',
+      orchestratorStatus: result.status
+    };
+
+    // 3. Email Inference & Enrichment
+    // Generate local patterns
+    let emails = emailInference.generatePatterns(contact);
+
+    // Try API Enrichment
+    try {
+      const apiResult = await apiClient.enrichContact(contact);
+      if (apiResult.success) {
+        contact.enrichment = apiResult.enrichment;
+        if (apiResult.emails && apiResult.emails.length > 0) {
+          emails.unshift(...apiResult.emails);
+          // Deduplicate
+          const seen = new Set();
+          const unique = [];
+          for (const e of emails) {
+            if (!seen.has(e.email)) {
+              seen.add(e.email);
+              unique.push(e);
+            }
+          }
+          emails = unique.slice(0, 5);
+        }
+      }
+    } catch (e) {
+      console.log('[Ellyn] API enrichment skipped:', e);
+    }
+    contact.emails = emails;
+
+    // 4. Role Detection
+    if (window.roleDetector) {
+      const roleData = roleDetector.detectRecruiterRole(contact.role, contact.company);
+      contact.isRecruiter = roleData.isRecruiter;
+      selectedTemplate = roleData.recommendedTemplate;
+    }
+
+    // 5. Update State & UI
+    currentContact = contact;
+    
+    // Hide progress
+    document.getElementById('magic-progress-container').style.display = 'none';
+    
+    // Display results
+    displayExtractionResults(contact);
+
+    // Handle Partial Status (Recovery Flow)
+    if (result.status === 'partial') {
+      showToast('⚠️ Some details need verification');
+      // Highlight low confidence fields if possible
+      // For now, just show the edit form to encourage review
+      showEditForm();
+    } else {
+      // Success path - Auto-generate draft
+      if (contact.emails.length > 0) {
+        selectedEmail = contact.emails[0].email; // Auto-select top email
+        generateDraft(); // Generate draft immediately
+      }
+    }
+
   } catch (error) {
     console.error('[Magic] Workflow error:', error);
-    alert('Magic workflow failed: ' + error.message);
-
+    showToast('Workflow failed: ' + error.message);
+    
     // Reset UI
     document.getElementById('magic-progress-container').style.display = 'none';
     document.getElementById('linkedin-mode').style.display = 'block';

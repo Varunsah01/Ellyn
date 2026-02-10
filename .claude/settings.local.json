@@ -10,7 +10,11 @@
       "Bash(npm run dev:*)",
       "Bash(node:*)",
       "Bash(npx:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(git add:*)",
+      "Bash(git restore:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

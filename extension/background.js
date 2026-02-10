@@ -1,6 +1,8 @@
 // Ellyn Background Service Worker
 // Handles messaging between sidepanel and content scripts
 
+importScripts('utils/page-detector.js');
+
 // Open sidepanel when extension icon is clicked
 chrome.action.onClicked.addListener((tab) => {
   chrome.sidePanel.open({ tabId: tab.id });
@@ -18,16 +20,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       const tab = tabs[0];
 
-      // Check if we're on LinkedIn
-      if (!tab.url || !tab.url.includes('linkedin.com/in/')) {
-        sendResponse({ success: false, error: 'Not on a LinkedIn profile page' });
+      // Check if we're on an eligible LinkedIn profile page
+      const eligibility = EllynPageDetector.detectEligibility(tab.url);
+      if (!eligibility.eligible) {
+        const errorMsg = eligibility.reason === 'NOT_PROFILE_PAGE' 
+          ? 'Not on a LinkedIn profile page' 
+          : 'Please visit a LinkedIn profile to use Ellyn';
+        sendResponse({ success: false, error: errorMsg });
         return;
       }
 
       // Inject content script if not already loaded, then send message
       chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        files: ['content/linkedin-extractor.js'],
+        files: [
+          'utils/name-normalizer.js',
+          'utils/email-inference.js',
+          'utils/dom-waiter.js',
+          'utils/page-detector.js',
+          'utils/confidence-engine.js',
+          'extractors/name-extractor.js',
+          'utils/workflow-orchestrator.js',
+          'content/linkedin-extractor.js'
+        ],
       }).then(() => {
         chrome.tabs.sendMessage(tab.id, { action: 'extractProfile' }, (response) => {
           if (chrome.runtime.lastError) {
@@ -42,6 +57,55 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
 
     return true; // Keep message channel open for async response
+  }
+
+  if (message.action === 'runOrchestrator') {
+    // Forward to content script in the active tab
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs[0]) {
+        sendResponse({ success: false, error: 'No active tab' });
+        return;
+      }
+
+      const tab = tabs[0];
+
+      // Check if we're on an eligible LinkedIn profile page
+      const eligibility = EllynPageDetector.detectEligibility(tab.url);
+      if (!eligibility.eligible) {
+        const errorMsg = eligibility.reason === 'NOT_PROFILE_PAGE' 
+          ? 'Not on a LinkedIn profile page' 
+          : 'Please visit a LinkedIn profile to use Ellyn';
+        sendResponse({ success: false, error: errorMsg });
+        return;
+      }
+
+      // Inject content script if not already loaded, then send message
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: [
+          'utils/name-normalizer.js',
+          'utils/email-inference.js',
+          'utils/dom-waiter.js',
+          'utils/page-detector.js',
+          'utils/confidence-engine.js',
+          'extractors/name-extractor.js',
+          'utils/workflow-orchestrator.js',
+          'content/linkedin-extractor.js'
+        ],
+      }).then(() => {
+        chrome.tabs.sendMessage(tab.id, { action: 'runOrchestrator' }, (response) => {
+          if (chrome.runtime.lastError) {
+            sendResponse({ success: false, error: chrome.runtime.lastError.message });
+          } else {
+            sendResponse(response);
+          }
+        });
+      }).catch((err) => {
+        sendResponse({ success: false, error: 'Cannot access this page: ' + err.message });
+      });
+    });
+
+    return true; // Keep message channel open
   }
 
   if (message.action === 'getActiveTab') {

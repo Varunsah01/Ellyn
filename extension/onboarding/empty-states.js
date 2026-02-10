@@ -347,7 +347,8 @@ class EmptyStates {
     const isLinkedIn = await new Promise(resolve => {
       chrome.runtime.sendMessage({ action: 'getActiveTab' }, (response) => {
         const url = response?.url || '';
-        resolve(url.includes('linkedin.com/in/'));
+        const eligibility = window.EllynPageDetector.detectEligibility(url);
+        resolve(eligibility.eligible);
       });
     });
 
