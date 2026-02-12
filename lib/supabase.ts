@@ -2,7 +2,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 // Initialize Supabase client
 const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || ''
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY?.trim() ||
+  ''
 
 const isValidSupabaseUrl = (() => {
   if (!rawSupabaseUrl) return false
@@ -31,7 +34,7 @@ function createSupabaseStub(): SupabaseClient {
   return new Proxy({} as SupabaseClient, {
     get() {
       throw new Error(
-        'Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.'
+        'Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY).'
       )
     },
   })

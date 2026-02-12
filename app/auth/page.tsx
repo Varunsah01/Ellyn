@@ -15,6 +15,7 @@ export default function AuthEntryPage({ searchParams }: AuthEntryPageProps) {
 
   const source = getSingleValue(searchParams?.source);
   const next = getSingleValue(searchParams?.next);
+  const extensionId = getSingleValue(searchParams?.extensionId);
 
   if (source) {
     params.set("source", source);
@@ -22,6 +23,10 @@ export default function AuthEntryPage({ searchParams }: AuthEntryPageProps) {
 
   if (next) {
     params.set("next", next);
+  }
+
+  if (extensionId) {
+    params.set("extensionId", extensionId);
   }
 
   const queryString = params.toString();

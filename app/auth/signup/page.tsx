@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,28 @@ type ExtensionPayload = {
   name: string;
 };
 
+function buildExtensionPayload(
+  user: {
+    id: string;
+    email?: string | null;
+    user_metadata?: Record<string, unknown> | null;
+  },
+  fallbackEmail = "",
+  fallbackName = "",
+): ExtensionPayload {
+  const metadata = user.user_metadata || {};
+  const email = user.email || fallbackEmail || "";
+  const nameFromMetadata =
+    (metadata.full_name as string | undefined) ||
+    (metadata.name as string | undefined);
+
+  return {
+    id: user.id,
+    email,
+    name: nameFromMetadata || fallbackName || email || "User",
+  };
+}
+
 function parseNextPath(rawValue: string | null): string {
   if (!rawValue || !rawValue.startsWith("/") || rawValue.startsWith("//")) {
     return "/dashboard";
@@ -24,9 +46,25 @@ function parseNextPath(rawValue: string | null): string {
   return rawValue;
 }
 
+function resolveAuthOrigin(isExtensionSource: boolean): string {
+  if (isExtensionSource) {
+    const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+    if (rawAppUrl) {
+      try {
+        return new URL(rawAppUrl).origin;
+      } catch {
+        // Fall through to current origin.
+      }
+    }
+  }
+
+  return window.location.origin;
+}
+
 function SignupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const extensionNotifiedRef = useRef(false);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -40,6 +78,52 @@ function SignupPageContent() {
 
   const nextPath = useMemo(() => parseNextPath(searchParams.get("next")), [searchParams]);
   const isExtensionSource = searchParams.get("source") === "extension";
+  const extensionIdFromQuery = searchParams.get("extensionId")?.trim() || "";
+  const loginHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("next", nextPath);
+
+    if (isExtensionSource) {
+      params.set("source", "extension");
+    }
+
+    if (extensionIdFromQuery) {
+      params.set("extensionId", extensionIdFromQuery);
+    }
+
+    return `/auth/login?${params.toString()}`;
+  }, [extensionIdFromQuery, isExtensionSource, nextPath]);
+
+  const notifyExtensionAuthSuccess = useCallback(
+    async (payload: ExtensionPayload) => {
+      if (!isExtensionSource || extensionNotifiedRef.current) return;
+
+      const extensionId = extensionIdFromQuery || process.env.NEXT_PUBLIC_EXTENSION_ID;
+      if (!extensionId) return;
+
+      const maybeWindow = window as unknown as {
+        chrome?: { runtime?: { sendMessage?: (...args: unknown[]) => void } };
+      };
+
+      const runtime = maybeWindow.chrome?.runtime;
+      if (!runtime || typeof runtime.sendMessage !== "function") return;
+
+      extensionNotifiedRef.current = true;
+
+      await new Promise<void>((resolve) => {
+        try {
+          runtime.sendMessage!(
+            extensionId,
+            { type: "AUTH_SUCCESS", payload },
+            () => resolve(),
+          );
+        } catch {
+          resolve();
+        }
+      });
+    },
+    [extensionIdFromQuery, isExtensionSource],
+  );
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -55,7 +139,8 @@ function SignupPageContent() {
         return;
       }
 
-      if (data.session) {
+      if (data.session?.user) {
+        void notifyExtensionAuthSuccess(buildExtensionPayload(data.session.user));
         router.replace(nextPath);
       }
     };
@@ -63,7 +148,8 @@ function SignupPageContent() {
     checkSession();
 
     const { data: authSubscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
+      if (session?.user) {
+        void notifyExtensionAuthSuccess(buildExtensionPayload(session.user));
         router.replace(nextPath);
       }
     });
@@ -72,33 +158,7 @@ function SignupPageContent() {
       isMounted = false;
       authSubscription.subscription.unsubscribe();
     };
-  }, [nextPath, router]);
-
-  const notifyExtensionAuthSuccess = async (payload: ExtensionPayload) => {
-    if (!isExtensionSource) return;
-
-    const extensionId = process.env.NEXT_PUBLIC_EXTENSION_ID;
-    if (!extensionId) return;
-
-    const maybeWindow = window as unknown as {
-      chrome?: { runtime?: { sendMessage?: (...args: unknown[]) => void } };
-    };
-
-    const runtime = maybeWindow.chrome?.runtime;
-    if (!runtime || typeof runtime.sendMessage !== "function") return;
-
-    await new Promise<void>((resolve) => {
-      try {
-        runtime.sendMessage!(
-          extensionId,
-          { type: "AUTH_SUCCESS", payload },
-          () => resolve(),
-        );
-      } catch {
-        resolve();
-      }
-    });
-  };
+  }, [nextPath, notifyExtensionAuthSuccess, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,7 +188,7 @@ function SignupPageContent() {
       params.set("source", "extension");
     }
 
-    const emailRedirectTo = `${window.location.origin}/auth/login?${params.toString()}`;
+    const emailRedirectTo = `${resolveAuthOrigin(isExtensionSource)}/auth/login?${params.toString()}`;
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -146,11 +206,9 @@ function SignupPageContent() {
     }
 
     if (data.user && data.session) {
-      await notifyExtensionAuthSuccess({
-        id: data.user.id,
-        email: data.user.email || email.trim(),
-        name: name.trim() || data.user.email || "User",
-      });
+      await notifyExtensionAuthSuccess(
+        buildExtensionPayload(data.user, email.trim(), name.trim()),
+      );
 
       setSuccessMessage("Account created successfully. Redirecting...");
       router.replace(nextPath);
@@ -182,7 +240,7 @@ function SignupPageContent() {
       params.set("source", "extension");
     }
 
-    const redirectTo = `${window.location.origin}/auth/login?${params.toString()}`;
+    const redirectTo = `${resolveAuthOrigin(isExtensionSource)}/auth/login?${params.toString()}`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
@@ -379,7 +437,7 @@ function SignupPageContent() {
           <p className="text-center text-sm text-slate-600 mt-6">
             Already have an account?{" "}
             <Link
-              href="/auth/login"
+              href={loginHref}
               className="text-blue-600 hover:underline font-medium"
             >
               Log in

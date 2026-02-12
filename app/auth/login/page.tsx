@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,27 @@ type ExtensionPayload = {
   name: string;
 };
 
+function buildExtensionPayload(
+  user: {
+    id: string;
+    email?: string | null;
+    user_metadata?: Record<string, unknown> | null;
+  },
+  fallbackEmail = "",
+): ExtensionPayload {
+  const metadata = user.user_metadata || {};
+  const email = user.email || fallbackEmail || "";
+  const nameFromMetadata =
+    (metadata.full_name as string | undefined) ||
+    (metadata.name as string | undefined);
+
+  return {
+    id: user.id,
+    email,
+    name: nameFromMetadata || email || "User",
+  };
+}
+
 function parseNextPath(rawValue: string | null): string {
   if (!rawValue || !rawValue.startsWith("/") || rawValue.startsWith("//")) {
     return "/dashboard";
@@ -23,9 +44,25 @@ function parseNextPath(rawValue: string | null): string {
   return rawValue;
 }
 
+function resolveAuthOrigin(isExtensionSource: boolean): string {
+  if (isExtensionSource) {
+    const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+    if (rawAppUrl) {
+      try {
+        return new URL(rawAppUrl).origin;
+      } catch {
+        // Fall through to current origin.
+      }
+    }
+  }
+
+  return window.location.origin;
+}
+
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const extensionNotifiedRef = useRef(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,6 +73,52 @@ function LoginPageContent() {
 
   const nextPath = useMemo(() => parseNextPath(searchParams.get("next")), [searchParams]);
   const isExtensionSource = searchParams.get("source") === "extension";
+  const extensionIdFromQuery = searchParams.get("extensionId")?.trim() || "";
+  const signupHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("next", nextPath);
+
+    if (isExtensionSource) {
+      params.set("source", "extension");
+    }
+
+    if (extensionIdFromQuery) {
+      params.set("extensionId", extensionIdFromQuery);
+    }
+
+    return `/auth/signup?${params.toString()}`;
+  }, [extensionIdFromQuery, isExtensionSource, nextPath]);
+
+  const notifyExtensionAuthSuccess = useCallback(
+    async (payload: ExtensionPayload) => {
+      if (!isExtensionSource || extensionNotifiedRef.current) return;
+
+      const extensionId = extensionIdFromQuery || process.env.NEXT_PUBLIC_EXTENSION_ID;
+      if (!extensionId) return;
+
+      const maybeWindow = window as unknown as {
+        chrome?: { runtime?: { sendMessage?: (...args: unknown[]) => void } };
+      };
+
+      const runtime = maybeWindow.chrome?.runtime;
+      if (!runtime || typeof runtime.sendMessage !== "function") return;
+
+      extensionNotifiedRef.current = true;
+
+      await new Promise<void>((resolve) => {
+        try {
+          runtime.sendMessage!(
+            extensionId,
+            { type: "AUTH_SUCCESS", payload },
+            () => resolve(),
+          );
+        } catch {
+          resolve();
+        }
+      });
+    },
+    [extensionIdFromQuery, isExtensionSource],
+  );
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -51,7 +134,8 @@ function LoginPageContent() {
         return;
       }
 
-      if (data.session) {
+      if (data.session?.user) {
+        void notifyExtensionAuthSuccess(buildExtensionPayload(data.session.user));
         router.replace(nextPath);
       }
     };
@@ -59,7 +143,8 @@ function LoginPageContent() {
     checkSession();
 
     const { data: authSubscription } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
+      if (session?.user) {
+        void notifyExtensionAuthSuccess(buildExtensionPayload(session.user));
         router.replace(nextPath);
       }
     });
@@ -68,33 +153,7 @@ function LoginPageContent() {
       isMounted = false;
       authSubscription.subscription.unsubscribe();
     };
-  }, [nextPath, router]);
-
-  const notifyExtensionAuthSuccess = async (payload: ExtensionPayload) => {
-    if (!isExtensionSource) return;
-
-    const extensionId = process.env.NEXT_PUBLIC_EXTENSION_ID;
-    if (!extensionId) return;
-
-    const maybeWindow = window as unknown as {
-      chrome?: { runtime?: { sendMessage?: (...args: unknown[]) => void } };
-    };
-
-    const runtime = maybeWindow.chrome?.runtime;
-    if (!runtime || typeof runtime.sendMessage !== "function") return;
-
-    await new Promise<void>((resolve) => {
-      try {
-        runtime.sendMessage!(
-          extensionId,
-          { type: "AUTH_SUCCESS", payload },
-          () => resolve(),
-        );
-      } catch {
-        resolve();
-      }
-    });
-  };
+  }, [nextPath, notifyExtensionAuthSuccess, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,15 +181,7 @@ function LoginPageContent() {
 
     const user = data.user;
     if (user) {
-      await notifyExtensionAuthSuccess({
-        id: user.id,
-        email: user.email || email.trim(),
-        name:
-          (user.user_metadata?.full_name as string | undefined) ||
-          (user.user_metadata?.name as string | undefined) ||
-          user.email ||
-          "User",
-      });
+      await notifyExtensionAuthSuccess(buildExtensionPayload(user, email.trim()));
     }
 
     setSuccessMessage("Signed in successfully. Redirecting...");
@@ -154,7 +205,7 @@ function LoginPageContent() {
       params.set("source", "extension");
     }
 
-    const redirectTo = `${window.location.origin}/auth/login?${params.toString()}`;
+    const redirectTo = `${resolveAuthOrigin(isExtensionSource)}/auth/login?${params.toString()}`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
@@ -299,7 +350,7 @@ function LoginPageContent() {
           <p className="text-center text-sm text-slate-600 mt-6">
             Don&apos;t have an account?{" "}
             <Link
-              href="/auth/signup"
+              href={signupHref}
               className="text-blue-600 hover:underline font-medium"
             >
               Sign up free

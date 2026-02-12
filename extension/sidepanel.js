@@ -5,7 +5,7 @@ const STAGES = {
   TRACKING: "tracking",
 };
 
-const AUTH_REDIRECT_URL = "https://yourwebsite.com/auth?source=extension";
+const AUTH_REDIRECT_URL = "https://www.useellyn.com/auth";
 
 const OUTREACH_STATUS = {
   DRAFTED: "drafted",
@@ -97,6 +97,7 @@ const STATUS_TRANSITIONS = {
 const dom = {};
 let listenersBound = false;
 let runtimeListenerBound = false;
+let storageListenerBound = false;
 
 function cacheDom() {
   dom.stageAuth = document.getElementById("stageAuth");
@@ -457,7 +458,11 @@ function resetWorkflowState() {
 }
 
 function openAuthTab() {
-  chrome.tabs.create({ url: AUTH_REDIRECT_URL }, () => {
+  const authUrl = new URL(AUTH_REDIRECT_URL);
+  authUrl.searchParams.set("source", "extension");
+  authUrl.searchParams.set("extensionId", chrome.runtime.id);
+
+  chrome.tabs.create({ url: authUrl.toString() }, () => {
     if (chrome.runtime.lastError) {
       setStatusText("Unable to open sign-in tab. Please try again.", "error");
       return;
@@ -534,11 +539,47 @@ function setupRuntimeMessageListener() {
   runtimeListenerBound = true;
 
   chrome.runtime.onMessage.addListener((message) => {
-    if (!message || message.type !== "AUTH_SUCCESS") {
+    if (!message) {
       return;
     }
 
-    handleAuthSuccess(message.payload);
+    if (message.type === "AUTH_SUCCESS") {
+      handleAuthSuccess(message.payload);
+      return;
+    }
+
+    if (message.type === "AUTH_LOGOUT") {
+      handleLogout();
+    }
+  });
+}
+
+function setupStorageListener() {
+  if (storageListenerBound) return;
+  storageListenerBound = true;
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local") return;
+
+    const authChange = changes.isAuthenticated;
+    const userChange = changes.user;
+
+    if (!authChange && !userChange) return;
+
+    if (authChange) {
+      appState.isAuthenticated = Boolean(authChange.newValue);
+    }
+
+    if (userChange) {
+      appState.user = userChange.newValue || null;
+    }
+
+    if (!appState.isAuthenticated) {
+      resetWorkflowState();
+    }
+
+    appState.stage = appState.isAuthenticated ? STAGES.MANUAL : STAGES.AUTH;
+    renderUI();
   });
 }
 
@@ -695,6 +736,7 @@ async function initializeApp() {
   cacheDom();
   setupEventListeners();
   setupRuntimeMessageListener();
+  setupStorageListener();
   await hydrateAuthStateFromStorage();
   renderUI();
 }

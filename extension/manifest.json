@@ -8,7 +8,7 @@
   },
   "permissions": ["sidePanel", "tabs", "storage"],
   "externally_connectable": {
-    "matches": ["https://yourwebsite.com/*"]
+    "matches": ["https://useellyn.com/*", "https://www.useellyn.com/*"]
   },
   "background": {
     "service_worker": "background.js"
