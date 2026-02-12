@@ -100,8 +100,6 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               count = stats.totalContacts;
             } else if (item.href === "/dashboard/templates") {
               count = sequenceStats.totalTemplates;
-            } else if (item.href === "/dashboard/drafts") {
-              count = sequenceStats.pendingDrafts;
             }
 
             return (

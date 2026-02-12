@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, Search, Command } from "lucide-react";
+import { Menu, Search, Command, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -12,6 +12,8 @@ import { useState } from "react";
 import { GlobalSearch } from "./global-search";
 import { NotificationsDropdown, type Notification } from "./notifications-dropdown";
 import { Badge } from "@/components/ui/badge";
+import { useRouter } from "next/navigation";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 interface HeaderProps {
   breadcrumbs?: { label: string; href?: string }[];
@@ -28,6 +30,19 @@ export function Header({ breadcrumbs }: HeaderProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifications, setNotifications] = useState(mockNotifications);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut();
+    }
+
+    setIsSigningOut(false);
+    router.replace("/auth/login");
+  };
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -87,6 +102,15 @@ export function Header({ breadcrumbs }: HeaderProps) {
             onMarkAsRead={(id) => setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n))}
             onMarkAllAsRead={() => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))}
           />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSignOut}
+            disabled={isSigningOut}
+          >
+            <LogOut className="mr-2 h-4 w-4" />
+            {isSigningOut ? "Signing out..." : "Sign out"}
+          </Button>
         </div>
       </div>
 

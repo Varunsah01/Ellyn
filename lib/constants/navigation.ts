@@ -3,7 +3,6 @@ import {
   Users,
   Send,
   FileText,
-  Pencil,
   BarChart2,
   Settings,
   CreditCard,
@@ -23,11 +22,6 @@ export const mainNavItems: NavItem[] = [
     name: "Focus",
     href: "/dashboard",
     icon: Home,
-  },
-  {
-    name: "Drafts",
-    href: "/dashboard/drafts",
-    icon: Pencil,
   },
   {
     name: "Sent",

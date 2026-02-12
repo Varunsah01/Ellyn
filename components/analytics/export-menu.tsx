@@ -49,7 +49,7 @@ export function ExportMenu({ data, dateRange }: ExportMenuProps) {
     doc.text("Overview", 14, 45);
     doc.setFontSize(10);
     doc.text(`Total Contacts: ${data.overview.totalContacts}`, 20, 55);
-    doc.text(`Total Drafts: ${data.overview.totalDrafts}`, 20, 62);
+    doc.text(`Total Outreach Items: ${data.overview.totalDrafts}`, 20, 62);
     doc.text(`Emails Sent: ${data.overview.emailsSent}`, 20, 69);
     doc.text(`Reply Rate: ${data.overview.replyRate}%`, 20, 76);
 
@@ -86,7 +86,7 @@ export function ExportMenu({ data, dateRange }: ExportMenuProps) {
     csv += "Overview Metrics\n";
     csv += "Metric,Value\n";
     csv += `Total Contacts,${data.overview.totalContacts}\n`;
-    csv += `Total Drafts,${data.overview.totalDrafts}\n`;
+    csv += `Total Outreach Items,${data.overview.totalDrafts}\n`;
     csv += `Emails Sent,${data.overview.emailsSent}\n`;
     csv += `Reply Rate,${data.overview.replyRate}%\n`;
     csv += `Best Performing Sequence,${data.overview.bestPerformingSequence}\n\n`;

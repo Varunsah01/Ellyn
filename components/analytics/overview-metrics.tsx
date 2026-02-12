@@ -107,10 +107,10 @@ export function OverviewMetrics({ data, comparison, loading }: OverviewMetricsPr
       />
 
       <MetricCard
-        title="Total Drafts"
+        title="Total Outreach Items"
         value={data.totalDrafts}
         icon={Mail}
-        description="Drafts created"
+        description="Outreach items created"
         trend={comparison ? getTrend(data.totalDrafts, comparison.drafts) : undefined}
         loading={loading}
       />

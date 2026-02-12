@@ -1,29 +1,174 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Mail, Lock, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
-export default function LoginPage() {
+type ExtensionPayload = {
+  id: string;
+  email: string;
+  name: string;
+};
+
+function parseNextPath(rawValue: string | null): string {
+  if (!rawValue || !rawValue.startsWith("/") || rawValue.startsWith("//")) {
+    return "/dashboard";
+  }
+
+  return rawValue;
+}
+
+function LoginPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const nextPath = useMemo(() => parseNextPath(searchParams.get("next")), [searchParams]);
+  const isExtensionSource = searchParams.get("source") === "extension";
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    let isMounted = true;
+
+    const checkSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (!isMounted) return;
+
+      if (error) {
+        setErrorMessage(error.message);
+        return;
+      }
+
+      if (data.session) {
+        router.replace(nextPath);
+      }
+    };
+
+    checkSession();
+
+    const { data: authSubscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        router.replace(nextPath);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authSubscription.subscription.unsubscribe();
+    };
+  }, [nextPath, router]);
+
+  const notifyExtensionAuthSuccess = async (payload: ExtensionPayload) => {
+    if (!isExtensionSource) return;
+
+    const extensionId = process.env.NEXT_PUBLIC_EXTENSION_ID;
+    if (!extensionId) return;
+
+    const maybeWindow = window as unknown as {
+      chrome?: { runtime?: { sendMessage?: (...args: unknown[]) => void } };
+    };
+
+    const runtime = maybeWindow.chrome?.runtime;
+    if (!runtime || typeof runtime.sendMessage !== "function") return;
+
+    await new Promise<void>((resolve) => {
+      try {
+        runtime.sendMessage!(
+          extensionId,
+          { type: "AUTH_SUCCESS", payload },
+          () => resolve(),
+        );
+      } catch {
+        resolve();
+      }
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement authentication logic
-    console.log("Login attempt:", { email, password });
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    if (!isSupabaseConfigured) {
+      setErrorMessage("Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    setIsSubmitting(false);
+
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+
+    const user = data.user;
+    if (user) {
+      await notifyExtensionAuthSuccess({
+        id: user.id,
+        email: user.email || email.trim(),
+        name:
+          (user.user_metadata?.full_name as string | undefined) ||
+          (user.user_metadata?.name as string | undefined) ||
+          user.email ||
+          "User",
+      });
+    }
+
+    setSuccessMessage("Signed in successfully. Redirecting...");
+    router.replace(nextPath);
+  };
+
+  const handleGoogleLogin = async () => {
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    if (!isSupabaseConfigured) {
+      setErrorMessage("Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+      return;
+    }
+
+    setIsGoogleSubmitting(true);
+
+    const params = new URLSearchParams();
+    params.set("next", nextPath);
+    if (isExtensionSource) {
+      params.set("source", "extension");
+    }
+
+    const redirectTo = `${window.location.origin}/auth/login?${params.toString()}`;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+
+    if (error) {
+      setIsGoogleSubmitting(false);
+      setErrorMessage(error.message);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-white flex items-center justify-center p-4">
-      {/* Logo */}
-      <Link
-        href="/"
-        className="absolute top-8 left-8 flex items-center group"
-      >
+      <Link href="/" className="absolute top-8 left-8 flex items-center group">
         <div className="relative h-12 w-[160px]">
           <img
             src="https://subsnacks.sirv.com/Ellyn_logo.png"
@@ -44,8 +189,25 @@ export default function LoginPage() {
         </CardHeader>
 
         <CardContent>
+          {!isSupabaseConfigured && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              Supabase is not configured. Update <code>.env</code> with valid public keys.
+            </div>
+          )}
+
+          {errorMessage && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {errorMessage}
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+              {successMessage}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email Input */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">
                 Email Address
@@ -63,16 +225,12 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Password Input */}
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <label className="text-sm font-medium text-slate-700">
                   Password
                 </label>
-                <a
-                  href="#"
-                  className="text-sm text-blue-600 hover:underline"
-                >
+                <a href="#" className="text-sm text-blue-600 hover:underline">
                   Forgot?
                 </a>
               </div>
@@ -80,7 +238,7 @@ export default function LoginPage() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <Input
                   type="password"
-                  placeholder="••••••••"
+                  placeholder="********"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10"
@@ -89,20 +247,19 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Login Button */}
             <Button
               type="submit"
+              disabled={isSubmitting || isGoogleSubmitting}
               className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white h-12 text-base"
             >
-              Sign In
+              {isSubmitting ? "Signing In..." : "Sign In"}
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </form>
 
-          {/* Divider */}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-300"></div>
+              <div className="w-full border-t border-slate-300" />
             </div>
             <div className="relative flex justify-center text-sm">
               <span className="px-2 bg-white text-slate-500">
@@ -111,12 +268,12 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Google OAuth Button */}
           <Button
             type="button"
             variant="outline"
             className="w-full h-12"
-            onClick={() => console.log("Google OAuth")}
+            disabled={isSubmitting || isGoogleSubmitting}
+            onClick={handleGoogleLogin}
           >
             <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
               <path
@@ -136,12 +293,11 @@ export default function LoginPage() {
                 d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
               />
             </svg>
-            Sign in with Google
+            {isGoogleSubmitting ? "Redirecting..." : "Sign in with Google"}
           </Button>
 
-          {/* Sign Up Link */}
           <p className="text-center text-sm text-slate-600 mt-6">
-            Don't have an account?{" "}
+            Don&apos;t have an account?{" "}
             <Link
               href="/auth/signup"
               className="text-blue-600 hover:underline font-medium"
@@ -152,5 +308,19 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-white flex items-center justify-center p-4">
+          <div className="text-sm text-slate-600">Loading sign in...</div>
+        </div>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }

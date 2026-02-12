@@ -47,7 +47,7 @@ export function HowItWorks() {
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-foreground mb-4">
             From LinkedIn to Inbox in{" "}
-            <span className="text-primary">Under 3 Minutes</span>
+            <span className="text-primary">Under 1 Minutes</span>
           </h2>
           <p className="text-xl font-dm-sans text-muted-foreground max-w-2xl mx-auto">
             Most people spend hours finding emails and writing outreach. You'll do it in minutes.

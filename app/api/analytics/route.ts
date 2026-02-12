@@ -2,11 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { startOfDay, endOfDay, subDays, format, startOfWeek, endOfWeek } from "date-fns";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) || '';
+const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || '';
+const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim() || '';
 
-const supabase = supabaseUrl && supabaseKey
-  ? createClient(supabaseUrl, supabaseKey)
+const isValidSupabaseUrl = (() => {
+  if (!rawSupabaseUrl) return false;
+  try {
+    const parsed = new URL(rawSupabaseUrl);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+})();
+
+const hasPlaceholderValues =
+  rawSupabaseUrl === "your-supabase-url" ||
+  supabaseKey === "your-supabase-anon-key";
+
+const supabase = isValidSupabaseUrl && supabaseKey && !hasPlaceholderValues
+  ? createClient(rawSupabaseUrl, supabaseKey)
   : null;
 
 export async function GET(request: NextRequest) {

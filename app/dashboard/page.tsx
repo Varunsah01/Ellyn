@@ -63,7 +63,6 @@ export default function DashboardPage() {
       <SmartQuickActions
         totalContacts={dashboardStats.totalContacts}
         totalSequences={sequenceStats.totalTemplates}
-        totalDrafts={sequenceStats.pendingDrafts}
         className="mb-6"
       />
 
@@ -90,9 +89,6 @@ export default function DashboardPage() {
               <Link href="/dashboard/contacts">
                 <Plus className="mr-2 h-4 w-4" />Add Contact
               </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/compose">Create Draft</Link>
             </Button>
             <Button variant="outline" asChild>
               <Link href="/dashboard/analytics">
@@ -174,7 +170,7 @@ export default function DashboardPage() {
             title="Email Templates"
             value={sequenceLoading ? 0 : sequenceStats.totalTemplates}
             icon={Zap}
-            description={`${sequenceStats.pendingDrafts} pending drafts`}
+            description="Reusable outreach templates"
             loading={sequenceLoading}
           />
 

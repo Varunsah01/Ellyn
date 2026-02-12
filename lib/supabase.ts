@@ -1,10 +1,26 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 // Initialize Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || ''
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || ''
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
+const isValidSupabaseUrl = (() => {
+  if (!rawSupabaseUrl) return false
+  try {
+    const parsed = new URL(rawSupabaseUrl)
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+  } catch {
+    return false
+  }
+})()
+
+const hasPlaceholderValues =
+  rawSupabaseUrl === 'your-supabase-url' ||
+  supabaseAnonKey === 'your-supabase-anon-key'
+
+export const isSupabaseConfigured = Boolean(
+  isValidSupabaseUrl && supabaseAnonKey && !hasPlaceholderValues
+)
 
 // Validate environment variables
 if (!isSupabaseConfigured) {
@@ -22,7 +38,7 @@ function createSupabaseStub(): SupabaseClient {
 }
 
 export const supabase: SupabaseClient = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(rawSupabaseUrl, supabaseAnonKey)
   : createSupabaseStub()
 
 // Database Types

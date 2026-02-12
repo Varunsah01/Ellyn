@@ -56,14 +56,12 @@ export function ContextualActions({ actions, className }: ContextualActionsProps
 interface SmartQuickActionsProps {
   totalContacts: number;
   totalSequences: number;
-  totalDrafts: number;
   className?: string;
 }
 
 export function SmartQuickActions({
   totalContacts,
   totalSequences,
-  totalDrafts,
   className,
 }: SmartQuickActionsProps) {
   const actions: QuickAction[] = [];
@@ -86,17 +84,6 @@ export function SmartQuickActions({
       icon: Zap,
       title: "Create your first email template",
       description: "Build templates for personalized outreach",
-      href: "/compose",
-      variant: "default",
-    });
-  }
-
-  if (totalDrafts === 0 && totalContacts > 0 && totalSequences > 0) {
-    const { Mail } = require("lucide-react");
-    actions.push({
-      icon: Mail,
-      title: "Draft an email",
-      description: "Use your templates to reach out to contacts",
       href: "/compose",
       variant: "default",
     });

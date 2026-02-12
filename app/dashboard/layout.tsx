@@ -7,6 +7,7 @@ import { DashboardTour } from "@/components/dashboard-tour";
 import { DashboardWrapper } from "@/components/dashboard-wrapper";
 import { useRouter } from "next/navigation";
 import { getOnboardingState } from "@/lib/onboarding";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 export default function DashboardLayout({
   children,
@@ -14,14 +15,79 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
+    let isMounted = true;
+
+    const checkAuth = async () => {
+      if (!isSupabaseConfigured) {
+        if (isMounted) {
+          setIsAuthenticated(true);
+          setAuthChecking(false);
+        }
+        return;
+      }
+
+      const { data, error } = await supabase.auth.getSession();
+      if (!isMounted) return;
+
+      if (error || !data.session) {
+        setIsAuthenticated(false);
+        setAuthChecking(false);
+        router.replace("/auth/login?next=/dashboard");
+        return;
+      }
+
+      setIsAuthenticated(true);
+      setAuthChecking(false);
+    };
+
+    checkAuth();
+
+    if (!isSupabaseConfigured) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const { data: authSubscription } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) return;
+
+      if (event === "SIGNED_OUT" || !session) {
+        setIsAuthenticated(false);
+        router.replace("/auth/login?next=/dashboard");
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      authSubscription.subscription.unsubscribe();
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     const state = getOnboardingState();
     if (!state.completed && !state.dismissed) {
       router.replace("/onboarding");
     }
-  }, [router]);
+  }, [isAuthenticated, router]);
+
+  if (authChecking) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-sm text-muted-foreground">Checking your session...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <DashboardWrapper>
