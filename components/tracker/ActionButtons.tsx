@@ -1,0 +1,124 @@
+"use client";
+
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  ExternalLink,
+  MessageCircleReply,
+  MessageSquarePlus,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  UserRoundX,
+} from "lucide-react";
+
+interface ActionButtonsProps {
+  onFollowUp: () => void;
+  onEdit: () => void;
+  onMarkReplied: () => void;
+  onMarkNotInterested: () => void;
+  onAddNote: () => void;
+  onViewLinkedIn: () => void;
+  onDelete: () => void;
+}
+
+export function FollowUpButton({ onFollowUp }: Pick<ActionButtonsProps, "onFollowUp">) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      onClick={onFollowUp}
+      className="h-8 rounded-md bg-[#FF7B7B] px-3 text-white hover:bg-[#ff6b6b] focus-visible:ring-2 focus-visible:ring-[#FF7B7B]/50"
+      aria-label="Open follow up draft"
+    >
+      Follow up
+    </Button>
+  );
+}
+
+export function EditContactButton({ onEdit }: Pick<ActionButtonsProps, "onEdit">) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 text-[#9CA3AF] hover:text-[#FF7B7B]"
+      onClick={onEdit}
+      aria-label="Edit contact"
+    >
+      <Pencil className="h-5 w-5" />
+    </Button>
+  );
+}
+
+export function MoreActionsButton({
+  onViewLinkedIn,
+  onMarkReplied,
+  onMarkNotInterested,
+  onAddNote,
+  onDelete,
+}: Pick<
+  ActionButtonsProps,
+  "onViewLinkedIn" | "onMarkReplied" | "onMarkNotInterested" | "onAddNote" | "onDelete"
+>) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-[#9CA3AF] hover:text-[#FF7B7B]"
+          aria-label="More options"
+        >
+          <MoreVertical className="h-5 w-5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="z-50 w-52 rounded-lg border bg-white shadow-lg">
+        <DropdownMenuItem onClick={onViewLinkedIn}>
+          <ExternalLink className="mr-2 h-4 w-4" />
+          View LinkedIn Profile
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onMarkReplied}>
+          <MessageCircleReply className="mr-2 h-4 w-4" />
+          Mark as Replied
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onMarkNotInterested}>
+          <UserRoundX className="mr-2 h-4 w-4" />
+          Mark as Not Interested
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onAddNote}>
+          <MessageSquarePlus className="mr-2 h-4 w-4" />
+          Add Note
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onDelete} className="text-destructive focus:text-destructive">
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete Contact
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function ActionButtons(props: ActionButtonsProps) {
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <FollowUpButton onFollowUp={props.onFollowUp} />
+      <EditContactButton onEdit={props.onEdit} />
+      <MoreActionsButton
+        onViewLinkedIn={props.onViewLinkedIn}
+        onMarkReplied={props.onMarkReplied}
+        onMarkNotInterested={props.onMarkNotInterested}
+        onAddNote={props.onAddNote}
+        onDelete={props.onDelete}
+      />
+    </div>
+  );
+}

@@ -14,6 +14,7 @@ import { TimeSeriesCharts } from "@/components/analytics/time-series-charts";
 import { SequencePerformanceTable } from "@/components/analytics/sequence-performance-table";
 import { ContactInsights } from "@/components/analytics/contact-insights";
 import { ActivityHeatmap } from "@/components/analytics/activity-heatmap";
+import { TrackerPerformance } from "@/components/analytics/tracker-performance";
 import { DateRangeFilter } from "@/components/analytics/date-range-filter";
 import { ExportMenu } from "@/components/analytics/export-menu";
 import { GoalTracker } from "@/components/analytics/goal-tracker";
@@ -35,6 +36,7 @@ export default function AnalyticsPage() {
   const [sequencePerformance, setSequencePerformance] = useState<any[]>([]);
   const [contactInsights, setContactInsights] = useState<any>(null);
   const [activityHeatmap, setActivityHeatmap] = useState<any[]>([]);
+  const [trackerPerformance, setTrackerPerformance] = useState<any>(null);
 
   const fetchAnalytics = async () => {
     setLoading(true);
@@ -46,12 +48,13 @@ export default function AnalyticsPage() {
       if (compareEnabled) params.set("compareWith", "previous_period");
 
       // Fetch all analytics data in parallel
-      const [overview, contacts, sequences, insights, heatmap] = await Promise.all([
+      const [overview, contacts, sequences, insights, heatmap, tracker] = await Promise.all([
         fetch(`/api/analytics?metric=overview&${params.toString()}`).then((r) => r.json()),
         fetch(`/api/analytics?metric=contacts_over_time&${params.toString()}`).then((r) => r.json()),
         fetch(`/api/analytics?metric=sequence_performance&${params.toString()}`).then((r) => r.json()),
         fetch(`/api/analytics?metric=contact_insights&${params.toString()}`).then((r) => r.json()),
         fetch(`/api/analytics?metric=activity_heatmap&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/analytics?metric=tracker_performance&${params.toString()}`).then((r) => r.json()),
       ]);
 
       setOverviewData(overview);
@@ -59,6 +62,7 @@ export default function AnalyticsPage() {
       setSequencePerformance(sequences.data || []);
       setContactInsights(insights.data || {});
       setActivityHeatmap(heatmap.data || []);
+      setTrackerPerformance(tracker.data || null);
 
       // Check if there's any data
       const hasAnyData =
@@ -113,6 +117,7 @@ export default function AnalyticsPage() {
                   overview: overviewData.data,
                   sequences: sequencePerformance,
                   contacts: contactInsights,
+                  tracker: trackerPerformance,
                 }}
                 dateRange={dateRange}
               />
@@ -174,6 +179,8 @@ export default function AnalyticsPage() {
                 />
               )}
             </div>
+
+            <TrackerPerformance data={trackerPerformance} loading={loading} />
           </TabsContent>
 
           {/* Sequences Tab */}

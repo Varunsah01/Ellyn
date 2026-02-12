@@ -1,8 +1,34 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { getNextStepDate } from "@/lib/sequence-engine"
+import { mapSequenceActionToTrackerContactPatch } from "@/lib/tracker-integration"
 
 const TERMINAL_STATUSES = ["paused", "replied", "bounced", "completed"]
+
+async function syncEnrollmentContactStatus(enrollmentId: string, action: string) {
+  const patch = mapSequenceActionToTrackerContactPatch(action)
+  if (!patch) return
+
+  const { data: enrollment, error: enrollmentError } = await supabase
+    .from("sequence_enrollments")
+    .select("contact_id")
+    .eq("id", enrollmentId)
+    .single()
+
+  if (enrollmentError || !enrollment?.contact_id) {
+    return
+  }
+
+  const contactPatch: Record<string, string> = {
+    status: patch.status,
+    updated_at: patch.updated_at,
+  }
+  if (patch.last_contacted_at) {
+    contactPatch.last_contacted_at = patch.last_contacted_at
+  }
+
+  await supabase.from("contacts").update(contactPatch).eq("id", enrollment.contact_id)
+}
 
 export async function GET() {
   try {
@@ -115,6 +141,10 @@ export async function POST(request: NextRequest) {
       const enrollmentIdToUpdate = stepRow?.enrollment_id
 
       if (enrollmentIdToUpdate) {
+        if (action === "mark_sent") {
+          await syncEnrollmentContactStatus(enrollmentIdToUpdate, action)
+        }
+
         await supabase.from("sequence_events").insert({
           enrollment_id: enrollmentIdToUpdate,
           step_id: stepRow.step_id,
@@ -161,6 +191,10 @@ export async function POST(request: NextRequest) {
         enrollment_id: enrollmentId,
         event_type: status,
       })
+
+      if (action === "mark_replied") {
+        await syncEnrollmentContactStatus(enrollmentId, action)
+      }
     }
 
     if (action === "pause_enrollment" && enrollmentId) {

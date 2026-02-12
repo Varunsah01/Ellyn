@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || '';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
+    const includeOutreach = searchParams.get('includeOutreach') !== 'false';
 
     // Build query
     let query = supabase
@@ -53,9 +54,42 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
+    let contactsWithOutreach = contacts || [];
+
+    if (includeOutreach && contactsWithOutreach.length > 0) {
+      const contactIds = contactsWithOutreach.map((contact) => contact.id).filter(Boolean);
+
+      if (contactIds.length > 0) {
+        // Best-effort enrichment with latest outreach status per contact.
+        // This remains optional because older schemas may not expose contact_id.
+        const { data: outreachRows, error: outreachError } = await supabase
+          .from('outreach')
+          .select('contact_id, status, updated_at, created_at')
+          .in('contact_id', contactIds)
+          .order('updated_at', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false, nullsFirst: false });
+
+        if (!outreachError && outreachRows) {
+          const latestStatusByContact = new Map<string, string>();
+
+          for (const row of outreachRows) {
+            if (row.contact_id && !latestStatusByContact.has(row.contact_id)) {
+              latestStatusByContact.set(row.contact_id, row.status);
+            }
+          }
+
+          contactsWithOutreach = contactsWithOutreach.map((contact) => ({
+            ...contact,
+            outreach_status: latestStatusByContact.get(contact.id) || null,
+          }));
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      contacts: contacts || [],
+      contacts: contactsWithOutreach,
+      totalCount: count || 0,
       pagination: {
         page,
         limit,

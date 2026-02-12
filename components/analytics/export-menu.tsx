@@ -19,6 +19,7 @@ interface ExportData {
   overview: any;
   sequences: any[];
   contacts: any;
+  tracker?: any;
 }
 
 interface ExportMenuProps {
@@ -53,13 +54,18 @@ export function ExportMenu({ data, dateRange }: ExportMenuProps) {
     doc.text(`Emails Sent: ${data.overview.emailsSent}`, 20, 69);
     doc.text(`Reply Rate: ${data.overview.replyRate}%`, 20, 76);
 
+    if (data.tracker) {
+      doc.text(`Tracker Reply Rate: ${data.tracker.replyRate}%`, 20, 83);
+      doc.text(`Needs Follow-up: ${data.tracker.followUpNeeded}`, 20, 90);
+    }
+
     // Sequence performance table
     if (data.sequences && data.sequences.length > 0) {
       doc.setFontSize(14);
-      doc.text("Sequence Performance", 14, 90);
+      doc.text("Sequence Performance", 14, data.tracker ? 104 : 90);
 
       autoTable(doc, {
-        startY: 95,
+        startY: data.tracker ? 109 : 95,
         head: [["Sequence", "Enrolled", "Sent", "Replied", "Reply Rate"]],
         body: data.sequences.map((seq) => [
           seq.name,
@@ -90,6 +96,14 @@ export function ExportMenu({ data, dateRange }: ExportMenuProps) {
     csv += `Emails Sent,${data.overview.emailsSent}\n`;
     csv += `Reply Rate,${data.overview.replyRate}%\n`;
     csv += `Best Performing Sequence,${data.overview.bestPerformingSequence}\n\n`;
+
+    if (data.tracker) {
+      csv += "Tracker Metrics\n";
+      csv += "Metric,Value\n";
+      csv += `Tracked Contacts,${data.tracker.totalTracked}\n`;
+      csv += `Tracker Reply Rate,${data.tracker.replyRate}%\n`;
+      csv += `Needs Follow-up,${data.tracker.followUpNeeded}\n\n`;
+    }
 
     // Sequences
     if (data.sequences && data.sequences.length > 0) {

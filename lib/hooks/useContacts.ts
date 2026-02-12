@@ -13,6 +13,9 @@ export interface Contact {
   inferred_email?: string;
   email_confidence?: number;
   status: 'new' | 'contacted' | 'replied' | 'no_response';
+  linkedin_url?: string;
+  notes?: string;
+  tags?: string[];
   company_domain?: string;
   company_industry?: string;
   company_size?: string;
@@ -76,7 +79,7 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
 
       if (data.success) {
         setContacts(data.contacts || []);
-        setTotalCount(data.totalCount || 0);
+        setTotalCount(data.totalCount || data.pagination?.total || 0);
       } else {
         throw new Error(data.error || 'Failed to fetch contacts');
       }

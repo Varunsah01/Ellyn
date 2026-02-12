@@ -61,6 +61,9 @@ export async function GET(request: NextRequest) {
       case "activity_heatmap":
         return await getActivityHeatmap(start, end);
 
+      case "tracker_performance":
+        return await getTrackerPerformance(start, end);
+
       case "top_performing":
         return await getTopPerforming(start, end);
 
@@ -504,6 +507,91 @@ async function getTopPerforming(start: Date, end: Date) {
   return NextResponse.json({
     data: {
       topSequences,
+    },
+  });
+}
+
+async function getTrackerPerformance(start: Date, end: Date) {
+  if (!supabase) {
+    throw new Error("Supabase not configured");
+  }
+
+  const { data: contacts, error } = await supabase
+    .from("contacts")
+    .select("id, company, status, created_at, updated_at, last_contacted_at")
+    .gte("created_at", format(start, "yyyy-MM-dd"))
+    .lte("created_at", format(end, "yyyy-MM-dd"));
+
+  if (error) throw error;
+
+  const safeContacts = contacts || [];
+  if (safeContacts.length === 0) {
+    return NextResponse.json({
+      data: {
+        totalTracked: 0,
+        drafted: 0,
+        sent: 0,
+        replied: 0,
+        noResponse: 0,
+        followUpNeeded: 0,
+        replyRate: 0,
+        topCompanies: [],
+      },
+    });
+  }
+
+  const now = Date.now();
+  const oneDayMs = 24 * 60 * 60 * 1000;
+
+  const drafted = safeContacts.filter((contact) => contact.status === "new").length;
+  const replied = safeContacts.filter((contact) => contact.status === "replied").length;
+  const noResponse = safeContacts.filter((contact) => contact.status === "no_response").length;
+  const sent = safeContacts.filter((contact) =>
+    ["contacted", "replied", "no_response"].includes(contact.status || "")
+  ).length;
+  const followUpNeeded = safeContacts.filter((contact) => {
+    if (!["contacted", "no_response"].includes(contact.status || "")) return false;
+    if (!contact.last_contacted_at) return false;
+    const contactedAt = new Date(contact.last_contacted_at).getTime();
+    if (Number.isNaN(contactedAt)) return false;
+    return (now - contactedAt) / oneDayMs > 7;
+  }).length;
+  const replyRate = sent > 0 ? Number(((replied / sent) * 100).toFixed(1)) : 0;
+
+  const companyMap = new Map<string, { sent: number; replied: number }>();
+  for (const contact of safeContacts) {
+    const company = (contact.company || "Unknown").trim() || "Unknown";
+    const existing = companyMap.get(company) || { sent: 0, replied: 0 };
+    if (["contacted", "replied", "no_response"].includes(contact.status || "")) {
+      existing.sent += 1;
+    }
+    if (contact.status === "replied") {
+      existing.replied += 1;
+    }
+    companyMap.set(company, existing);
+  }
+
+  const topCompanies = [...companyMap.entries()]
+    .map(([company, stats]) => ({
+      company,
+      sent: stats.sent,
+      replied: stats.replied,
+      replyRate: stats.sent > 0 ? Number(((stats.replied / stats.sent) * 100).toFixed(1)) : 0,
+    }))
+    .filter((item) => item.sent > 0)
+    .sort((a, b) => b.replyRate - a.replyRate || b.replied - a.replied)
+    .slice(0, 5);
+
+  return NextResponse.json({
+    data: {
+      totalTracked: safeContacts.length,
+      drafted,
+      sent,
+      replied,
+      noResponse,
+      followUpNeeded,
+      replyRate,
+      topCompanies,
     },
   });
 }

@@ -97,7 +97,8 @@ test.describe('Complete User Flow', () => {
     await expect(page).toHaveURL(/.*drafts/, { timeout: 10000 });
 
     // Drafts should be visible
-    await expect(page.getByRole('article')).toHaveCount.toBeGreaterThan(0);
+    const draftCount = await page.getByRole('article').count();
+    expect(draftCount).toBeGreaterThan(0);
   });
 
   test('should view analytics', async ({ page }) => {

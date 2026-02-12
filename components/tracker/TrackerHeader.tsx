@@ -1,0 +1,79 @@
+"use client";
+
+import { Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import type { RefObject } from "react";
+
+interface TrackerHeaderProps {
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  filteredCount: number;
+  totalCount: number;
+  searchInputRef?: RefObject<HTMLInputElement>;
+  onCreateContact?: () => void;
+  compact?: boolean;
+}
+
+export function TrackerHeader({
+  searchQuery,
+  onSearchChange,
+  filteredCount,
+  totalCount,
+  searchInputRef,
+  onCreateContact,
+  compact = false,
+}: TrackerHeaderProps) {
+  const hasQuery = searchQuery.trim().length > 0;
+
+  return (
+    <div className={`space-y-3 transition-all duration-200 ${compact ? "space-y-2" : ""}`}>
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+        <h1 className={`font-fraunces font-bold tracking-tight sm:justify-self-start ${compact ? "text-2xl" : "text-3xl"}`}>
+          Tracker
+        </h1>
+
+        <div className="relative w-full sm:w-[400px] sm:justify-self-center">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Company name wise search"
+            aria-label="Company name wise search"
+            className={`rounded-lg border border-[#E5E7EB] bg-white py-2 pl-10 pr-10 text-sm focus-visible:border-[#FF7B7B] focus-visible:ring-1 focus-visible:ring-[#FF7B7B] dark:border-slate-700 dark:bg-slate-900 ${compact ? "h-9" : "h-10"}`}
+          />
+
+          {hasQuery && (
+            <button
+              type="button"
+              onClick={() => onSearchChange("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7B7B]/40 rounded-sm"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex justify-end sm:justify-self-end">
+          <Button
+            type="button"
+            variant="outline"
+            className={`${compact ? "h-9" : "h-10"} min-w-28 border-[#FF7B7B]/30 text-[#FF7B7B] hover:border-[#FF7B7B] hover:text-[#ff6b6b]`}
+            onClick={onCreateContact}
+          >
+            New Contact
+          </Button>
+        </div>
+      </div>
+
+      <div className={`space-y-1 text-slate-500 dark:text-slate-300 ${compact ? "text-xs" : "text-sm"}`}>
+        <p>Showing {filteredCount} of {totalCount} contacts</p>
+        <p className="text-xs">
+          Tips: Ctrl/Cmd+K to focus search, Ctrl/Cmd+F to open filters, Ctrl/Cmd+N to add contact.
+        </p>
+      </div>
+    </div>
+  );
+}

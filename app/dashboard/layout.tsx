@@ -8,12 +8,14 @@ import { DashboardWrapper } from "@/components/dashboard-wrapper";
 import { useRouter } from "next/navigation";
 import { getOnboardingState } from "@/lib/onboarding";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { useResponsive } from "@/hooks/useResponsive";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { isTablet } = useResponsive();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -77,6 +79,12 @@ export default function DashboardLayout({
     }
   }, [isAuthenticated, router]);
 
+  useEffect(() => {
+    if (isTablet) {
+      setSidebarCollapsed(true);
+    }
+  }, [isTablet]);
+
   if (authChecking) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -92,11 +100,14 @@ export default function DashboardLayout({
   return (
     <DashboardWrapper>
       <div className="flex h-screen overflow-hidden bg-background">
-        {/* Sidebar - Hidden on mobile, shown on desktop */}
-        <div className="hidden lg:flex">
+        {/* Sidebar - Hidden on mobile, shown on tablet/desktop */}
+        <div className="hidden sm:flex">
           <Sidebar
-            collapsed={sidebarCollapsed}
-            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+            collapsed={isTablet ? true : sidebarCollapsed}
+            onToggleCollapse={() => {
+              if (isTablet) return;
+              setSidebarCollapsed(!sidebarCollapsed);
+            }}
           />
         </div>
 
@@ -104,7 +115,7 @@ export default function DashboardLayout({
         <div className="flex flex-col flex-1 overflow-hidden">
           <Header />
           <main className="flex-1 overflow-y-auto">
-            <div className="container mx-auto p-6 max-w-7xl">{children}</div>
+            <div className="container mx-auto max-w-7xl p-4 sm:p-6">{children}</div>
           </main>
         </div>
         <DashboardTour />

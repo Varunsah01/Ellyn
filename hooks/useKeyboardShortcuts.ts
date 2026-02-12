@@ -5,7 +5,7 @@ import { useEffect } from "react";
 export interface KeyboardShortcut {
   key: string;
   ctrl?: boolean;
-  meta?: boolean;  // Cmd on Mac
+  meta?: boolean; // Cmd on Mac
   shift?: boolean;
   alt?: boolean;
   callback: () => void;
@@ -38,12 +38,7 @@ export function useKeyboardShortcuts(
 
       for (const shortcut of shortcuts) {
         const keyMatches = event.key.toLowerCase() === shortcut.key.toLowerCase();
-        const ctrlMatches = shortcut.ctrl ? event.ctrlKey : !event.ctrlKey || !shortcut.ctrl;
-        const metaMatches = shortcut.meta ? event.metaKey : !event.metaKey || !shortcut.meta;
-        const shiftMatches = shortcut.shift ? event.shiftKey : !event.shiftKey || !shortcut.shift;
-        const altMatches = shortcut.alt ? event.altKey : !event.altKey || !shortcut.alt;
 
-        // Check if all modifiers match
         const modifiersMatch =
           (shortcut.ctrl === undefined || event.ctrlKey === shortcut.ctrl) &&
           (shortcut.meta === undefined || event.metaKey === shortcut.meta) &&
@@ -129,10 +124,10 @@ export function formatShortcut(
   const parts: string[] = [];
 
   if (shortcut.ctrl && !isMac) parts.push("Ctrl");
-  if (shortcut.meta || (shortcut.ctrl && isMac)) parts.push("⌘");
-  if (shortcut.alt) parts.push(isMac ? "⌥" : "Alt");
-  if (shortcut.shift) parts.push(isMac ? "⇧" : "Shift");
+  if (shortcut.meta || (shortcut.ctrl && isMac)) parts.push(isMac ? "Cmd" : "Meta");
+  if (shortcut.alt) parts.push(isMac ? "Option" : "Alt");
+  if (shortcut.shift) parts.push("Shift");
   if (shortcut.key) parts.push(shortcut.key.toUpperCase());
 
-  return parts.join(isMac ? "" : "+");
+  return parts.join("+");
 }

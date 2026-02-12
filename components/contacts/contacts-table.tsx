@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { DataTable } from "@/components/dashboard/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   MoreHorizontal,
   Mail,
+  KanbanSquare,
   Eye,
   Edit,
   Trash,
@@ -26,6 +28,12 @@ import {
 import { cn } from "@/lib/utils";
 import { EmptyContacts } from "@/components/empty-state";
 import { showToast } from "@/lib/toast";
+import { matchesTrackerSearch } from "@/lib/tracker-v2";
+import {
+  buildTrackerContactHref,
+  saveTrackerDeepLinkContact,
+  toTrackerContact,
+} from "@/lib/tracker-integration";
 
 export type Contact = {
   id: string;
@@ -115,7 +123,20 @@ const statusLabels = {
 };
 
 export function ContactsTable() {
+  const router = useRouter();
   const [contacts, setContacts] = useState<Contact[]>(mockContacts);
+
+  const openInTracker = (contact: Contact) => {
+    saveTrackerDeepLinkContact({
+      id: contact.id,
+      full_name: contact.name,
+      company: contact.company,
+      role: contact.role,
+      inferred_email: contact.email,
+      status: contact.status,
+    });
+    router.push(buildTrackerContactHref(contact.id, { source: "contacts" }));
+  };
 
   // Show empty state if no contacts
   if (contacts.length === 0) {
@@ -144,6 +165,20 @@ export function ContactsTable() {
     },
     {
       accessorKey: "name",
+      filterFn: (row, _columnId, value) => {
+        const query = String(value || "");
+        return matchesTrackerSearch(
+          toTrackerContact({
+            id: row.original.id,
+            full_name: row.original.name,
+            company: row.original.company,
+            role: row.original.role,
+            inferred_email: row.original.email,
+            status: row.original.status,
+          }),
+          query
+        );
+      },
       header: ({ column }) => {
         return (
           <Button
@@ -168,7 +203,14 @@ export function ContactsTable() {
               <AvatarFallback className="text-xs">{initials}</AvatarFallback>
             </Avatar>
             <div>
-              <div className="font-medium">{contact.name}</div>
+              <button
+                type="button"
+                className="font-medium text-left hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7B7B]/40 rounded-sm"
+                onClick={() => openInTracker(contact)}
+                aria-label={`Open ${contact.name} in tracker`}
+              >
+                {contact.name}
+              </button>
               <div className="text-sm text-muted-foreground">
                 {contact.role}
               </div>
@@ -273,6 +315,14 @@ export function ContactsTable() {
               }}>
                 <Mail className="mr-2 h-4 w-4" />
                 Copy email
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  openInTracker(contact);
+                }}
+              >
+                <KanbanSquare className="mr-2 h-4 w-4" />
+                View in Tracker
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => showToast.info("View details coming soon")}>

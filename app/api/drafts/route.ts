@@ -1,5 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { mapSequenceActionToTrackerContactPatch } from '@/lib/tracker-integration';
+
+async function syncTrackerContactForDraft(contactId: string, draftStatus: string | undefined) {
+  if (draftStatus !== 'sent') return;
+
+  try {
+    const patch = mapSequenceActionToTrackerContactPatch('mark_sent');
+    if (!patch) return;
+
+    const contactPatch: Record<string, string> = {
+      status: patch.status,
+      updated_at: patch.updated_at,
+    };
+
+    if (patch.last_contacted_at) {
+      contactPatch.last_contacted_at = patch.last_contacted_at;
+    }
+
+    await supabase.from('contacts').update(contactPatch).eq('id', contactId);
+  } catch (error) {
+    console.warn('[drafts] Failed to sync tracker status', error);
+  }
+}
 
 // GET /api/drafts - Fetch all drafts
 export async function GET(request: NextRequest) {
@@ -90,6 +113,8 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      await syncTrackerContactForDraft(contactId, draftData.status);
+
       return NextResponse.json({
         success: true,
         draft: data,
@@ -110,6 +135,8 @@ export async function POST(request: NextRequest) {
           { status: 500 }
         );
       }
+
+      await syncTrackerContactForDraft(contactId, draftData.status);
 
       return NextResponse.json({
         success: true,
