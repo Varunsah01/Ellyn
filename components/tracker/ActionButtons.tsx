@@ -34,7 +34,7 @@ export function FollowUpButton({ onFollowUp }: Pick<ActionButtonsProps, "onFollo
       type="button"
       size="sm"
       onClick={onFollowUp}
-      className="h-8 rounded-md bg-[#FF7B7B] px-3 text-white hover:bg-[#ff6b6b] focus-visible:ring-2 focus-visible:ring-[#FF7B7B]/50"
+      className="h-7 w-[72px] rounded-md bg-[#FF7B7B] px-0 text-xs text-white hover:bg-[#ff6b6b] focus-visible:ring-2 focus-visible:ring-[#FF7B7B]/50"
       aria-label="Open follow up draft"
     >
       Follow up
@@ -48,11 +48,11 @@ export function EditContactButton({ onEdit }: Pick<ActionButtonsProps, "onEdit">
       type="button"
       variant="ghost"
       size="icon"
-      className="h-8 w-8 text-[#9CA3AF] hover:text-[#FF7B7B]"
+      className="h-6 w-6 text-[#9CA3AF] hover:text-[#FF7B7B]"
       onClick={onEdit}
       aria-label="Edit contact"
     >
-      <Pencil className="h-5 w-5" />
+      <Pencil className="h-3.5 w-3.5" />
     </Button>
   );
 }
@@ -74,10 +74,10 @@ export function MoreActionsButton({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-[#9CA3AF] hover:text-[#FF7B7B]"
+          className="h-6 w-6 text-[#9CA3AF] hover:text-[#FF7B7B]"
           aria-label="More options"
         >
-          <MoreVertical className="h-5 w-5" />
+          <MoreVertical className="h-3.5 w-3.5" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="z-50 w-52 rounded-lg border bg-white shadow-lg">

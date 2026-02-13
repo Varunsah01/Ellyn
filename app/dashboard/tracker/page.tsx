@@ -9,7 +9,6 @@ import { ContactsTable } from "@/components/tracker/ContactsTable";
 import { MobileContactsList } from "@/components/tracker/MobileContactsList";
 import { TrackerKanbanBoard } from "@/components/tracker/TrackerKanbanBoard";
 import { TrackerHeader } from "@/components/tracker/TrackerHeader";
-import { TrackerShortcutsDialog } from "@/components/tracker/TrackerShortcutsDialog";
 import { TrackerV2Controls, type TrackerViewMode } from "@/components/tracker/TrackerV2Controls";
 import { TrackerBulkActions } from "@/components/tracker/TrackerBulkActions";
 import { TrackerAnalyticsPanel } from "@/components/tracker/TrackerAnalyticsPanel";
@@ -143,7 +142,6 @@ export default function TrackerPage() {
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [viewMode, setViewMode] = useState<TrackerViewMode>("table");
   const [condensedView, setCondensedView] = useState(false);
-  const [showShortcuts, setShowShortcuts] = useState(false);
   const [mobileHeaderCondensed, setMobileHeaderCondensed] = useState(false);
   const [bulkNoteModalOpen, setBulkNoteModalOpen] = useState(false);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
@@ -544,10 +542,6 @@ export default function TrackerPage() {
     toast.success("CSV exported.");
   };
 
-  const handleExportCurrentView = () => {
-    handleExport(visibleContacts, "view");
-  };
-
   const handleExportSelected = () => {
     handleExport(selectedContacts, "selected");
   };
@@ -696,7 +690,6 @@ export default function TrackerPage() {
         setFiltersOpen(false);
         setDetailContactId(null);
         setBulkNoteModalOpen(false);
-        setShowShortcuts(false);
       },
     },
   ]);
@@ -750,11 +743,17 @@ export default function TrackerPage() {
   }, [isMobile]);
 
   const hasActiveSearchOrFilters = debouncedSearchQuery.trim().length > 0 || activeFilterChips.length > 0;
+  const shouldShowBottomSummary =
+    !loading &&
+    !error &&
+    contacts.length > 0 &&
+    !(hasActiveSearchOrFilters && visibleContacts.length === 0) &&
+    (isMobile || viewMode === "table");
 
   return (
     <DashboardShell breadcrumbs={[{ label: "Tracker" }]}>
-      <div className="space-y-5 overflow-x-hidden rounded-2xl bg-[#F5F5F5] px-3 py-3 sm:px-5 sm:py-5 lg:px-7 dark:bg-slate-950/40">
-        <div className="sticky top-16 z-20 space-y-3 rounded-xl border border-slate-200/80 bg-white/85 p-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
+      <div className="space-y-4 rounded-xl bg-[#F5F5F5] px-2 py-2 sm:px-3 sm:py-3 lg:px-4 dark:bg-slate-950/40">
+        <div className="sticky top-16 z-30 space-y-3 rounded-xl border border-slate-200/80 bg-white/90 p-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/85">
           <TrackerHeader
             searchQuery={searchQuery}
             searchInputRef={searchInputRef}
@@ -766,8 +765,6 @@ export default function TrackerPage() {
               }
             }}
             onCreateContact={createNewContact}
-            filteredCount={visibleContacts.length}
-            totalCount={contacts.length}
           />
 
           <TrackerV2Controls
@@ -781,25 +778,11 @@ export default function TrackerPage() {
             onClearAllFilters={clearAllFilters}
             filtersOpen={filtersOpen}
             onFiltersOpenChange={setFiltersOpen}
-            exportColumns={exportColumns}
-            onToggleExportColumn={(column) => {
-              setExportColumns((prev) => {
-                if (prev.includes(column)) {
-                  return prev.filter((item) => item !== column);
-                }
-                return [...prev, column];
-              });
-            }}
-            onResetExportColumns={() => setExportColumns(DEFAULT_EXPORT_COLUMNS)}
-            onExportCurrentView={handleExportCurrentView}
-            onExportSelected={handleExportSelected}
-            selectedCount={selectedContactIds.length}
             isMobile={isMobile}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
             condensed={condensedView}
             onCondensedChange={setCondensedView}
-            onOpenShortcuts={() => setShowShortcuts(true)}
           />
 
           <TrackerBulkActions
@@ -883,6 +866,12 @@ export default function TrackerPage() {
             compact={isTablet}
           />
         )}
+
+        {shouldShowBottomSummary ? (
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
+            Showing {visibleContacts.length} of {contacts.length} contacts
+          </div>
+        ) : null}
       </div>
 
       {isMobile ? (
@@ -936,7 +925,6 @@ export default function TrackerPage() {
         onConfirm={confirmBulkDeleteAllVisible}
       />
 
-      <TrackerShortcutsDialog open={showShortcuts} onOpenChange={setShowShortcuts} />
     </DashboardShell>
   );
 }

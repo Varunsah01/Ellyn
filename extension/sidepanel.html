@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ellyn Side Panel</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" />
     <link rel="stylesheet" href="sidepanel.css" />
     <style>
       .hidden {
@@ -21,9 +20,12 @@
       <div class="mx-auto max-w-xl">
         <header class="mb-5 border-b border-slate-200 pb-4">
           <div class="flex items-start justify-between">
-            <div>
-              <h1 class="text-xl font-semibold leading-6 tracking-tight text-slate-900">Ellyn</h1>
-              <p class="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">Outreach Assistant</p>
+            <div class="flex items-center gap-3">
+              <img
+                src="assets/icons/Ellynlogo.png"
+                alt="Ellyn logo"
+                class="h-6 w-auto object-contain"
+              />
             </div>
             <div id="authHeaderActions" class="hidden flex items-center gap-2">
               <button
@@ -109,10 +111,34 @@
           </article>
 
           <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <div class="mb-4">
-              <h2 class="text-base font-medium text-slate-900">Manual Contact Entry</h2>
-              <p class="mt-1 text-xs text-slate-500">All required fields are marked with an asterisk.</p>
+            <div class="mb-2">
+              <button
+                id="manualEntryToggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="manualEntryBody"
+                class="flex w-full items-center justify-between text-left"
+              >
+                <span class="text-base font-medium text-slate-900">Manual Contact Entry</span>
+                <svg
+                  id="manualEntryChevron"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  class="h-4 w-4 text-slate-500 transition-transform duration-200"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="m6 9 6 6 6-6"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </button>
             </div>
+            <div id="manualEntryBody" class="mt-4 hidden">
+            <p class="mb-4 text-xs text-slate-500">All required fields are marked with an asterisk.</p>
             <form id="contactForm" class="space-y-4" novalidate>
               <div>
                 <label for="firstName" class="mb-2 block text-sm font-medium text-slate-700">
@@ -175,9 +201,9 @@
                 >
                   Discover Email
                 </button>
-                <p class="mt-2 text-center text-xs text-slate-500">Zero-cost enrichment using free APIs</p>
               </div>
             </form>
+            </div>
           </article>
 
           <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
@@ -425,3 +451,4 @@
     <script src="sidepanel.js"></script>
   </body>
 </html>
+

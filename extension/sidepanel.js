@@ -6,6 +6,7 @@ const STAGES = {
 };
 
 const AUTH_REDIRECT_URL = "https://www.useellyn.com/auth";
+const AUTH_STORAGE_KEYS = ["isAuthenticated", "user"];
 
 const OUTREACH_STATUS = {
   DRAFTED: "drafted",
@@ -25,6 +26,7 @@ const appState = {
   stage: STAGES.AUTH,
   isAuthenticated: false,
   user: null,
+  manualEntryExpanded: false,
   outreachStatus: OUTREACH_STATUS.DRAFTED,
   history: [],
   notes: "",
@@ -112,6 +114,9 @@ function cacheDom() {
   dom.logoutButton = document.getElementById("logoutButton");
 
   dom.contactForm = document.getElementById("contactForm");
+  dom.manualEntryToggle = document.getElementById("manualEntryToggle");
+  dom.manualEntryBody = document.getElementById("manualEntryBody");
+  dom.manualEntryChevron = document.getElementById("manualEntryChevron");
   dom.firstName = document.getElementById("firstName");
   dom.lastName = document.getElementById("lastName");
   dom.company = document.getElementById("company");
@@ -217,6 +222,7 @@ function renderAuthStage() {
 
 function renderManualStage() {
   dom.stage1?.classList.remove("hidden");
+  setManualEntryExpanded(false);
   setStatusText("Complete manual details to generate a draft.");
 }
 
@@ -450,6 +456,7 @@ function copyToClipboardWithFeedback(button, value) {
 }
 
 function resetWorkflowState() {
+  appState.manualEntryExpanded = false;
   appState.outreachStatus = OUTREACH_STATUS.DRAFTED;
   appState.history = [];
   appState.notes = "";
@@ -457,17 +464,35 @@ function resetWorkflowState() {
   appState.draft = null;
 }
 
-function openAuthTab() {
-  const authUrl = new URL(AUTH_REDIRECT_URL);
+function setManualEntryExpanded(expanded) {
+  appState.manualEntryExpanded = Boolean(expanded);
+
+  if (dom.manualEntryBody) {
+    dom.manualEntryBody.classList.toggle("hidden", !appState.manualEntryExpanded);
+  }
+
+  if (dom.manualEntryChevron) {
+    dom.manualEntryChevron.classList.toggle("rotate-180", appState.manualEntryExpanded);
+  }
+
+  if (dom.manualEntryToggle) {
+    dom.manualEntryToggle.setAttribute("aria-expanded", appState.manualEntryExpanded ? "true" : "false");
+  }
+}
+
+function openAuthTab(mode = "signin") {
+  const targetPath = mode === "signup" ? "/auth/signup" : "/auth/login";
+  const authUrl = new URL(targetPath, AUTH_REDIRECT_URL);
   authUrl.searchParams.set("source", "extension");
   authUrl.searchParams.set("extensionId", chrome.runtime.id);
+  authUrl.searchParams.set("mode", mode);
 
   chrome.tabs.create({ url: authUrl.toString() }, () => {
     if (chrome.runtime.lastError) {
-      setStatusText("Unable to open sign-in tab. Please try again.", "error");
+      setStatusText("Unable to open authentication tab. Please try again.", "error");
       return;
     }
-    setStatusText("Complete sign in in the opened tab, then return here.");
+    setStatusText("Complete authentication in the opened tab, then return here.");
   });
 }
 
@@ -499,7 +524,7 @@ function handleAuthSuccess(payload) {
 }
 
 function handleLogout() {
-  chrome.storage.local.clear(() => {
+  chrome.storage.local.remove(AUTH_STORAGE_KEYS, () => {
     appState.isAuthenticated = false;
     appState.user = null;
     appState.stage = STAGES.AUTH;
@@ -587,9 +612,15 @@ function setupEventListeners() {
   if (listenersBound) return;
   listenersBound = true;
 
-  dom.signInButton?.addEventListener("click", openAuthTab);
-  dom.createAccountButton?.addEventListener("click", openAuthTab);
-  dom.logoutButton?.addEventListener("click", handleLogout);
+  dom.signInButton?.addEventListener("click", () => openAuthTab("signin"));
+  dom.createAccountButton?.addEventListener("click", () => openAuthTab("signup"));
+  dom.logoutButton?.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ type: "AUTH_LOGOUT_LOCAL" }, (response) => {
+      if (chrome.runtime.lastError || !response?.ok) {
+        handleLogout();
+      }
+    });
+  });
 
   dom.contactForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -730,6 +761,10 @@ function setupEventListeners() {
       dom.clearQueueButton.classList.remove("rotate-6");
     }, 140);
   });
+
+  dom.manualEntryToggle?.addEventListener("click", () => {
+    setManualEntryExpanded(!appState.manualEntryExpanded);
+  });
 }
 
 async function initializeApp() {
@@ -750,3 +785,4 @@ document.addEventListener("DOMContentLoaded", () => {
     setStatusText("Sign in to continue.");
   });
 });
+

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { MailOpen, PencilLine, Reply, Send } from "lucide-react";
 import toast from "react-hot-toast";
 import { cn } from "@/lib/utils";
-import { TRACKER_STATUS_COLORS } from "@/lib/tracker-v2";
 
 export type PipelineStage = "draft" | "sent" | "opened" | "replied";
 
@@ -20,10 +20,17 @@ const PIPELINE_STAGES: StatusStage[] = [
 ];
 
 const PIPELINE_STAGE_COLOR: Record<PipelineStage, string> = {
-  draft: TRACKER_STATUS_COLORS.new.dot,
-  sent: TRACKER_STATUS_COLORS.contacted.dot,
-  opened: TRACKER_STATUS_COLORS.no_response.dot,
-  replied: TRACKER_STATUS_COLORS.replied.dot,
+  draft: "#9CA3AF",
+  sent: "#3B82F6",
+  opened: "#F59E0B",
+  replied: "#EF4444",
+};
+
+const PIPELINE_STAGE_ICON = {
+  draft: PencilLine,
+  sent: Send,
+  opened: MailOpen,
+  replied: Reply,
 };
 
 interface StatusPipelineProps {
@@ -75,6 +82,26 @@ function connectorArrowClasses(isActive: boolean, compact: boolean): string {
     compact ? "border-l-[4px]" : "border-l-[5px]",
     isActive ? "border-l-current" : "border-l-[#D1D5DB]"
   );
+}
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  const value = hex.replace("#", "").trim();
+  const normalized = value.length === 3
+    ? value.split("").map((char) => `${char}${char}`).join("")
+    : value;
+
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return null;
+
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  return [red, green, blue];
+}
+
+function buildGlow(color: string): string | undefined {
+  const rgb = hexToRgb(color);
+  if (!rgb) return undefined;
+  return `0 0 0 3px rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.2), 0 0 14px rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.35)`;
 }
 
 export function StatusPipeline({
@@ -181,8 +208,12 @@ export function StatusPipeline({
         {PIPELINE_STAGES.map((stage, index) => {
           const isCurrent = currentIndex === index;
           const isCompleted = !isDraftState && index <= currentIndex;
+          const isReached = index <= currentIndex;
           const connectorIsActive = !isDraftState && index < currentIndex;
           const stageColor = PIPELINE_STAGE_COLOR[stage.key];
+          const StageIcon = PIPELINE_STAGE_ICON[stage.key];
+          const shouldFillStage = isCompleted || (isCurrent && stage.key === "draft");
+          const glow = isCurrent ? buildGlow(stageColor) : undefined;
 
           return (
             <div key={stage.key} className={cn("flex items-center", compact ? "gap-1.5" : "gap-2")}>
@@ -196,18 +227,32 @@ export function StatusPipeline({
                   onClick={() => void updateStatus(stage.key)}
                   onKeyDown={(event) => handleKeyDown(event, index, stage.key)}
                   className={cn(
-                    "rounded-full border bg-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#FF7B7B]/50 disabled:cursor-not-allowed disabled:opacity-70",
+                    "flex items-center justify-center rounded-full border bg-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#FF7B7B]/50 disabled:cursor-not-allowed disabled:opacity-70",
                     compact ? "h-5 w-5" : "h-6 w-6",
-                    isCompleted
+                    shouldFillStage
                       ? "border-transparent"
                       : "border-[#D1D5DB] hover:border-[#FF7B7B]/60",
-                    isCurrent && "border-2 shadow-[0_0_0_3px_rgba(255,123,123,0.16)]"
+                    isReached && "scale-[1.04]",
+                    isCurrent && "scale-[1.1]"
                   )}
-                  style={isCompleted ? { backgroundColor: stageColor } : undefined}
+                  style={{
+                    ...(shouldFillStage ? { backgroundColor: stageColor } : {}),
+                    ...(glow ? { boxShadow: glow } : {}),
+                  }}
                   aria-label={`Set stage to ${stage.label}`}
                   aria-current={isCurrent ? "step" : undefined}
                   title={stage.label}
-                />
+                >
+                  <StageIcon
+                    className={cn(
+                      "transition-all",
+                      compact ? "h-2.5 w-2.5" : "h-3 w-3",
+                      shouldFillStage ? "text-white" : "text-slate-400",
+                      isReached && !shouldFillStage && "text-slate-600",
+                      isCurrent && "scale-110"
+                    )}
+                  />
+                </button>
 
                 <span className="pointer-events-none absolute -top-8 left-1/2 hidden -translate-x-1/2 whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] text-white group-hover:block group-focus-within:block">
                   {stage.label}

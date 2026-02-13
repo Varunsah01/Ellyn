@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Download, Filter, Info, Keyboard, LayoutGrid, ListFilter, Rows3, X } from "lucide-react";
+import { Filter, LayoutGrid, ListFilter, Rows3, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,13 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DEFAULT_EXPORT_COLUMNS,
   TRACKER_DATE_PRESET_LABELS,
-  TRACKER_EXPORT_COLUMN_LABELS,
   TRACKER_SORT_PRESET_LABELS,
   TRACKER_STATUS_LABELS,
   type TrackerDatePreset,
-  type TrackerExportColumn,
   type TrackerFilterState,
   type TrackerSortPreset,
   type TrackerStatusFilterValue,
@@ -58,24 +55,16 @@ interface TrackerV2ControlsProps {
   onClearAllFilters: () => void;
   filtersOpen: boolean;
   onFiltersOpenChange: (open: boolean) => void;
-  exportColumns: TrackerExportColumn[];
-  onToggleExportColumn: (column: TrackerExportColumn) => void;
-  onResetExportColumns: () => void;
-  onExportCurrentView: () => void;
-  onExportSelected: () => void;
-  selectedCount: number;
   isMobile: boolean;
   viewMode: TrackerViewMode;
   onViewModeChange: (next: TrackerViewMode) => void;
   condensed: boolean;
   onCondensedChange: (next: boolean) => void;
-  onOpenShortcuts: () => void;
 }
 
 const SORT_PRESETS = Object.keys(TRACKER_SORT_PRESET_LABELS) as TrackerSortPreset[];
 const DATE_PRESETS = Object.keys(TRACKER_DATE_PRESET_LABELS) as TrackerDatePreset[];
 const STATUS_VALUES = Object.keys(TRACKER_STATUS_LABELS) as TrackerStatusFilterValue[];
-const EXPORT_COLUMNS = Object.keys(TRACKER_EXPORT_COLUMN_LABELS) as TrackerExportColumn[];
 
 interface FilterPanelProps {
   filters: TrackerFilterState;
@@ -97,7 +86,7 @@ function FilterPanel({ filters, onFiltersChange, companyOptions, onClearAllFilte
   const hasCompanyOverflow = companyOptions.length > 100 && !filters.companySearch.trim();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <section className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</p>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -133,7 +122,7 @@ function FilterPanel({ filters, onFiltersChange, companyOptions, onClearAllFilte
           <SelectTrigger className="h-10 bg-white dark:bg-slate-900">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[100]">
             {DATE_PRESETS.map((preset) => (
               <SelectItem key={preset} value={preset}>
                 {TRACKER_DATE_PRESET_LABELS[preset]}
@@ -168,7 +157,7 @@ function FilterPanel({ filters, onFiltersChange, companyOptions, onClearAllFilte
           <SelectTrigger className="h-10 bg-white dark:bg-slate-900">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="z-[100]">
             {DATE_PRESETS.map((preset) => (
               <SelectItem key={preset} value={preset}>
                 {TRACKER_DATE_PRESET_LABELS[preset]}
@@ -220,7 +209,7 @@ function FilterPanel({ filters, onFiltersChange, companyOptions, onClearAllFilte
           placeholder="Search company..."
           className="h-10"
         />
-        <div className="max-h-48 space-y-1 overflow-y-auto rounded border border-slate-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
+        <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2.5 dark:border-slate-800 dark:bg-slate-900">
           {filteredCompanies.map((option) => {
             const checked = filters.companies.includes(option.company);
             return (
@@ -277,18 +266,11 @@ export function TrackerV2Controls({
   onClearAllFilters,
   filtersOpen,
   onFiltersOpenChange,
-  exportColumns,
-  onToggleExportColumn,
-  onResetExportColumns,
-  onExportCurrentView,
-  onExportSelected,
-  selectedCount,
   isMobile,
   viewMode,
   onViewModeChange,
   condensed,
   onCondensedChange,
-  onOpenShortcuts,
 }: TrackerV2ControlsProps) {
   const filterButton = (
     <Button
@@ -304,9 +286,9 @@ export function TrackerV2Controls({
   );
 
   return (
-    <div className="space-y-3">
+    <div className="relative z-40 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-[180px]">
+        <div className="min-w-[180px] flex-1 sm:max-w-[260px]">
           <Select value={sortPreset} onValueChange={(value) => onSortPresetChange(value as TrackerSortPreset)}>
             <SelectTrigger className="h-11 bg-white dark:bg-slate-900">
               <SelectValue placeholder="Sort preset" />
@@ -378,7 +360,12 @@ export function TrackerV2Controls({
         ) : (
           <Popover open={filtersOpen} onOpenChange={onFiltersOpenChange}>
             <PopoverTrigger asChild>{filterButton}</PopoverTrigger>
-            <PopoverContent align="start" className="w-[360px] space-y-4">
+            <PopoverContent
+              align="start"
+              sideOffset={10}
+              collisionPadding={16}
+              className="z-[90] w-[min(440px,calc(100vw-2rem))] max-h-[72vh] space-y-4 overflow-y-auto overflow-x-visible rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-950"
+            >
               <FilterPanel
                 filters={filters}
                 onFiltersChange={onFiltersChange}
@@ -388,67 +375,6 @@ export function TrackerV2Controls({
             </PopoverContent>
           </Popover>
         )}
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button type="button" variant="outline" className="h-11 gap-2 bg-white dark:bg-slate-900">
-              <Download className="h-4 w-4" />
-              Export
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-[320px] space-y-3">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Export options</h3>
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-slate-600 dark:text-slate-300">Columns</p>
-              <div className="grid grid-cols-2 gap-2">
-                {EXPORT_COLUMNS.map((column) => (
-                  <label key={column} className="flex items-center gap-2 text-xs">
-                    <Checkbox checked={exportColumns.includes(column)} onCheckedChange={() => onToggleExportColumn(column)} />
-                    {TRACKER_EXPORT_COLUMN_LABELS[column]}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={onResetExportColumns}>
-                Reset columns
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={onExportCurrentView}>
-                Export current view
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                disabled={selectedCount === 0}
-                className="bg-[#FF7B7B] text-white hover:bg-[#ff6b6b]"
-                onClick={onExportSelected}
-              >
-                Export selected
-              </Button>
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Default columns: {DEFAULT_EXPORT_COLUMNS.map((column) => TRACKER_EXPORT_COLUMN_LABELS[column]).join(", ")}
-            </p>
-          </PopoverContent>
-        </Popover>
-
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11 gap-2 bg-white dark:bg-slate-900"
-          onClick={onOpenShortcuts}
-          aria-label="Open keyboard shortcuts"
-        >
-          <Keyboard className="h-4 w-4" />
-          Shortcuts
-        </Button>
-
-        <div className="ml-auto flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-          <Info className="h-3.5 w-3.5" />
-          <span title="Tip: combine status + last-contacted filters to find high-intent follow-ups.">
-            Filter tip
-          </span>
-        </div>
       </div>
 
       {activeFilterChips.length > 0 ? (

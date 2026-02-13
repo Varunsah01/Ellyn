@@ -5,10 +5,11 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 import { Header } from "@/components/dashboard/header";
 import { DashboardTour } from "@/components/dashboard-tour";
 import { DashboardWrapper } from "@/components/dashboard-wrapper";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { getOnboardingState } from "@/lib/onboarding";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useResponsive } from "@/hooks/useResponsive";
+import { cn } from "@/lib/utils";
 
 export default function DashboardLayout({
   children,
@@ -20,6 +21,11 @@ export default function DashboardLayout({
   const [authChecking, setAuthChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+  const isTrackerRoute =
+    pathname === "/tracker" ||
+    pathname === "/dashboard/tracker" ||
+    pathname.startsWith("/dashboard/tracker/");
 
   useEffect(() => {
     let isMounted = true;
@@ -115,7 +121,14 @@ export default function DashboardLayout({
         <div className="flex flex-col flex-1 overflow-hidden">
           <Header />
           <main className="flex-1 overflow-y-auto">
-            <div className="container mx-auto max-w-7xl p-4 sm:p-6">{children}</div>
+            <div
+              className={cn(
+                "p-3 sm:p-4 lg:p-5",
+                isTrackerRoute ? "max-w-none" : "container mx-auto max-w-7xl"
+              )}
+            >
+              {children}
+            </div>
           </main>
         </div>
         <DashboardTour />

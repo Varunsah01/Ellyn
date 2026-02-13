@@ -307,10 +307,22 @@ Varun`;
   return (
     <>
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <Table>
-          <TableHeader className="bg-[#F5F5F5]">
+        <Table className="table-fixed">
+          <colgroup>
+            <col style={{ width: "3%" }} />
+            {!compact ? <col style={{ width: "4%" }} /> : null}
+            <col style={{ width: compact ? "14%" : "15%" }} />
+            <col style={{ width: compact ? "20%" : "20%" }} />
+            <col style={{ width: compact ? "11%" : "12%" }} />
+            <col style={{ width: compact ? "17%" : "18%" }} />
+            <col style={{ width: compact ? "17%" : "15%" }} />
+            <col style={{ width: compact ? "10%" : "8%" }} />
+            <col style={{ width: compact ? "4%" : "3%" }} />
+            <col style={{ width: compact ? "4%" : "3%" }} />
+          </colgroup>
+          <TableHeader className="bg-[#F5F5F5] [&_th]:h-9 [&_th]:px-1.5 [&_th]:text-[11px] [&_th]:font-semibold [&_th]:text-slate-600">
             <TableRow className="hover:bg-[#F5F5F5]">
-              <TableHead className="w-10 text-center">
+              <TableHead className="text-center">
                 <Checkbox
                   checked={allVisibleSelected}
                   onCheckedChange={(checked) => {
@@ -320,15 +332,15 @@ Varun`;
                   aria-label="Select all visible contacts"
                 />
               </TableHead>
-              {!compact && <TableHead className="w-20">sr.no</TableHead>}
+              {!compact && <TableHead>#</TableHead>}
               <TableHead>Name</TableHead>
-              <TableHead>Designation</TableHead>
+              <TableHead>Title</TableHead>
               <TableHead>Company</TableHead>
-              <TableHead>Email id</TableHead>
-              <TableHead className="min-w-[170px]">Mail Status</TableHead>
-              <TableHead className="text-center">Action</TableHead>
-              <TableHead className="w-16 text-center">Edit</TableHead>
-              <TableHead className="w-16 text-center">Menu</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Status Pipeline</TableHead>
+              <TableHead className="text-center">Follow up</TableHead>
+              <TableHead className="text-center">Edit</TableHead>
+              <TableHead className="text-center">Menu</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -337,7 +349,7 @@ Varun`;
               <Fragment key={group.company || "all"}>
                 {groupByCompany ? (
                   <TableRow className="bg-slate-50 hover:bg-slate-50">
-                    <TableCell colSpan={tableColSpan} className="py-2 text-xs font-semibold text-slate-700">
+                    <TableCell colSpan={tableColSpan} className="px-2 py-1.5 text-xs font-semibold text-slate-700">
                       {group.company} ({group.items.length})
                     </TableCell>
                   </TableRow>
@@ -358,7 +370,7 @@ Varun`;
                       onClick={() => onOpenContactDetail(contact)}
                     >
                       <TableCell
-                        className="text-center"
+                        className="px-1 py-1.5 text-center"
                         onClick={(event) => {
                           event.stopPropagation();
                         }}
@@ -370,11 +382,11 @@ Varun`;
                         />
                       </TableCell>
                       {!compact && (
-                        <TableCell className="text-sm text-slate-600">{index + 1}</TableCell>
+                        <TableCell className="px-1.5 py-1.5 text-xs text-slate-600">{index + 1}</TableCell>
                       )}
-                      <TableCell className={compact ? "py-2 text-sm font-medium text-slate-900" : "font-medium text-slate-900"}>
-                        <div className="flex items-center gap-2">
-                          <span>{displayName}</span>
+                      <TableCell className="px-1.5 py-1.5 text-sm font-medium text-slate-900">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate" title={displayName}>{displayName}</span>
                           {hasReminder(contact) ? (
                             <span title="Reminder set">
                               <BellRing className="h-3.5 w-3.5 text-amber-500" />
@@ -382,16 +394,22 @@ Varun`;
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell className={compact ? "py-2 text-xs text-slate-700" : "text-slate-700"}>
-                        {contact.role || "-"}
+                      <TableCell className="px-1.5 py-1.5 text-xs text-slate-700">
+                        <span className="block truncate" title={contact.role || "-"}>
+                          {contact.role || "-"}
+                        </span>
                       </TableCell>
-                      <TableCell className={compact ? "py-2 text-xs text-slate-700" : "text-slate-700"}>
-                        {contact.company || "-"}
+                      <TableCell className="px-1.5 py-1.5 text-xs text-slate-700">
+                        <span className="block truncate" title={contact.company || "-"}>
+                          {contact.company || "-"}
+                        </span>
                       </TableCell>
-                      <TableCell className={compact ? "py-2 font-mono text-[11px] text-slate-700" : "font-mono text-xs text-slate-700"}>
-                        {displayEmail}
+                      <TableCell className="px-1.5 py-1.5 font-mono text-[11px] text-slate-700">
+                        <span className="block truncate" title={displayEmail}>
+                          {displayEmail}
+                        </span>
                       </TableCell>
-                      <TableCell className={compact ? "py-2" : undefined}>
+                      <TableCell className="px-1.5 py-1">
                         <StatusPipeline
                           currentStatus={currentStage}
                           contactId={contact.id}
@@ -402,7 +420,7 @@ Varun`;
                         />
                       </TableCell>
                       <TableCell
-                        className={compact ? "py-2 text-center" : "text-center"}
+                        className="px-1 py-1 text-center"
                         onClick={(event) => {
                           event.stopPropagation();
                         }}
@@ -410,7 +428,7 @@ Varun`;
                         <FollowUpButton onFollowUp={() => handleFollowUp(contact)} />
                       </TableCell>
                       <TableCell
-                        className={compact ? "py-2 text-center" : "text-center"}
+                        className="px-1 py-1 text-center"
                         onClick={(event) => {
                           event.stopPropagation();
                         }}
@@ -418,7 +436,7 @@ Varun`;
                         <EditContactButton onEdit={() => setEditingContact(contact)} />
                       </TableCell>
                       <TableCell
-                        className={compact ? "py-2 text-center" : "text-center"}
+                        className="px-1 py-1 text-center"
                         onClick={(event) => {
                           event.stopPropagation();
                         }}

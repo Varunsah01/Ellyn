@@ -8,8 +8,6 @@ import type { RefObject } from "react";
 interface TrackerHeaderProps {
   searchQuery: string;
   onSearchChange: (value: string) => void;
-  filteredCount: number;
-  totalCount: number;
   searchInputRef?: RefObject<HTMLInputElement>;
   onCreateContact?: () => void;
   compact?: boolean;
@@ -18,8 +16,6 @@ interface TrackerHeaderProps {
 export function TrackerHeader({
   searchQuery,
   onSearchChange,
-  filteredCount,
-  totalCount,
   searchInputRef,
   onCreateContact,
   compact = false,
@@ -28,12 +24,12 @@ export function TrackerHeader({
 
   return (
     <div className={`space-y-3 transition-all duration-200 ${compact ? "space-y-2" : ""}`}>
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+      <div className="grid gap-3 sm:grid-cols-[auto_minmax(280px,1fr)_auto] sm:items-center">
         <h1 className={`font-fraunces font-bold tracking-tight sm:justify-self-start ${compact ? "text-2xl" : "text-3xl"}`}>
           Tracker
         </h1>
 
-        <div className="relative w-full sm:w-[400px] sm:justify-self-center">
+        <div className="relative w-full sm:max-w-none sm:justify-self-stretch">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchInputRef}
@@ -66,13 +62,6 @@ export function TrackerHeader({
             New Contact
           </Button>
         </div>
-      </div>
-
-      <div className={`space-y-1 text-slate-500 dark:text-slate-300 ${compact ? "text-xs" : "text-sm"}`}>
-        <p>Showing {filteredCount} of {totalCount} contacts</p>
-        <p className="text-xs">
-          Tips: Ctrl/Cmd+K to focus search, Ctrl/Cmd+F to open filters, Ctrl/Cmd+N to add contact.
-        </p>
       </div>
     </div>
   );

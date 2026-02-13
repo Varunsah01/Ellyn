@@ -140,7 +140,7 @@ function SignupPageContent() {
       }
 
       if (data.session?.user) {
-        void notifyExtensionAuthSuccess(buildExtensionPayload(data.session.user));
+        await notifyExtensionAuthSuccess(buildExtensionPayload(data.session.user));
         router.replace(nextPath);
       }
     };
@@ -149,8 +149,10 @@ function SignupPageContent() {
 
     const { data: authSubscription } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-        void notifyExtensionAuthSuccess(buildExtensionPayload(session.user));
-        router.replace(nextPath);
+        void (async () => {
+          await notifyExtensionAuthSuccess(buildExtensionPayload(session.user));
+          router.replace(nextPath);
+        })();
       }
     });
 
@@ -186,6 +188,9 @@ function SignupPageContent() {
     params.set("next", nextPath);
     if (isExtensionSource) {
       params.set("source", "extension");
+    }
+    if (extensionIdFromQuery) {
+      params.set("extensionId", extensionIdFromQuery);
     }
 
     const emailRedirectTo = `${resolveAuthOrigin(isExtensionSource)}/auth/login?${params.toString()}`;
@@ -238,6 +243,9 @@ function SignupPageContent() {
     params.set("next", nextPath);
     if (isExtensionSource) {
       params.set("source", "extension");
+    }
+    if (extensionIdFromQuery) {
+      params.set("extensionId", extensionIdFromQuery);
     }
 
     const redirectTo = `${resolveAuthOrigin(isExtensionSource)}/auth/login?${params.toString()}`;

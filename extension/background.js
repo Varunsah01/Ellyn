@@ -2,6 +2,8 @@ chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));
 
+const AUTH_STORAGE_KEYS = ["isAuthenticated", "user"];
+
 function setAuthenticatedState(payload, sendResponse) {
   chrome.storage.local.set(
     {
@@ -27,7 +29,7 @@ function setAuthenticatedState(payload, sendResponse) {
 }
 
 function clearAuthenticatedState(sendResponse) {
-  chrome.storage.local.clear(() => {
+  chrome.storage.local.remove(AUTH_STORAGE_KEYS, () => {
     if (chrome.runtime.lastError) {
       sendResponse({
         ok: false,
@@ -53,6 +55,15 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   }
 
   if (message.type === "AUTH_LOGOUT") {
+    clearAuthenticatedState(sendResponse);
+    return true;
+  }
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message || typeof message !== "object") return;
+
+  if (message.type === "AUTH_LOGOUT_LOCAL") {
     clearAuthenticatedState(sendResponse);
     return true;
   }

@@ -1,0 +1,6 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Ellyn Logo Mark</title>
+  <desc id="desc">Simple rounded square with a stylized E.</desc>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#2563EB"/>
+  <path d="M43 38C43 34.6863 45.6863 32 49 32H83V43H54V57H79V68H54V85H83V96H49C45.6863 96 43 93.3137 43 90V38Z" fill="white"/>
+</svg>
