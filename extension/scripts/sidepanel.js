@@ -18,6 +18,8 @@ const emailFinderState = {
   isAuthenticated: false,
   user: null,
   isLoading: false,
+  quotaKnown: false,
+  quotaAllowsLookup: false,
   currentResult: null,
   currentError: null,
   loadingTimer: null,
@@ -244,12 +246,16 @@ function renderAuthState() {
   elements.emailFinderSection?.classList.toggle("hidden", !emailFinderState.isAuthenticated);
 
   if (!emailFinderState.isAuthenticated) {
+    emailFinderState.quotaKnown = false;
+    emailFinderState.quotaAllowsLookup = false;
     stopProfileContextSync();
     resetProfileContext();
     stopLoadingCycle();
     hideResultAndError();
     resetQuotaUI();
   }
+
+  applyFindEmailAvailability();
 }
 
 function startProfileContextSync() {
@@ -317,7 +323,7 @@ async function refreshProfileContext(reason = "auto") {
       return;
     }
 
-    const extractorResponse = await sendTabMessage(tabId, { type: "EXTRACT_PROFILE" });
+    const extractorResponse = await requestProfileExtraction(tabId, reason === "manual");
     if (!extractorResponse?.success || !extractorResponse?.data) {
       const failure = String(extractorResponse?.error || "");
       const isNeutral = /not on a linkedin profile page/i.test(failure);
@@ -412,6 +418,8 @@ function renderProfileContext(context, statusTone = "neutral", statusText = "Ope
     elements.profileContextUrl.textContent = displayUrl || "-";
     elements.profileContextUrl.title = merged.profileUrl || "";
   }
+
+  applyFindEmailAvailability();
 }
 
 function resetProfileContext(statusText = "Open a LinkedIn profile tab to see extracted data.", tone = "neutral") {
@@ -436,6 +444,81 @@ function buildProfileContextKey(tabId, profileUrl) {
   return `${safeTabId}:${safeUrl}`;
 }
 
+function splitHumanName(fullName) {
+  const raw = String(fullName || "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!raw) {
+    return { firstName: "", lastName: "", fullName: "" };
+  }
+
+  const parts = raw.split(" ").filter(Boolean);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: "", fullName: parts[0] };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+    fullName: raw,
+  };
+}
+
+function getProfileContextGateStatus() {
+  const context = emailFinderState.profileContext;
+  if (!context || !Number.isFinite(context.tabId)) {
+    return {
+      ready: false,
+      message: "Open a LinkedIn profile tab to preview name and company.",
+    };
+  }
+
+  const ageMs = Date.now() - Number(context.lastUpdatedAt || 0);
+  if (ageMs > PROFILE_CONTEXT_FRESH_MS) {
+    return {
+      ready: false,
+      message: "Profile preview is stale. Refresh to continue.",
+    };
+  }
+
+  const hasName = Boolean(String(context.fullName || "").trim());
+  const hasCompany = Boolean(String(context.company || "").trim());
+  if (!hasName || !hasCompany) {
+    return {
+      ready: false,
+      message: "Find Email is locked until both name and company are detected.",
+    };
+  }
+
+  return { ready: true, message: "" };
+}
+
+function applyFindEmailAvailability() {
+  if (!elements.findEmailBtn) return;
+
+  const disabledByAuth = !emailFinderState.isAuthenticated;
+  const disabledByQuota = emailFinderState.isAuthenticated && (!emailFinderState.quotaKnown || !emailFinderState.quotaAllowsLookup);
+  const gateStatus = getProfileContextGateStatus();
+  const disabledByProfile = emailFinderState.isAuthenticated && !gateStatus.ready;
+  const disabledByLoading = emailFinderState.isLoading;
+
+  const shouldDisable = disabledByAuth || disabledByQuota || disabledByProfile || disabledByLoading;
+  if (shouldDisable) {
+    elements.findEmailBtn.setAttribute("disabled", "true");
+  } else {
+    elements.findEmailBtn.removeAttribute("disabled");
+  }
+
+  const reason = disabledByProfile
+    ? gateStatus.message
+    : disabledByQuota
+    ? "No credits available right now."
+    : disabledByAuth
+    ? "Sign in to use email finder."
+    : "";
+  elements.findEmailBtn.title = reason;
+}
+
 function getFreshCompleteProfileContextPayload(tabId) {
   const context = emailFinderState.profileContext;
   if (!context || !Number.isFinite(context.tabId) || context.tabId !== tabId) {
@@ -447,14 +530,23 @@ function getFreshCompleteProfileContextPayload(tabId) {
     return null;
   }
 
-  if (!context.firstName || !context.lastName || !context.company) {
+  const fullName = String(context.fullName || "").trim();
+  const company = String(context.company || "").trim();
+  if (!fullName || !company) {
+    return null;
+  }
+
+  const split = splitHumanName(fullName);
+  const firstName = String(context.firstName || split.firstName || "").trim();
+  const lastName = String(context.lastName || split.lastName || "").trim();
+  if (!firstName) {
     return null;
   }
 
   return {
-    firstName: context.firstName,
-    lastName: context.lastName,
-    company: context.company,
+    firstName,
+    lastName,
+    company,
     role: context.role || "",
     profileUrl: context.profileUrl || "",
   };
@@ -471,7 +563,7 @@ function hasIncompleteProfileContextForTab(tabId) {
     return false;
   }
 
-  return !context.firstName || !context.lastName || !context.company;
+  return !context.fullName || !context.company;
 }
 
 function formatProfileUrlForDisplay(url) {
@@ -527,18 +619,23 @@ async function findEmail() {
     return;
   }
 
+  const gateStatus = getProfileContextGateStatus();
+  if (!gateStatus.ready) {
+    setStatus(gateStatus.message, "error");
+    return;
+  }
+
   try {
     hideResultAndError();
     startLoadingCycle();
 
     const tab = await getLinkedInProfileTab();
-    const pipelineData = { tabId: tab.id };
     const contextPayload = getFreshCompleteProfileContextPayload(tab.id);
-    if (contextPayload) {
-      Object.assign(pipelineData, contextPayload);
-    } else if (hasIncompleteProfileContextForTab(tab.id)) {
-      setStatus("Extraction incomplete: company/name missing on this profile.", "error");
+    if (!contextPayload) {
+      throw new Error("Profile preview is stale or incomplete. Refresh and confirm name + company.");
     }
+
+    const pipelineData = { tabId: tab.id, ...contextPayload };
 
     const response = await sendRuntimeMessage({
       type: "FIND_EMAIL",
@@ -611,7 +708,7 @@ function stopLoadingCycle() {
   elements.loadingState?.classList.add("hidden");
   elements.emailFinderSection?.classList.remove("is-loading");
   elements.findEmailBtn?.classList.remove("hidden");
-  elements.findEmailBtn?.removeAttribute("disabled");
+  applyFindEmailAvailability();
 }
 
 function updateLoadingStage(label, progress) {
@@ -823,6 +920,8 @@ async function updateQuotaStatus() {
     const allowed = response?.allowed !== false;
 
     if (!Number.isFinite(remaining) || !Number.isFinite(limit) || limit <= 0) {
+      emailFinderState.quotaKnown = false;
+      emailFinderState.quotaAllowsLookup = false;
       resetQuotaUI();
       return;
     }
@@ -851,12 +950,15 @@ async function updateQuotaStatus() {
         ? `Quota reached. Credits reset ${resetText}.`
         : "Quota reached. Upgrade to continue.";
       setUpgradeState(true, warning, emailFinderState.upgradeUrl);
-      elements.findEmailBtn?.setAttribute("disabled", "true");
+      emailFinderState.quotaKnown = true;
+      emailFinderState.quotaAllowsLookup = false;
       setQuotaWarning("No credits remaining.");
+      applyFindEmailAvailability();
       return;
     }
 
-    elements.findEmailBtn?.removeAttribute("disabled");
+    emailFinderState.quotaKnown = true;
+    emailFinderState.quotaAllowsLookup = true;
     setUpgradeState(false, "", emailFinderState.upgradeUrl);
 
     const lowThreshold = Math.max(3, Math.ceil(safeLimit * 0.15));
@@ -865,8 +967,12 @@ async function updateQuotaStatus() {
     } else {
       setQuotaWarning("");
     }
+
+    applyFindEmailAvailability();
   } catch (error) {
     console.warn("[Sidepanel] Failed to update quota:", error);
+    emailFinderState.quotaKnown = false;
+    emailFinderState.quotaAllowsLookup = false;
     resetQuotaUI();
   }
 }
@@ -881,6 +987,7 @@ function resetQuotaUI() {
   }
   setQuotaWarning("");
   setUpgradeState(false, "", emailFinderState.upgradeUrl);
+  applyFindEmailAvailability();
 }
 
 function setQuotaWarning(message) {
@@ -965,7 +1072,7 @@ async function hasLinkedInProfileOpen() {
 }
 
 function isLinkedInProfile(url) {
-  return typeof url === "string" && /https:\/\/www\.linkedin\.com\/in\/.+/i.test(url);
+  return typeof url === "string" && /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/in\/[^/?#]+/i.test(url);
 }
 
 function toConfidencePercent(value) {
@@ -1036,6 +1143,33 @@ function sendRuntimeMessage(message) {
       }
       resolve(response || null);
     });
+  });
+}
+
+function isMissingReceiverError(error) {
+  const msg = String(error?.message || error || "").toLowerCase();
+  return (
+    msg.includes("receiving end does not exist") ||
+    msg.includes("could not establish connection") ||
+    msg.includes("message port closed")
+  );
+}
+
+async function requestProfileExtraction(tabId, debug = false) {
+  try {
+    const directResponse = await sendTabMessage(tabId, { type: "EXTRACT_PROFILE", debug });
+    if (directResponse) {
+      return directResponse;
+    }
+  } catch (error) {
+    if (!isMissingReceiverError(error)) {
+      throw error;
+    }
+  }
+
+  return sendRuntimeMessage({
+    type: "EXTRACT_PROFILE_FROM_TAB",
+    data: { tabId, debug },
   });
 }
 

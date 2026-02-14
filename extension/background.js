@@ -38,6 +38,7 @@ const OPERATION_STORAGE_PREFIX = 'find_email_op_';
 const OPERATION_ALARM_PREFIX = 'find-email-timeout-';
 const DOMAIN_CACHE_PREFIX = 'company_domain_';
 const PATTERN_CACHE_PREFIX = 'pattern_';
+const CONTENT_SCRIPT_FILE = 'content/linkedin-extractor.js';
 const quotaManager = globalThis?.quotaManager || null;
 const analyticsClient = globalThis?.analytics || null;
 
@@ -119,14 +120,19 @@ async function getAuthContext() {
 // MESSAGE HANDLERS
 // ============================================================================
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return;
 
   console.log('[Extension] Received message:', message.type);
 
   if (message.type === 'FIND_EMAIL') {
-    handleFindEmail(message.data, _sender, sendResponse);
+    handleFindEmail(message.data, sender, sendResponse);
     return true; // Keep channel open for async response
+  }
+
+  if (message.type === 'EXTRACT_PROFILE_FROM_TAB') {
+    handleExtractProfileFromTabMessage(message.data, sender, sendResponse);
+    return true;
   }
 
   if (message.type === 'GET_AUTH_TOKEN') {
@@ -237,6 +243,486 @@ async function canPerformLookup() {
   }
 
   return quotaManager.canPerformLookup();
+}
+
+function isLinkedInProfileUrl(url) {
+  return /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/in\/[^/?#]+/i.test(String(url || ''));
+}
+
+function splitHumanName(value) {
+  const raw = String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (!raw) {
+    return {
+      firstName: '',
+      lastName: '',
+      fullName: '',
+    };
+  }
+
+  const parts = raw.split(' ').filter(Boolean);
+  if (parts.length === 1) {
+    return {
+      firstName: parts[0],
+      lastName: '',
+      fullName: parts[0],
+    };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+    fullName: raw,
+  };
+}
+
+function normalizeExtractorPayload(extracted) {
+  const fullName = String(
+    extracted?.name?.fullName || `${extracted?.name?.firstName || ''} ${extracted?.name?.lastName || ''}`
+  )
+    .trim()
+    .replace(/\s+/g, ' ');
+
+  const split = splitHumanName(fullName);
+  const firstName = String(extracted?.name?.firstName || split.firstName || '').trim();
+  const lastName = String(extracted?.name?.lastName || split.lastName || '').trim();
+  const company = String(extracted?.company?.name || '').trim();
+  const role = String(extracted?.role?.title || '').trim();
+  const profileUrl = String(extracted?.profileUrl || '').trim();
+
+  return {
+    firstName,
+    lastName,
+    fullName: String(`${firstName} ${lastName}`).trim() || fullName,
+    company,
+    role,
+    profileUrl,
+  };
+}
+
+function hasEssentialIdentity(payload) {
+  return Boolean(String(payload?.fullName || '').trim()) && Boolean(String(payload?.company || '').trim());
+}
+
+function isMissingReceiverError(error) {
+  const msg = String(error?.message || error || '').toLowerCase();
+  return (
+    msg.includes('receiving end does not exist') ||
+    msg.includes('could not establish connection') ||
+    msg.includes('message port closed')
+  );
+}
+
+async function ensureContentScriptInjected(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: [CONTENT_SCRIPT_FILE],
+  });
+}
+
+async function extractProfileReadOnlyFromPage(tabId) {
+  const [injection] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: async () => {
+      const profileUrl = window.location.href;
+      const isProfile = /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/in\/[^/?#]+/i.test(profileUrl);
+
+      const clean = (value) =>
+        String(value || '')
+          .replace(/\u00a0/g, ' ')
+          .replace(/\u200B/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const splitName = (value) => {
+        const raw = clean(value);
+        if (!raw) {
+          return { firstName: '', lastName: '', fullName: '' };
+        }
+        const parts = raw.split(' ').filter(Boolean);
+        if (parts.length === 1) {
+          return { firstName: parts[0], lastName: '', fullName: parts[0] };
+        }
+        return {
+          firstName: parts[0],
+          lastName: parts.slice(1).join(' '),
+          fullName: raw,
+        };
+      };
+
+      const pickText = (selectors) => {
+        for (const selector of selectors) {
+          try {
+            const el = document.querySelector(selector);
+            const text = clean(el?.textContent || '');
+            if (text) {
+              return text;
+            }
+          } catch {
+            // Ignore selector failures and keep falling back.
+          }
+        }
+        return '';
+      };
+
+      const parseCompanyFromHeadline = (headline) => {
+        const text = clean(headline);
+        if (!text) return '';
+
+        const patterns = [
+          /\b(?:at|@)\s+([^|,·•]+?)(?:\s*(?:\||,|·|•|$))/i,
+          /^(?:co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|consultant)\s*,\s*([^|,·•]+?)(?:\s*(?:\||·|•|$))/i,
+          /^[^|,·•]+,\s*([^|,·•]+?)(?:\s*(?:\||·|•|$))/i,
+        ];
+
+        for (const pattern of patterns) {
+          const match = text.match(pattern);
+          if (!match?.[1]) continue;
+          const candidate = clean(match[1]);
+          if (candidate) return candidate;
+        }
+
+        return '';
+      };
+
+      const parseRoleFromHeadline = (headline) => {
+        const text = clean(headline);
+        if (!text) return '';
+        const match = text.match(/^(.+?)(?:\s+(?:at|@)\s+|\s*,\s*[^,|]+|\s*\||$)/i);
+        return clean(match?.[1] || '');
+      };
+
+      const parseCompanyFromUrl = (href) => {
+        const match = String(href || '').match(/\/company\/([^/?#]+)/i);
+        if (!match?.[1]) return '';
+        return clean(decodeURIComponent(match[1]).replace(/-/g, ' '));
+      };
+
+      const parseNameFromUrl = () => {
+        const match = window.location.pathname.match(/\/in\/([^/?#]+)/i);
+        if (!match?.[1]) return '';
+        const slug = decodeURIComponent(match[1]);
+        return clean(
+          slug
+            .replace(/[-_]+/g, ' ')
+            .replace(/\d+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/\b\w/g, (c) => c.toUpperCase())
+        );
+      };
+
+      const parseVoyagerPayload = (payload) => {
+        const out = {
+          fullName: '',
+          company: '',
+          role: '',
+        };
+
+        const candidates = [];
+        const push = (obj) => {
+          if (obj && typeof obj === 'object') {
+            candidates.push(obj);
+          }
+        };
+
+        push(payload);
+        push(payload?.data);
+        if (Array.isArray(payload?.elements)) {
+          payload.elements.forEach(push);
+        }
+        if (Array.isArray(payload?.included)) {
+          payload.included.forEach(push);
+        }
+
+        for (const obj of candidates) {
+          if (!out.fullName) {
+            const full = clean(obj?.name || `${clean(obj?.firstName)} ${clean(obj?.lastName)}`);
+            if (full) out.fullName = full;
+          }
+          if (!out.role) {
+            const role = clean(obj?.headline || obj?.occupation || obj?.title);
+            if (role) out.role = role;
+          }
+          if (!out.company) {
+            const company = clean(obj?.companyName || obj?.company?.name || obj?.organizationName);
+            if (company) out.company = company;
+          }
+        }
+
+        if (!out.company && out.role) {
+          out.company = parseCompanyFromHeadline(out.role);
+        }
+
+        return out;
+      };
+
+      const fetchVoyagerProfile = async () => {
+        const identityMatch = window.location.pathname.match(/\/in\/([^/?#]+)/i);
+        if (!identityMatch?.[1]) return null;
+
+        const memberIdentity = decodeURIComponent(identityMatch[1]);
+        const tokenMatch = document.cookie.match(/(?:^|;\s*)JSESSIONID="?([^\";]+)"?/);
+        const csrfToken = tokenMatch?.[1] ? tokenMatch[1].replace(/^"|"$/g, '') : '';
+
+        const headers = {
+          accept: 'application/json',
+          'x-restli-protocol-version': '2.0.0',
+        };
+        if (csrfToken) {
+          headers['csrf-token'] = csrfToken;
+        }
+
+        const endpoints = [
+          `https://www.linkedin.com/voyager/api/identity/profileView/${encodeURIComponent(memberIdentity)}`,
+          `https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${encodeURIComponent(memberIdentity)}`,
+        ];
+
+        for (const endpoint of endpoints) {
+          try {
+            const response = await fetch(endpoint, {
+              method: 'GET',
+              credentials: 'include',
+              headers,
+            });
+            if (!response.ok) continue;
+            const payload = await response.json();
+            const parsed = parseVoyagerPayload(payload);
+            if (parsed.fullName || parsed.company || parsed.role) {
+              return parsed;
+            }
+          } catch {
+            // Keep trying alternative endpoints.
+          }
+        }
+
+        return null;
+      };
+
+      if (!isProfile) {
+        return {
+          success: false,
+          error: 'Not on a LinkedIn profile page',
+          data: {
+            name: { firstName: null, lastName: null, fullName: null, source: 'readonly-dom', confidence: 0 },
+            company: { name: null, source: 'readonly-dom', confidence: 0 },
+            role: { title: null, source: 'readonly-dom', confidence: 0 },
+            profileUrl,
+          },
+        };
+      }
+
+      let fullName = pickText([
+        'h1.text-heading-xlarge',
+        'main section:first-of-type h1',
+        'main h1',
+        'h1',
+      ]);
+
+      const ogTitle = clean(document.querySelector('meta[property="og:title"]')?.content || '');
+      const titleName = clean(document.title.split('|')[0]?.split(' - ')[0] || '');
+      if (!fullName && ogTitle) {
+        fullName = clean(ogTitle.split(' - ')[0]?.split('|')[0] || '');
+      }
+      if (!fullName && titleName) {
+        fullName = titleName;
+      }
+      if (!fullName) {
+        fullName = parseNameFromUrl();
+      }
+
+      let headline = pickText([
+        'main section:first-of-type div.text-body-medium.break-words',
+        'div[class*="pv-text-details__left-panel"] div.text-body-medium.break-words',
+        'div.text-body-medium.break-words',
+      ]);
+      if (!headline) {
+        headline = clean(document.querySelector('meta[property="og:description"]')?.content || '');
+      }
+
+      let company = parseCompanyFromHeadline(headline);
+      let role = parseRoleFromHeadline(headline);
+
+      if (!company) {
+        const companyLink = document.querySelector(
+          [
+            'main section:first-of-type a[href*="/company/"]',
+            'section#experience a[href*="/company/"]',
+            'section[id*="experience"] a[href*="/company/"]',
+          ].join(', ')
+        );
+        const fromText = clean(companyLink?.textContent || '');
+        company = fromText || parseCompanyFromUrl(companyLink?.href || '');
+      }
+
+      if (!company) {
+        const experienceSection = document.querySelector('section#experience, section[id*="experience"]');
+        const firstExperienceRow = experienceSection?.querySelector('li, div[class*="pvs-list__item"]');
+        const rowText = clean(firstExperienceRow?.innerText || '');
+        if (rowText) {
+          const lines = rowText
+            .split('\n')
+            .map((line) => clean(line))
+            .filter(Boolean);
+          for (const line of lines) {
+            if (
+              /\b(university|college|school|institute|education|followers|connections|present)\b/i.test(line)
+            ) {
+              continue;
+            }
+            if (line.length > 1 && line.length <= 100 && !/\b(full[- ]?time|part[- ]?time|self[- ]?employed)\b/i.test(line)) {
+              company = line;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!fullName || !company) {
+        const voyager = await fetchVoyagerProfile();
+        if (voyager?.fullName && !fullName) fullName = voyager.fullName;
+        if (voyager?.company && !company) company = voyager.company;
+        if (voyager?.role && !role) role = voyager.role;
+      }
+
+      const split = splitName(fullName);
+      const hasUsefulData = Boolean(split.fullName || company);
+      return {
+        success: hasUsefulData,
+        data: {
+          name: {
+            firstName: split.firstName || null,
+            lastName: split.lastName || null,
+            fullName: split.fullName || null,
+            source: 'readonly-dom',
+            confidence: split.fullName ? 0.86 : 0,
+          },
+          company: {
+            name: company || null,
+            source: 'readonly-dom',
+            confidence: company ? 0.78 : 0,
+          },
+          role: {
+            title: role || null,
+            source: 'readonly-dom',
+            confidence: role ? 0.7 : 0,
+          },
+          profileUrl,
+          extractionTimestamp: new Date().toISOString(),
+        },
+        error: hasUsefulData ? null : 'Could not extract profile data from read-only DOM fallback',
+      };
+    },
+  });
+
+  return injection?.result || null;
+}
+
+async function requestProfileExtraction(tabId, options = {}) {
+  const includeDebug = options?.debug === true;
+
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'EXTRACT_PROFILE',
+      debug: includeDebug,
+    });
+    if (response) {
+      return response;
+    }
+  } catch (error) {
+    if (!isMissingReceiverError(error)) {
+      throw error;
+    }
+    console.warn('[Extension] EXTRACT_PROFILE receiver missing. Injecting content script and retrying.', {
+      tabId,
+      error: error?.message || String(error),
+    });
+  }
+
+  await ensureContentScriptInjected(tabId);
+
+  return chrome.tabs.sendMessage(tabId, {
+    type: 'EXTRACT_PROFILE',
+    debug: includeDebug,
+  });
+}
+
+async function handleExtractProfileFromTabMessage(data, sender, sendResponse) {
+  try {
+    const tabId = Number.isFinite(data?.tabId)
+      ? data.tabId
+      : Number.isFinite(sender?.tab?.id)
+      ? sender.tab.id
+      : null;
+
+    if (!Number.isFinite(tabId)) {
+      sendResponse({
+        success: false,
+        error: 'Missing tab id for profile extraction',
+      });
+      return;
+    }
+
+    const tab = await chrome.tabs.get(tabId);
+    if (!isLinkedInProfileUrl(tab?.url)) {
+      sendResponse({
+        success: false,
+        error: 'Not on a LinkedIn profile page',
+      });
+      return;
+    }
+
+    let response = null;
+    let primaryError = null;
+    try {
+      response = await withTimeout(
+        requestProfileExtraction(tabId, { debug: data?.debug === true }),
+        CONFIG.STAGE_TIMEOUT_MS.extractProfile,
+        'Profile extraction'
+      );
+    } catch (error) {
+      primaryError = error;
+      console.warn('[Extension] Primary profile extraction failed. Falling back to read-only extraction.', {
+        tabId,
+        error: error?.message || String(error),
+      });
+    }
+
+    const normalizedPrimary = normalizeExtractorPayload(response?.data || {});
+    if (primaryError || !response?.success || !hasEssentialIdentity(normalizedPrimary)) {
+      const readOnly = await withTimeout(
+        extractProfileReadOnlyFromPage(tabId),
+        CONFIG.STAGE_TIMEOUT_MS.extractProfile,
+        'Read-only profile extraction'
+      );
+
+      if (readOnly?.success && readOnly?.data) {
+        response = readOnly;
+      } else if (primaryError && !response) {
+        response = {
+          success: false,
+          error: primaryError?.message || 'Failed to extract profile data',
+          data: readOnly?.data || null,
+        };
+      }
+    }
+
+    if (!response?.data) {
+      sendResponse({
+        success: false,
+        error: response?.error || 'No response from LinkedIn extractor',
+      });
+      return;
+    }
+
+    sendResponse(response);
+  } catch (error) {
+    console.error('[Extension] Failed EXTRACT_PROFILE_FROM_TAB:', error);
+    sendResponse({
+      success: false,
+      error: error?.message || 'Failed to extract profile from tab',
+    });
+  }
 }
 
 async function trackApiCost(cost) {
@@ -529,53 +1015,73 @@ async function extractProfileFromTab(tabId) {
     throw new Error('Missing tab id for profile extraction');
   }
 
-  const extractorResponse = await withTimeout(
-    chrome.tabs.sendMessage(tabId, { type: 'EXTRACT_PROFILE' }),
-    CONFIG.STAGE_TIMEOUT_MS.extractProfile,
-    'Profile extraction'
-  );
+  const tab = await chrome.tabs.get(tabId);
+  if (!isLinkedInProfileUrl(tab?.url)) {
+    throw new Error('Not on a LinkedIn profile page');
+  }
+
+  let extractorResponse = null;
+  let primaryError = null;
+  try {
+    extractorResponse = await withTimeout(
+      requestProfileExtraction(tabId, { debug: false }),
+      CONFIG.STAGE_TIMEOUT_MS.extractProfile,
+      'Profile extraction'
+    );
+  } catch (error) {
+    primaryError = error;
+  }
+
+  let normalized = normalizeExtractorPayload(extractorResponse?.data || {});
+  if (primaryError || !extractorResponse?.success || !hasEssentialIdentity(normalized)) {
+    const readOnly = await withTimeout(
+      extractProfileReadOnlyFromPage(tabId),
+      CONFIG.STAGE_TIMEOUT_MS.extractProfile,
+      'Read-only profile extraction'
+    );
+    if (readOnly?.data) {
+      extractorResponse = readOnly;
+      normalized = normalizeExtractorPayload(readOnly.data);
+    } else if (primaryError && !extractorResponse) {
+      throw new Error(primaryError?.message || 'Failed to extract LinkedIn profile data');
+    }
+  }
 
   if (!extractorResponse?.success || !extractorResponse?.data) {
     throw new Error(extractorResponse?.error || 'Failed to extract LinkedIn profile data');
   }
 
-  const extracted = extractorResponse.data;
-
   return {
-    firstName: extracted?.name?.firstName || '',
-    lastName: extracted?.name?.lastName || '',
-    company: extracted?.company?.name || '',
-    role: extracted?.role?.title || '',
-    profileUrl: extracted?.profileUrl || '',
+    firstName: normalized.firstName || '',
+    lastName: normalized.lastName || '',
+    company: normalized.company || '',
+    role: normalized.role || '',
+    profileUrl: normalized.profileUrl || '',
   };
 }
 
 async function normalizePipelineInput(data, senderTabId) {
-  const hasDirectData =
-    data &&
-    typeof data.firstName === 'string' &&
-    typeof data.lastName === 'string' &&
-    typeof data.company === 'string';
-
-  if (hasDirectData) {
-    return {
-      firstName: String(data.firstName).trim(),
-      lastName: String(data.lastName).trim(),
-      company: String(data.company).trim(),
-      role: typeof data.role === 'string' ? data.role.trim() : '',
-      profileUrl: typeof data.profileUrl === 'string' ? data.profileUrl.trim() : '',
-      tabId: Number.isFinite(senderTabId) ? senderTabId : Number.isFinite(data.tabId) ? data.tabId : null,
-    };
-  }
-
   const tabId = Number.isFinite(data?.tabId) ? data.tabId : senderTabId;
   if (!Number.isFinite(tabId)) {
-    throw new Error('Missing profile data and active LinkedIn tab id');
+    throw new Error('Missing active LinkedIn tab id');
   }
 
-  const extracted = await extractProfileFromTab(tabId);
+  const firstName = String(data?.firstName || '').trim();
+  const lastName = String(data?.lastName || '').trim();
+  const company = String(data?.company || '').trim();
+  const role = typeof data?.role === 'string' ? data.role.trim() : '';
+  const profileUrl = typeof data?.profileUrl === 'string' ? data.profileUrl.trim() : '';
+
+  if (!firstName || !company) {
+    throw new Error('Profile context incomplete. Refresh and confirm name + company before finding email.');
+  }
+
   return {
-    ...extracted,
+    firstName,
+    lastName,
+    company,
+    role,
+    profileUrl,
     tabId,
   };
 }
