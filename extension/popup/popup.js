@@ -2,7 +2,7 @@
 console.log('[Popup] Script loaded');
 
 const CONFIG = {
-  AUTH_BASE_URL: 'http://localhost:3000',
+  AUTH_BASE_URL: 'https://www.useellyn.com',
 };
 
 // DOM elements
@@ -58,7 +58,8 @@ async function checkAuth() {
 }
 
 function handleSignIn() {
-  const authUrl = `${CONFIG.AUTH_BASE_URL}/auth/login?source=extension&extensionId=${chrome.runtime.id}`;
+  const authBase = String(CONFIG.AUTH_BASE_URL || '').replace(/\/+$/, '');
+  const authUrl = `${authBase}/auth/login?source=extension&extensionId=${chrome.runtime.id}`;
   chrome.tabs.create({ url: authUrl });
   window.close();
 }

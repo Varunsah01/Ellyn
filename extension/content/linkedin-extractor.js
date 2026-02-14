@@ -127,6 +127,17 @@ class LinkedInExtractor {
       throw new Error('Not on a LinkedIn profile page');
     }
 
+    const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+    const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
+    const nameH1 = document.querySelector('h1.text-heading-xlarge');
+    this.log('DEBUG extractor context', {
+      url: window.location.href,
+      readyState: document.readyState,
+      jsonLdScripts: jsonLdScripts.length,
+      ogTitle: this.cleanText(ogTitle),
+      h1Text: this.cleanText(nameH1?.textContent || ''),
+    });
+
     this.log('Starting profile extraction');
     try {
       await this.waitForDomReady();
@@ -290,12 +301,17 @@ class LinkedInExtractor {
   // Name Extraction ----------------------------------------------------------
 
   async extractName() {
-    this.log('Extracting name - attempting JSON-LD');
+    this.log('=== Starting name extraction ===');
+    this.log('Tier 1: Attempting JSON-LD extraction');
     const jsonLd = this.extractFromJsonLd();
-    if (jsonLd?.firstName && (jsonLd?.lastName || jsonLd?.fullName)) {
-      const parsed = this.parseHumanName(jsonLd.fullName || `${jsonLd.firstName} ${jsonLd.lastName || ''}`);
+    if (jsonLd) {
+      const parsed = this.parseHumanName(jsonLd.fullName || `${jsonLd.firstName || ''} ${jsonLd.lastName || ''}`);
       if (parsed.firstName) {
-        this.log('Name extracted from JSON-LD', parsed);
+        this.log('Name extracted from JSON-LD', {
+          firstName: parsed.firstName,
+          lastName: parsed.lastName,
+          fullName: parsed.fullName,
+        });
         return {
           firstName: parsed.firstName,
           lastName: parsed.lastName,
@@ -306,7 +322,7 @@ class LinkedInExtractor {
       }
     }
 
-    this.log('Extracting name - attempting Open Graph');
+    this.log('Tier 2: Attempting Open Graph extraction');
     const og = this.extractFromOpenGraph();
     if (og?.fullName) {
       const parsed = this.parseHumanName(og.fullName);
@@ -322,7 +338,7 @@ class LinkedInExtractor {
       }
     }
 
-    this.log('Extracting name - attempting DOM selectors');
+    this.log('Tier 3: Attempting DOM extraction');
     const dom = this.extractFromDom();
     if (dom?.fullName) {
       const parsed = this.parseHumanName(dom.fullName);
@@ -361,42 +377,90 @@ class LinkedInExtractor {
   // Shared Tier Helpers ------------------------------------------------------
 
   extractFromJsonLd() {
-    const person = this.getPersonNodeFromJsonLd();
-    if (!person) {
-      this.log('JSON-LD: no Person node found');
-      return null;
+    this.log('Attempting JSON-LD extraction');
+
+    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+    this.log(`Found ${scripts.length} JSON-LD script tags`);
+
+    const expandNodes = (value) => {
+      const out = [];
+      const stack = [value];
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current) continue;
+        if (Array.isArray(current)) {
+          current.forEach((item) => stack.push(item));
+          continue;
+        }
+        if (typeof current === 'object') {
+          out.push(current);
+          if (Array.isArray(current['@graph'])) current['@graph'].forEach((item) => stack.push(item));
+          if (Array.isArray(current.graph)) current.graph.forEach((item) => stack.push(item));
+          if (current.mainEntity) stack.push(current.mainEntity);
+          if (Array.isArray(current.mainEntityOfPage)) current.mainEntityOfPage.forEach((item) => stack.push(item));
+          if (current.mainEntityOfPage && typeof current.mainEntityOfPage === 'object') stack.push(current.mainEntityOfPage);
+        }
+      }
+      return out;
+    };
+
+    for (let i = 0; i < scripts.length; i += 1) {
+      try {
+        const raw = scripts[i].textContent?.trim() || '';
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        const nodes = expandNodes(parsed);
+
+        for (const node of nodes) {
+          const atType = node?.['@type'];
+          const isPerson =
+            atType === 'Person' || (Array.isArray(atType) && atType.some((item) => String(item).toLowerCase() === 'person'));
+          if (!isPerson) continue;
+
+          const givenName = this.cleanText(node.givenName || '');
+          const familyName = this.cleanText(node.familyName || '');
+          const rawName = this.cleanText(node.name || '');
+          const fullName = rawName || [givenName, familyName].filter(Boolean).join(' ');
+
+          let company = this.extractOrganizationName(node.worksFor);
+          if (!company) {
+            company = this.cleanText(node.affiliation?.name || node.affiliation || '');
+          }
+
+          this.log('Found Person schema in JSON-LD', {
+            scriptIndex: i,
+            hasName: Boolean(fullName),
+            hasGivenName: Boolean(givenName),
+            hasFamilyName: Boolean(familyName),
+            hasWorksFor: Boolean(company),
+          });
+
+          if (fullName || (givenName && familyName)) {
+            return {
+              firstName: givenName || null,
+              lastName: familyName || null,
+              fullName: fullName || null,
+              company: company || null,
+              headline: this.cleanText(node.jobTitle || ''),
+              location: this.extractJsonLdLocation(node) || null,
+              url: this.cleanText(node.url || ''),
+            };
+          }
+        }
+      } catch (error) {
+        this.log(`Failed to parse JSON-LD script ${i}`, {
+          error: error?.message || 'Unknown parse error',
+        });
+      }
     }
 
-    const givenName = this.cleanText(person.givenName);
-    const familyName = this.cleanText(person.familyName);
-    const rawName = this.cleanText(person.name);
-    const fullName = rawName || [givenName, familyName].filter(Boolean).join(' ');
-
-    const worksFor = this.extractOrganizationName(person.worksFor);
-    const headline = this.cleanText(person.jobTitle);
-    const location = this.extractJsonLdLocation(person);
-
-    this.log('JSON-LD parsed', {
-      hasGivenName: Boolean(givenName),
-      hasFamilyName: Boolean(familyName),
-      hasFullName: Boolean(fullName),
-      hasWorksFor: Boolean(worksFor),
-      hasHeadline: Boolean(headline),
-      hasLocation: Boolean(location),
-    });
-
-    return {
-      firstName: givenName || null,
-      lastName: familyName || null,
-      fullName: fullName || null,
-      company: worksFor || null,
-      headline: headline || null,
-      location: location || null,
-      url: this.cleanText(person.url) || null,
-    };
+    this.log('No valid Person data found in JSON-LD');
+    return null;
   }
 
   extractFromOpenGraph() {
+    this.log('Attempting Open Graph extraction');
+
     const ogTitle = this.cleanText(
       document.querySelector('meta[property="og:title"]')?.content ||
         document.querySelector('meta[name="og:title"]')?.content ||
@@ -409,20 +473,26 @@ class LinkedInExtractor {
     );
 
     if (!ogTitle) {
-      this.log('Open Graph: og:title not found');
+      this.log('Open Graph title not found');
       return null;
     }
 
-    // Example: "John Doe - Software Engineer | LinkedIn"
-    const titleWithoutLinkedIn = ogTitle.replace(/\|\s*LinkedIn.*$/i, '').trim();
-    const [rawName, ...rest] = titleWithoutLinkedIn.split(' - ');
-    const fullName = this.cleanNameCandidate(rawName);
-    const headline = this.cleanText(rest.join(' - '));
+    this.log('Found Open Graph title', { ogTitle });
+
+    const titleWithoutLinkedIn = ogTitle.replace(/\s*\|\s*LinkedIn.*$/i, '').trim();
+    const parts = titleWithoutLinkedIn.split(' - ');
+    if (parts.length === 0) {
+      this.log('Could not parse Open Graph title');
+      return null;
+    }
+
+    const fullName = this.cleanNameCandidate(parts[0]);
+    const headline = parts.length > 1 ? this.cleanText(parts.slice(1).join(' - ')) : '';
 
     this.log('Open Graph parsed', {
       fullName,
-      hasHeadline: Boolean(headline),
-      hasDescription: Boolean(ogDescription),
+      headline,
+      ogDescriptionPreview: ogDescription.slice(0, 100),
     });
 
     return {
@@ -433,9 +503,12 @@ class LinkedInExtractor {
   }
 
   extractFromDom() {
+    this.log('Attempting DOM extraction (last resort)');
+
     const nameSelectors = [
       // Modern LinkedIn variants
       'h1.text-heading-xlarge',
+      'div.ph5.pb5 h1',
       'div.mt2.relative h1',
       '[data-generated-suggestion-target] h1',
       'div[class*="pv-text-details"] h1',
@@ -449,6 +522,9 @@ class LinkedInExtractor {
       'main h1',
     ];
 
+    let nameText = null;
+    let nameSelector = null;
+
     for (const selector of nameSelectors) {
       try {
         const element = document.querySelector(selector);
@@ -456,12 +532,19 @@ class LinkedInExtractor {
         this.logSelectorAttempt('name', selector, element, text, null);
 
         if (text && text.length > 2) {
-          this.log('DOM name found', { selector, text });
-          return { fullName: text };
+          nameText = text;
+          nameSelector = selector;
+          this.log(`Name found with selector: ${selector}`, { text });
+          break;
         }
       } catch (error) {
         this.logSelectorAttempt('name', selector, null, '', error);
       }
+    }
+
+    if (nameText) {
+      this.log('DOM extraction name result', { selector: nameSelector, nameText });
+      return { fullName: nameText };
     }
 
     this.log('DOM: no name found');
@@ -471,7 +554,8 @@ class LinkedInExtractor {
   // Company Extraction -------------------------------------------------------
 
   async extractCompany() {
-    this.log('Extracting company - attempting JSON-LD');
+    this.log('=== Starting company extraction ===');
+    this.log('Tier 1: Attempting JSON-LD for company');
     const jsonLd = this.extractFromJsonLd();
     if (jsonLd?.company && this.isLikelyCompany(jsonLd.company)) {
       this.log('Company extracted from JSON-LD', { company: jsonLd.company });
@@ -482,7 +566,7 @@ class LinkedInExtractor {
       };
     }
 
-    this.log('Extracting company - attempting Experience section');
+    this.log('Tier 2: Attempting Experience section extraction');
     const experience = this.extractCurrentExperienceEntry();
     if (experience?.company && this.isLikelyCompany(experience.company)) {
       this.log('Company extracted from Experience section', { company: experience.company });
@@ -493,7 +577,7 @@ class LinkedInExtractor {
       };
     }
 
-    this.log('Extracting company - attempting top-card affiliations');
+    this.log('Tier 3: Attempting top-card extraction');
     const topCardCompany = this.extractCompanyFromTopCardAffiliations();
     if (topCardCompany && this.isLikelyCompany(topCardCompany)) {
       this.log('Company extracted from top-card affiliations', { company: topCardCompany });
@@ -504,7 +588,7 @@ class LinkedInExtractor {
       };
     }
 
-    this.log('Extracting company - attempting headline parsing');
+    this.log('Tier 4: Attempting headline parsing for company');
     const headlineCompany = this.extractCompanyFromHeadline();
     if (headlineCompany && this.isLikelyCompany(headlineCompany)) {
       this.log('Company extracted from headline', { company: headlineCompany });
@@ -515,7 +599,7 @@ class LinkedInExtractor {
       };
     }
 
-    this.log('Company extraction failed across all tiers');
+    this.log('No company found (may be student/freelancer)');
     return {
       name: null,
       source: 'not-found',
@@ -912,7 +996,7 @@ class LinkedInExtractor {
         const ariaLabels = entry.querySelectorAll('[aria-label]');
         for (const node of ariaLabels) {
           const label = node.getAttribute('aria-label') || '';
-          const match = label.match(/at\s+(.+?)(?:\s+[·•]|\s*\||\s*$)/i);
+          const match = label.match(/at\s+(.+?)(?:\s+[\u00B7\u2022]|\s*\||\s*$)/i);
           if (match?.[1]) {
             companyCandidate = this.cleanCompanyCandidate(match[1]);
             if (companyCandidate) {

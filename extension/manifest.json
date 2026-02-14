@@ -3,7 +3,7 @@
   "name": "Ellyn Email Finder",
   "version": "1.0.0",
   "description": "Find professional emails on LinkedIn with 95%+ accuracy",
-  "permissions": ["storage", "unlimitedStorage", "activeTab", "tabs", "sidePanel", "scripting"],
+  "permissions": ["storage", "unlimitedStorage", "activeTab", "tabs", "sidePanel", "scripting", "alarms"],
   "host_permissions": [
     "https://linkedin.com/*",
     "https://*.linkedin.com/*",
@@ -31,7 +31,6 @@
   },
   "action": {
     "default_title": "Ellyn Email Finder",
-    "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "assets/icons/Ellynlogo.png",
       "48": "assets/icons/Ellynlogo.png",

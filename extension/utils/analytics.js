@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 const ANALYTICS_DEFAULTS = {
-  apiBaseUrl: 'http://localhost:3000',
+  apiBaseUrl: 'https://www.useellyn.com',
   statsCacheTtlMs: 60 * 1000,
   timeoutMs: 8000,
 };

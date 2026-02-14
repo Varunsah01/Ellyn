@@ -15,7 +15,7 @@ try {
 
 // Configuration
 const CONFIG = {
-  API_BASE_URL: 'http://localhost:3000', // Change to production URL later
+  API_BASE_URL: 'https://www.useellyn.com',
   CACHE_DURATION_MS: 30 * 24 * 60 * 60 * 1000, // 30 days
   COST_WINDOW_MS: 30 * 24 * 60 * 60 * 1000, // 30 days rolling cost window
   PIPELINE_TIMEOUT_MINUTES: 2,
@@ -42,6 +42,21 @@ const CONTENT_SCRIPT_FILE = 'content/linkedin-extractor.js';
 const quotaManager = globalThis?.quotaManager || null;
 const analyticsClient = globalThis?.analytics || null;
 
+async function configureSidePanelBehavior() {
+  if (!chrome.sidePanel?.setPanelBehavior) {
+    return;
+  }
+
+  try {
+    await chrome.sidePanel.setPanelBehavior({
+      openPanelOnActionClick: true,
+    });
+    console.log('[Extension] Side panel action-click behavior enabled');
+  } catch (error) {
+    console.warn('[Extension] Failed to configure side panel behavior:', error);
+  }
+}
+
 if (quotaManager?.config) {
   quotaManager.config.apiBaseUrl = CONFIG.API_BASE_URL;
 }
@@ -49,6 +64,12 @@ if (quotaManager?.config) {
 if (analyticsClient?.config) {
   analyticsClient.config.apiBaseUrl = CONFIG.API_BASE_URL;
 }
+
+void configureSidePanelBehavior();
+
+chrome.runtime.onInstalled.addListener(() => {
+  void configureSidePanelBehavior();
+});
 
 // ============================================================================
 // AUTH STATE HELPERS
@@ -131,17 +152,31 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'EXTRACT_PROFILE_FROM_TAB') {
-    handleExtractProfileFromTabMessage(message.data, sender, sendResponse);
+    const payload = message.data && typeof message.data === 'object' ? message.data : message;
+    handleExtractProfileFromTabMessage(payload, sender, sendResponse);
     return true;
   }
 
   if (message.type === 'GET_AUTH_TOKEN') {
-    getAuthToken().then(sendResponse);
+    getAuthToken()
+      .then((token) => sendResponse(token))
+      .catch((error) => {
+        console.error('[Extension] GET_AUTH_TOKEN failed:', error);
+        sendResponse('');
+      });
     return true;
   }
 
   if (message.type === 'CHECK_QUOTA') {
-    checkQuota().then(sendResponse);
+    checkQuota()
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        console.error('[Extension] CHECK_QUOTA failed:', error);
+        sendResponse({
+          allowed: false,
+          error: error?.message || 'Failed to fetch quota',
+        });
+      });
     return true;
   }
 
@@ -175,32 +210,36 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   }
 });
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (!alarm?.name || !alarm.name.startsWith(OPERATION_ALARM_PREFIX)) {
-    return;
-  }
+if (chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (!alarm?.name || !alarm.name.startsWith(OPERATION_ALARM_PREFIX)) {
+      return;
+    }
 
-  const operationId = alarm.name.replace(OPERATION_ALARM_PREFIX, '');
-  if (!operationId) {
-    return;
-  }
+    const operationId = alarm.name.replace(OPERATION_ALARM_PREFIX, '');
+    if (!operationId) {
+      return;
+    }
 
-  const stateKey = `${OPERATION_STORAGE_PREFIX}${operationId}`;
-  const stored = await chrome.storage.local.get([stateKey]);
-  const state = stored?.[stateKey];
+    const stateKey = `${OPERATION_STORAGE_PREFIX}${operationId}`;
+    const stored = await chrome.storage.local.get([stateKey]);
+    const state = stored?.[stateKey];
 
-  if (state?.status === 'running') {
-    await chrome.storage.local.set({
-      [stateKey]: {
-        ...state,
-        status: 'timed_out',
-        completedAt: Date.now(),
-        error: 'Operation timed out before completion',
-      },
-    });
-    console.warn('[Extension] FIND_EMAIL operation timed out via alarm', { operationId });
-  }
-});
+    if (state?.status === 'running') {
+      await chrome.storage.local.set({
+        [stateKey]: {
+          ...state,
+          status: 'timed_out',
+          completedAt: Date.now(),
+          error: 'Operation timed out before completion',
+        },
+      });
+      console.warn('[Extension] FIND_EMAIL operation timed out via alarm', { operationId });
+    }
+  });
+} else {
+  console.warn('[Extension] chrome.alarms API unavailable. Operation timeout alarms disabled.');
+}
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -278,6 +317,8 @@ function splitHumanName(value) {
 }
 
 function normalizeExtractorPayload(extracted) {
+  console.log('[Background] Raw extractor payload:', extracted);
+
   const fullName = String(
     extracted?.name?.fullName || `${extracted?.name?.firstName || ''} ${extracted?.name?.lastName || ''}`
   )
@@ -291,7 +332,7 @@ function normalizeExtractorPayload(extracted) {
   const role = String(extracted?.role?.title || '').trim();
   const profileUrl = String(extracted?.profileUrl || '').trim();
 
-  return {
+  const normalized = {
     firstName,
     lastName,
     fullName: String(`${firstName} ${lastName}`).trim() || fullName,
@@ -299,6 +340,9 @@ function normalizeExtractorPayload(extracted) {
     role,
     profileUrl,
   };
+
+  console.log('[Background] Normalized payload:', normalized);
+  return normalized;
 }
 
 function hasEssentialIdentity(payload) {
@@ -715,7 +759,11 @@ async function handleExtractProfileFromTabMessage(data, sender, sendResponse) {
       return;
     }
 
-    sendResponse(response);
+    const normalized = normalizeExtractorPayload(response.data);
+    sendResponse({
+      ...response,
+      normalized,
+    });
   } catch (error) {
     console.error('[Extension] Failed EXTRACT_PROFILE_FROM_TAB:', error);
     sendResponse({
@@ -917,9 +965,11 @@ async function startOperation(operationId, context) {
     },
   });
 
-  chrome.alarms.create(getOperationAlarmName(operationId), {
-    delayInMinutes: CONFIG.PIPELINE_TIMEOUT_MINUTES,
-  });
+  if (chrome.alarms?.create) {
+    chrome.alarms.create(getOperationAlarmName(operationId), {
+      delayInMinutes: CONFIG.PIPELINE_TIMEOUT_MINUTES,
+    });
+  }
 }
 
 async function updateOperation(operationId, patch) {
@@ -949,10 +999,12 @@ async function completeOperation(operationId, status, patch) {
     },
   });
 
-  try {
-    await chrome.alarms.clear(getOperationAlarmName(operationId));
-  } catch (error) {
-    console.warn('[Extension] Failed clearing operation alarm:', error);
+  if (chrome.alarms?.clear) {
+    try {
+      await chrome.alarms.clear(getOperationAlarmName(operationId));
+    } catch (error) {
+      console.warn('[Extension] Failed clearing operation alarm:', error);
+    }
   }
 }
 

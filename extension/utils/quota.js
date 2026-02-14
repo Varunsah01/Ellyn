@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 const QUOTA_DEFAULTS = {
-  apiBaseUrl: 'http://localhost:3000',
+  apiBaseUrl: 'https://www.useellyn.com',
   statusCacheTtlMs: 60 * 1000,
   upgradeUrl: 'https://www.useellyn.com/pricing',
 };

@@ -1,6 +1,6 @@
 const AUTH_REDIRECT_URL = "https://www.useellyn.com/auth";
 const PRICING_URL = "https://www.useellyn.com/pricing";
-const API_BASE_URL = "http://localhost:3000";
+const API_BASE_URL = "https://www.useellyn.com";
 const AUTH_STORAGE_KEYS = ["isAuthenticated", "user", "auth_token"];
 const SAVED_CONTACTS_KEY = "saved_contact_results";
 const FEEDBACK_QUEUE_KEY = "feedback_queue";
@@ -303,6 +303,7 @@ async function refreshProfileContext(reason = "auto") {
   if (!emailFinderState.isAuthenticated) return;
   if (emailFinderState.profileRefreshInFlight) return;
 
+  console.log("[Sidepanel] Refreshing profile context", { reason });
   emailFinderState.profileRefreshInFlight = true;
   setProfileRefreshButtonBusy(true);
 
@@ -310,6 +311,7 @@ async function refreshProfileContext(reason = "auto") {
     const [activeTab] = await queryTabs({ active: true, currentWindow: true });
     const tabId = Number.isFinite(activeTab?.id) ? activeTab.id : null;
     const tabUrl = typeof activeTab?.url === "string" ? activeTab.url : "";
+    console.log("[Sidepanel] Active tab for profile context", { tabId, tabUrl });
 
     if (!Number.isFinite(tabId) || !isLinkedInProfile(tabUrl)) {
       emailFinderState.lastProfileKey = "";
@@ -324,6 +326,7 @@ async function refreshProfileContext(reason = "auto") {
     }
 
     const extractorResponse = await requestProfileExtraction(tabId, reason === "manual");
+    console.log("[Sidepanel] Extraction response", extractorResponse);
     if (!extractorResponse?.success || !extractorResponse?.data) {
       const failure = String(extractorResponse?.error || "");
       const isNeutral = /not on a linkedin profile page/i.test(failure);
@@ -341,17 +344,17 @@ async function refreshProfileContext(reason = "auto") {
       return;
     }
 
-    const data = extractorResponse.data;
-    const firstName = String(data?.name?.firstName || "").trim();
-    const lastName = String(data?.name?.lastName || "").trim();
-    const fullName = String(data?.name?.fullName || [firstName, lastName].filter(Boolean).join(" ")).trim();
-    const company = String(data?.company?.name || "").trim();
-    const role = String(data?.role?.title || "").trim();
-    const profileUrl = String(data?.profileUrl || tabUrl).trim();
+    const normalized = normalizeProfileResponseData(extractorResponse, tabUrl);
+    const firstName = normalized.firstName;
+    const lastName = normalized.lastName;
+    const fullName = normalized.fullName;
+    const company = normalized.company;
+    const role = normalized.role;
+    const profileUrl = normalized.profileUrl;
     const sourceSummary = [
-      data?.name?.source ? `name:${data.name.source}` : "",
-      data?.company?.source ? `company:${data.company.source}` : "",
-      data?.role?.source ? `role:${data.role.source}` : "",
+      normalized.nameSource ? `name:${normalized.nameSource}` : "",
+      normalized.companySource ? `company:${normalized.companySource}` : "",
+      normalized.roleSource ? `role:${normalized.roleSource}` : "",
     ]
       .filter(Boolean)
       .join(", ");
@@ -382,6 +385,7 @@ async function refreshProfileContext(reason = "auto") {
     }
 
     renderProfileContext(nextContext, tone, status);
+    console.log("[Sidepanel] Profile context updated", nextContext);
     emailFinderState.lastProfileKey = buildProfileContextKey(tabId, profileUrl || tabUrl);
   } catch (error) {
     console.warn("[Sidepanel] Failed refreshing profile context:", error);
@@ -390,6 +394,33 @@ async function refreshProfileContext(reason = "auto") {
     emailFinderState.profileRefreshInFlight = false;
     setProfileRefreshButtonBusy(false);
   }
+}
+
+function normalizeProfileResponseData(response, fallbackUrl = "") {
+  const data = response?.data || {};
+  const normalized = response?.normalized || {};
+
+  const firstName = String(normalized.firstName || data?.name?.firstName || "").trim();
+  const lastName = String(normalized.lastName || data?.name?.lastName || "").trim();
+  const fullName = String(normalized.fullName || data?.name?.fullName || [firstName, lastName].filter(Boolean).join(" ")).trim();
+  const company = String(normalized.company || data?.company?.name || data?.company || "").trim();
+  const role = String(normalized.role || data?.role?.title || data?.role || "").trim();
+  const profileUrl = String(normalized.profileUrl || data?.profileUrl || fallbackUrl || "").trim();
+  const nameSource = String(data?.name?.source || "").trim();
+  const companySource = String(data?.company?.source || "").trim();
+  const roleSource = String(data?.role?.source || "").trim();
+
+  return {
+    firstName,
+    lastName,
+    fullName,
+    company,
+    role,
+    profileUrl,
+    nameSource,
+    companySource,
+    roleSource,
+  };
 }
 
 function renderProfileContext(context, statusTone = "neutral", statusText = "Open a LinkedIn profile tab to see extracted data.") {
@@ -497,7 +528,7 @@ function applyFindEmailAvailability() {
   if (!elements.findEmailBtn) return;
 
   const disabledByAuth = !emailFinderState.isAuthenticated;
-  const disabledByQuota = emailFinderState.isAuthenticated && (!emailFinderState.quotaKnown || !emailFinderState.quotaAllowsLookup);
+  const disabledByQuota = emailFinderState.isAuthenticated && emailFinderState.quotaKnown && !emailFinderState.quotaAllowsLookup;
   const gateStatus = getProfileContextGateStatus();
   const disabledByProfile = emailFinderState.isAuthenticated && !gateStatus.ready;
   const disabledByLoading = emailFinderState.isLoading;
@@ -1169,6 +1200,8 @@ async function requestProfileExtraction(tabId, debug = false) {
 
   return sendRuntimeMessage({
     type: "EXTRACT_PROFILE_FROM_TAB",
+    tabId,
+    debug,
     data: { tabId, debug },
   });
 }
