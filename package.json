@@ -21,6 +21,7 @@
     "seed:tracker:clear": "node scripts/seed-tracker-test-data.mjs --mode=api --api=http://localhost:3000 --clear-only"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-avatar": "^1.1.11",
@@ -35,6 +36,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-toast": "^1.2.15",
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.94.1",
     "@swc/helpers": "^0.5.18",
     "@tanstack/react-table": "^8.21.3",

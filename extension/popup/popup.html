@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ellyn Email Finder</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Ellyn Email Finder</h1>
+        <p class="subtitle">Find professional emails on LinkedIn</p>
+      </header>
+
+      <main id="mainContent">
+        <div id="upgradeBanner" class="upgrade-banner hidden" role="status" aria-live="polite">
+          <p id="upgradeMessage">Monthly credits reached.</p>
+          <a id="upgradeLink" class="upgrade-link" href="https://www.useellyn.com/pricing" target="_blank" rel="noopener noreferrer">Upgrade plan</a>
+        </div>
+
+        <div id="authSection">
+          <p>Sign in to start finding emails</p>
+          <button id="signInBtn" class="primary-btn">Sign In</button>
+        </div>
+
+        <div id="finderSection" class="hidden">
+          <button id="findEmailBtn" class="primary-btn">Find Email</button>
+
+          <div id="loadingState" class="hidden">
+            <div class="spinner"></div>
+            <p id="loadingText">Finding email...</p>
+          </div>
+
+          <div id="resultsSection" class="hidden">
+            <p>Email finder ready!</p>
+            <p class="info">
+              This will be fully functional after completing main prompts 1-10
+            </p>
+          </div>
+        </div>
+      </main>
+
+      <footer>
+        <div class="quota-display">
+          <span>Credits: </span>
+          <span id="quotaText">--/--</span>
+        </div>
+      </footer>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

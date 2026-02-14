@@ -552,6 +552,16 @@ function getStorageData(keys) {
   });
 }
 
+function formatUpgradeResetDate(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 async function hydrateAuthStateFromStorage() {
   const data = await getStorageData(["isAuthenticated", "user"]);
   appState.isAuthenticated = Boolean(data.isAuthenticated);
@@ -575,6 +585,15 @@ function setupRuntimeMessageListener() {
 
     if (message.type === "AUTH_LOGOUT") {
       handleLogout();
+      return;
+    }
+
+    if (message.type === "SHOW_UPGRADE_MODAL") {
+      const resetDate = formatUpgradeResetDate(message?.data?.resetDate);
+      const status = resetDate
+        ? `Monthly lookup credits reached. Resets ${resetDate}.`
+        : "Monthly lookup credits reached. Upgrade your plan to continue.";
+      setStatusText(status, "error");
     }
   });
 }

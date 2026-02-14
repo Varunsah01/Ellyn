@@ -13,6 +13,483 @@
       .auth-shell {
         background: radial-gradient(circle at top right, #dbeafe 0%, #f8fafc 45%, #f8fafc 100%);
       }
+
+      #emailFinderSection {
+        opacity: 1;
+        transition: opacity 0.25s ease, transform 0.25s ease;
+      }
+
+      #emailFinderSection.is-loading .finder-panel {
+        opacity: 0.95;
+      }
+
+      .finder-panel {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: #ffffff;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        padding: 14px;
+      }
+
+      .profile-context-card {
+        display: grid;
+        gap: 10px;
+      }
+
+      .profile-context-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .profile-context-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+
+      .profile-context-refresh {
+        height: 28px;
+        border-radius: 999px;
+        border: 1px solid #dbe2ee;
+        background: #ffffff;
+        padding: 0 10px;
+        font-size: 11px;
+        font-weight: 600;
+        color: #334155;
+        cursor: pointer;
+        transition: background-color 0.2s ease, border-color 0.2s ease;
+      }
+
+      .profile-context-refresh:hover {
+        background: #f8fafc;
+        border-color: #94a3b8;
+      }
+
+      .profile-context-status {
+        margin: 0;
+        border-radius: 8px;
+        padding: 7px 9px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .profile-context-status[data-tone="neutral"] {
+        background: #f1f5f9;
+        color: #475569;
+      }
+
+      .profile-context-status[data-tone="success"] {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .profile-context-status[data-tone="warning"] {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .profile-context-status[data-tone="error"] {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+
+      .profile-context-grid {
+        display: grid;
+        gap: 6px;
+      }
+
+      .profile-context-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .profile-context-label {
+        font-size: 11px;
+        color: #64748b;
+      }
+
+      .profile-context-value {
+        max-width: 210px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-align: right;
+        font-size: 12px;
+        font-weight: 600;
+        color: #0f172a;
+      }
+
+      .profile-context-url {
+        margin: 0;
+        font-size: 11px;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .profile-context-url-value {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .finder-primary-btn {
+        width: 100%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 24px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #ffffff;
+        border: none;
+        border-radius: 10px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+      }
+
+      .finder-primary-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(102, 126, 234, 0.35);
+      }
+
+      .finder-primary-btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .spinner {
+        width: 36px;
+        height: 36px;
+        margin: 0 auto;
+        border: 4px solid #e2e8f0;
+        border-top-color: #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: #e2e8f0;
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 10px;
+      }
+
+      .progress-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        transition: width 0.35s ease;
+      }
+
+      .confidence-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .confidence-badge[data-level="high"] {
+        background: #d1fae5;
+        color: #065f46;
+      }
+
+      .confidence-badge[data-level="medium"] {
+        background: #fef3c7;
+        color: #78350f;
+      }
+
+      .confidence-badge[data-level="low"] {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .confidence-badge.small {
+        padding: 4px 7px;
+        font-size: 11px;
+        font-weight: 600;
+        background: #eef2ff;
+        color: #4338ca;
+      }
+
+      .email-result {
+        margin: 14px 0;
+        padding: 12px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+      }
+
+      .email-result code {
+        display: block;
+        color: #0f172a;
+        font-size: 16px;
+        font-weight: 700;
+        word-break: break-word;
+      }
+
+      .email-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .secondary-btn {
+        border: 1px solid #dbe2ee;
+        background: #ffffff;
+        border-radius: 8px;
+        height: 36px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #334155;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        transition: background-color 0.2s ease, border-color 0.2s ease;
+      }
+
+      .secondary-btn:hover {
+        background: #f8fafc;
+        border-color: #94a3b8;
+      }
+
+      .metadata {
+        display: grid;
+        gap: 8px;
+        margin: 12px 0;
+        padding: 11px 12px;
+        background: #f1f5f9;
+        border-radius: 8px;
+        font-size: 12px;
+      }
+
+      .meta-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .meta-item .label {
+        color: #64748b;
+      }
+
+      .meta-item .value {
+        color: #0f172a;
+        font-weight: 600;
+        text-align: right;
+      }
+
+      .alternatives-list {
+        margin-top: 8px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .alternatives-list li {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 7px 0;
+        border-top: 1px solid #e2e8f0;
+      }
+
+      .alternatives-list li:first-child {
+        border-top: 0;
+      }
+
+      .feedback-section {
+        margin-top: 14px;
+      }
+
+      .feedback-prompt {
+        font-size: 12px;
+        color: #475569;
+        margin-bottom: 8px;
+      }
+
+      .feedback-buttons {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .feedback-btn {
+        height: 34px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        background: #ffffff;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .feedback-btn.yes:hover {
+        border-color: #10b981;
+        color: #047857;
+      }
+
+      .feedback-btn.no:hover {
+        border-color: #ef4444;
+        color: #b91c1c;
+      }
+
+      .error-state {
+        text-align: center;
+        padding: 12px;
+      }
+
+      .error-icon {
+        width: 34px;
+        height: 34px;
+        margin: 0 auto 8px;
+        color: #ef4444;
+      }
+
+      .quota-bar {
+        margin-top: 14px;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #ffffff;
+      }
+
+      .quota-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #475569;
+        margin-bottom: 6px;
+      }
+
+      .quota-progress {
+        height: 7px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        overflow: hidden;
+      }
+
+      .quota-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        transition: width 0.25s ease;
+      }
+
+      .quota-fill.warning {
+        background: linear-gradient(90deg, #f59e0b 0%, #f97316 100%);
+      }
+
+      .quota-fill.danger {
+        background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
+      }
+
+      .quota-warning {
+        margin-top: 8px;
+        font-size: 11px;
+        color: #b45309;
+      }
+
+      .upgrade-cta {
+        margin-top: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        background: #fef2f2;
+      }
+
+      .upgrade-cta p {
+        font-size: 11px;
+        color: #991b1b;
+      }
+
+      .upgrade-cta button {
+        height: 30px;
+        border-radius: 999px;
+        border: 1px solid #ef4444;
+        padding: 0 12px;
+        background: #ffffff;
+        color: #b91c1c;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .toast-container {
+        position: fixed;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: calc(100% - 24px);
+        max-width: 360px;
+        z-index: 100;
+        pointer-events: none;
+      }
+
+      .toast {
+        pointer-events: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 600;
+        margin-top: 8px;
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.22);
+        animation: toastIn 0.22s ease;
+      }
+
+      .toast.success {
+        background: #0f766e;
+      }
+
+      .toast.error {
+        background: #b91c1c;
+      }
+
+      .toast.info {
+        background: #334155;
+      }
+
+      @keyframes toastIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
     </style>
   </head>
   <body class="min-h-screen bg-slate-100 font-sans text-slate-900 antialiased">
@@ -99,6 +576,132 @@
               </div>
 
               <p class="mt-4 text-center text-xs text-slate-500">By continuing, you agree to our Terms.</p>
+            </div>
+          </article>
+        </div>
+
+        <div id="emailFinderSection" class="hidden space-y-4" aria-live="polite">
+          <article id="profileContextCard" class="finder-panel profile-context-card">
+            <div class="profile-context-header">
+              <h2 class="profile-context-title">Current LinkedIn Profile</h2>
+              <button id="refreshProfileContextBtn" type="button" class="profile-context-refresh">Refresh</button>
+            </div>
+            <p id="profileContextStatus" class="profile-context-status" data-tone="neutral">
+              Open a LinkedIn profile to preview extracted data.
+            </p>
+            <div class="profile-context-grid">
+              <div class="profile-context-row">
+                <span class="profile-context-label">Name</span>
+                <span id="profileContextName" class="profile-context-value">—</span>
+              </div>
+              <div class="profile-context-row">
+                <span class="profile-context-label">Company</span>
+                <span id="profileContextCompany" class="profile-context-value">—</span>
+              </div>
+            </div>
+            <p class="profile-context-url">
+              <span>URL:</span>
+              <span id="profileContextUrl" class="profile-context-url-value">—</span>
+            </p>
+          </article>
+
+          <article class="finder-panel">
+            <button id="findEmailBtn" type="button" class="finder-primary-btn">
+              <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
+                <path d="m3 8 9 6 9-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                <rect x="3" y="6" width="18" height="12" rx="2.5" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+              Find Email
+            </button>
+
+            <div id="loadingState" class="hidden mt-4 text-center">
+              <div class="spinner"></div>
+              <p id="loadingStage" class="mt-3 text-sm text-slate-600" aria-live="polite">Extracting LinkedIn data...</p>
+              <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div id="progressFill" class="progress-fill"></div>
+              </div>
+            </div>
+
+            <div id="resultsCard" class="hidden mt-4">
+              <div id="confidenceBadge" class="confidence-badge" data-level="high">
+                <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
+                  <path d="M5 12.5 9 16l10-10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span id="confidenceText">Email Found (98% confidence)</span>
+              </div>
+
+              <div class="email-result">
+                <code id="resultEmail">john.doe@acme.com</code>
+                <div class="email-actions">
+                  <button id="copyEmailBtn" type="button" class="secondary-btn">
+                    <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
+                      <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.5" />
+                      <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5" />
+                    </svg>
+                    Copy
+                  </button>
+                  <button id="saveToContactsBtn" type="button" class="secondary-btn">
+                    <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                    </svg>
+                    Save to Contacts
+                  </button>
+                </div>
+              </div>
+
+              <div class="metadata">
+                <div class="meta-item">
+                  <span class="label">Pattern:</span>
+                  <span id="metaPattern" class="value">first.last@domain.com</span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">Source:</span>
+                  <span id="metaSource" class="value">Verified via API</span>
+                </div>
+                <div class="meta-item">
+                  <span class="label">Cost:</span>
+                  <span id="metaCost" class="value">$0.0012</span>
+                </div>
+              </div>
+
+              <details id="alternativesDetails">
+                <summary id="alternativesSummary" class="cursor-pointer text-xs font-medium text-slate-700">Show alternatives (0)</summary>
+                <ul id="alternativesList" class="alternatives-list"></ul>
+              </details>
+
+              <div id="feedbackSection" class="feedback-section">
+                <p class="feedback-prompt">Did this email work?</p>
+                <div class="feedback-buttons">
+                  <button id="feedbackYesBtn" type="button" class="feedback-btn yes">✓ Yes</button>
+                  <button id="feedbackNoBtn" type="button" class="feedback-btn no">✗ No</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="errorState" class="hidden mt-4 error-state">
+              <svg class="error-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" />
+                <path d="M12 8v5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                <circle cx="12" cy="16.5" r="1" fill="currentColor" />
+              </svg>
+              <h3 class="text-sm font-semibold text-slate-800">Could not find email</h3>
+              <p id="errorMessage" class="mt-1 text-xs text-slate-500">Domain not found</p>
+              <button id="retryBtn" type="button" class="secondary-btn mt-3">Try Again</button>
+            </div>
+          </article>
+
+          <article class="quota-bar" aria-label="Quota">
+            <div class="quota-label">
+              <span>Credits</span>
+              <span id="quotaCount">--/--</span>
+            </div>
+            <div class="quota-progress">
+              <div id="quotaFill" class="quota-fill" style="width: 0%"></div>
+            </div>
+            <p id="quotaWarning" class="quota-warning hidden"></p>
+            <div id="upgradeCta" class="upgrade-cta hidden">
+              <p id="upgradeText">Quota reached. Upgrade to continue.</p>
+              <button id="upgradeButton" type="button">Upgrade</button>
             </div>
           </article>
         </div>
@@ -448,7 +1051,8 @@
       </div>
     </main>
 
-    <script src="sidepanel.js"></script>
+    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+    <script src="scripts/sidepanel.js"></script>
   </body>
 </html>
 
