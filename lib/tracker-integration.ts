@@ -1,7 +1,7 @@
 import { isNeedsFollowUp } from "@/lib/tracker-v2";
 import type { TrackerContact, TrackerContactStatus } from "@/lib/types/tracker";
 
-const TRACKER_ENTRY_ROUTE = "/dashboard/tracker";
+const TRACKER_ENTRY_ROUTE = "/dashboard/contacts";
 const TRACKER_DEEPLINK_CONTACT_KEY = "ellyn:tracker:deeplink-contact";
 
 export interface ContactLikeForTracker {

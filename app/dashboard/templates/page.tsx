@@ -1,325 +1,316 @@
-"use client";
+﻿"use client"
 
-import { useState, useEffect } from "react";
-import { useSequences, EmailTemplate } from "@/lib/hooks/useSequences";
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { PageHeader } from "@/components/dashboard/page-header";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Plus,
-  Mail,
-  Edit2,
-  Trash2,
-  Copy,
-  Search,
-  FileText,
-  Sparkles,
-  ArrowRight,
-} from "lucide-react";
-import { EmailEditor } from "@/components/sequences/email-editor";
-import { useToast } from "@/hooks/use-toast";
-import { Badge } from "@/components/ui/badge";
-import { TemplatePicker } from "@/components/sequences/template-picker";
+import { useMemo, useState } from 'react'
+
+import { DashboardShell } from '@/components/dashboard/dashboard-shell'
+import { PageHeader } from '@/components/dashboard/page-header'
+import { TemplateEditor } from '@/components/template-editor'
+import { TemplateLibrary } from '@/components/template-library'
+import { useToast } from '@/hooks/use-toast'
+import { EmailTemplate, useSequences } from '@/lib/hooks/useSequences'
+import { TEMPLATE_PRESETS, type TemplateCategory } from '@/lib/template-presets'
+import type { EditableTemplate, TemplateLibraryItem } from '@/lib/template-types'
+
+const CATEGORY_ICON_MAP: Record<TemplateCategory, string> = {
+  recruiter: '👔',
+  referral: '🤝',
+  advice: '💬',
+  'follow-up': '📧',
+  networking: '🎓',
+  'thank-you': '🌟',
+  startup: '🚀',
+  custom: '✨',
+}
+
+const CATEGORY_KEYWORDS: Array<{ category: TemplateCategory; keywords: string[] }> = [
+  { category: 'recruiter', keywords: ['recruiter', 'hiring', 'talent'] },
+  { category: 'referral', keywords: ['referral', 'refer'] },
+  { category: 'advice', keywords: ['advice', 'learn', 'informational'] },
+  { category: 'follow-up', keywords: ['follow up', 'follow-up', 'following up'] },
+  { category: 'networking', keywords: ['alumni', 'network', 'connect'] },
+  { category: 'thank-you', keywords: ['thank you', 'thanks'] },
+  { category: 'startup', keywords: ['startup', 'mission', 'founder'] },
+]
+
+const EMPTY_EDITOR_TEMPLATE: EditableTemplate = {
+  name: '',
+  subject: '',
+  body: '',
+  category: 'custom',
+  tags: [],
+  icon: '📝',
+}
 
 export default function TemplatesPage() {
-  const { templates, loading, refreshTemplates } = useSequences();
-  const { toast } = useToast();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<Partial<EmailTemplate> | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const { templates, loading, refreshTemplates } = useSequences()
+  const { toast } = useToast()
 
-  // Filter templates based on search
-  const filteredTemplates = templates.filter(
-    (t) =>
-      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.subject.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const [isEditorOpen, setIsEditorOpen] = useState(false)
+  const [editorTemplate, setEditorTemplate] = useState<EditableTemplate | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const mergedTemplates = useMemo<TemplateLibraryItem[]>(() => {
+    const dbTemplates = templates.map(mapApiTemplate)
+
+    const existingByName = new Set(dbTemplates.map((item) => normalizeKey(item.name)))
+
+    const presetItems: TemplateLibraryItem[] = TEMPLATE_PRESETS.filter(
+      (preset) => !existingByName.has(normalizeKey(preset.name))
+    ).map((preset) => ({
+      id: `preset:${preset.key}`,
+      presetKey: preset.key,
+      name: preset.name,
+      subject: preset.subject,
+      body: preset.body,
+      category: preset.category,
+      tags: preset.tags,
+      icon: preset.icon,
+      description: preset.description,
+      useCount: preset.useCount,
+      isDefault: true,
+    }))
+
+    return [...dbTemplates, ...presetItems]
+  }, [templates])
 
   const handleCreateNew = () => {
-    setEditingTemplate({
-      name: "",
-      subject: "",
-      body: "",
-    });
-    setIsEditorOpen(true);
-  };
+    setEditorTemplate(EMPTY_EDITOR_TEMPLATE)
+    setIsEditorOpen(true)
+  }
 
-  const handleEdit = (template: EmailTemplate) => {
-    setEditingTemplate(template);
-    setIsEditorOpen(true);
-  };
+  const handleEditTemplate = (template: TemplateLibraryItem) => {
+    setEditorTemplate(mapLibraryToEditable(template))
+    setIsEditorOpen(true)
+  }
 
-  const handleDuplicate = (template: EmailTemplate) => {
-    setEditingTemplate({
+  const handleUseTemplate = (template: TemplateLibraryItem) => {
+    const editable = mapLibraryToEditable({
+      ...template,
+      useCount: template.useCount + 1,
+      lastUsedAt: new Date().toISOString(),
+    })
+
+    setEditorTemplate(editable)
+    setIsEditorOpen(true)
+  }
+
+  const handleDuplicateTemplate = (template: TemplateLibraryItem) => {
+    setEditorTemplate({
+      ...mapLibraryToEditable(template),
+      id: undefined,
       name: `${template.name} (Copy)`,
-      subject: template.subject,
-      body: template.body,
-    });
-    setIsEditorOpen(true);
-  };
+      isDefault: false,
+    })
+    setIsEditorOpen(true)
+  }
 
-  const handleSelectFromLibrary = (template: any) => {
-    setEditingTemplate({
-      name: template.name,
-      subject: template.subject,
-      body: template.body,
-    });
-    setIsEditorOpen(true);
-  };
-
-  const handleSave = async () => {
-    if (!editingTemplate?.name || !editingTemplate?.subject || !editingTemplate?.body) {
+  const handleDeleteTemplate = async (template: TemplateLibraryItem) => {
+    if (template.id.startsWith('preset:') || template.isDefault) {
       toast({
-        title: "Missing fields",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      });
-      return;
+        title: 'Preset template',
+        description: 'Preset templates cannot be deleted. Duplicate and customize instead.',
+      })
+      return
     }
 
-    setIsSaving(true);
+    const shouldDelete = window.confirm(`Delete "${template.name}"?`)
+    if (!shouldDelete) {
+      return
+    }
+
     try {
-      const method = editingTemplate.id ? "PATCH" : "POST";
-      const url = editingTemplate.id ? `/api/templates/${editingTemplate.id}` : "/api/templates";
+      const response = await fetch(`/api/templates/${template.id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error(`Delete failed (${response.status})`)
+      }
+
+      toast({
+        title: 'Template deleted',
+        description: `${template.name} has been removed.`,
+      })
+
+      await refreshTemplates()
+    } catch (error) {
+      toast({
+        title: 'Delete failed',
+        description: error instanceof Error ? error.message : 'Could not delete template.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleSaveTemplate = async (template: EditableTemplate) => {
+    if (!template.name.trim() || !template.subject.trim() || !template.body.trim()) {
+      toast({
+        title: 'Missing fields',
+        description: 'Name, subject, and body are required.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsSaving(true)
+
+    try {
+      const isExistingTemplate = Boolean(template.id && !template.id.startsWith('preset:'))
+      const method = isExistingTemplate ? 'PATCH' : 'POST'
+      const url = isExistingTemplate ? `/api/templates/${template.id}` : '/api/templates'
+
+      const payload = {
+        name: template.name,
+        subject: template.subject,
+        body: template.body,
+        category: template.category,
+        tags: template.tags,
+        icon: template.icon,
+        use_count: template.useCount ?? 0,
+      }
 
       const response = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editingTemplate),
-      });
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
 
-      if (!response.ok) throw new Error("Failed to save template");
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        throw new Error(data?.error || `Save failed (${response.status})`)
+      }
 
       toast({
-        title: editingTemplate.id ? "Template updated" : "Template created",
-        description: `Successfully saved "${editingTemplate.name}"`,
-      });
+        title: isExistingTemplate ? 'Template updated' : 'Template created',
+        description: `${template.name} saved successfully.`,
+      })
 
-      setIsEditorOpen(false);
-      refreshTemplates();
+      setIsEditorOpen(false)
+      setEditorTemplate(null)
+      await refreshTemplates()
     } catch (error) {
       toast({
-        title: "Error",
-        description: "Could not save template. Please try again.",
-        variant: "destructive",
-      });
+        title: 'Save failed',
+        description: error instanceof Error ? error.message : 'Could not save template.',
+        variant: 'destructive',
+      })
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this template?")) return;
-
-    try {
-      const response = await fetch(`/api/templates/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) throw new Error("Failed to delete template");
-
-      toast({
-        title: "Template deleted",
-        description: "The template has been removed.",
-      });
-
-      refreshTemplates();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Could not delete template.",
-        variant: "destructive",
-      });
-    }
-  };
+  }
 
   return (
     <DashboardShell>
-      <div className="flex flex-col gap-8">
+      <div className="space-y-8">
         <PageHeader
-          title="Email Templates"
-          description="Manage your email templates for outreach and follow-ups."
-          actions={
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setIsPickerOpen(true)}>
-                <Sparkles className="mr-2 h-4 w-4" />
-                Template Library
-              </Button>
-              <Button onClick={handleCreateNew}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Template
-              </Button>
-            </div>
-          }
+          title="Templates"
+          description="AI-powered outreach templates for recruiter outreach, referrals, follow-ups, and networking."
         />
 
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search templates..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="animate-pulse">
-                <CardHeader className="h-24 bg-muted/50" />
-                <CardContent className="h-32" />
-              </Card>
-            ))}
-          </div>
-        ) : filteredTemplates.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredTemplates.map((template) => (
-              <Card key={template.id} className="group hover:border-primary transition-all">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Mail className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDuplicate(template)}
-                        title="Duplicate"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEdit(template)}
-                        title="Edit"
-                      >
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(template.id)}
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        title="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <CardTitle className="mt-4 line-clamp-1">{template.name}</CardTitle>
-                  <CardDescription className="line-clamp-1">
-                    {template.subject}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="bg-muted/50 rounded-md p-3 mb-4 h-20 overflow-hidden">
-                    <p className="text-xs text-muted-foreground line-clamp-3">
-                      {template.body}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Badge variant={template.is_default ? "secondary" : "outline"}>
-                      {template.is_default ? "Default" : "Custom"}
-                    </Badge>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="group/btn"
-                      onClick={() => handleEdit(template)}
-                    >
-                      View Details
-                      <ArrowRight className="ml-2 h-3 w-3 group-hover/btn:translate-x-1 transition-transform" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed rounded-lg">
-            <FileText className="h-12 w-12 text-muted-foreground mb-4 opacity-20" />
-            <h3 className="text-lg font-medium">No templates found</h3>
-            <p className="text-sm text-muted-foreground mb-6">
-              {searchQuery ? "Try a different search term" : "Start by creating your first email template"}
-            </p>
-            <Button onClick={handleCreateNew}>
-              <Plus className="mr-2 h-4 w-4" />
-              Create Your First Template
-            </Button>
-          </div>
-        )}
+        <TemplateLibrary
+          templates={mergedTemplates}
+          loading={loading}
+          onCreateNew={handleCreateNew}
+          onEditTemplate={handleEditTemplate}
+          onDuplicateTemplate={handleDuplicateTemplate}
+          onDeleteTemplate={handleDeleteTemplate}
+          onUseTemplate={handleUseTemplate}
+        />
       </div>
 
-      {/* Editor Dialog */}
-      <Dialog open={isEditorOpen} onOpenChange={setIsEditorOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTemplate?.id ? "Edit Template" : "Create New Template"}
-            </DialogTitle>
-            <DialogDescription>
-              Design your email template with variables for personalization.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-6 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="template-name">Template Name</Label>
-              <Input
-                id="template-name"
-                placeholder="e.g., Cold Outreach - Engineering"
-                value={editingTemplate?.name || ""}
-                onChange={(e) =>
-                  setEditingTemplate((prev) => ({ ...prev, name: e.target.value }))
-                }
-              />
-            </div>
-
-            <EmailEditor
-              subject={editingTemplate?.subject || ""}
-              body={editingTemplate?.body || ""}
-              onSubjectChange={(subject) =>
-                setEditingTemplate((prev) => ({ ...prev, subject }))
-              }
-              onBodyChange={(body) => setEditingTemplate((prev) => ({ ...prev, body }))}
-            />
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditorOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "Saving..." : "Save Template"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Template Picker Library */}
-      <TemplatePicker
-        open={isPickerOpen}
-        onOpenChange={setIsPickerOpen}
-        onSelect={handleSelectFromLibrary}
+      <TemplateEditor
+        open={isEditorOpen}
+        template={editorTemplate}
+        isSaving={isSaving}
+        onOpenChange={setIsEditorOpen}
+        onSave={handleSaveTemplate}
       />
     </DashboardShell>
-  );
+  )
+}
+
+function mapApiTemplate(template: EmailTemplate): TemplateLibraryItem {
+  const category = inferCategory(template)
+  const tags = normalizeTags(template.tags, category)
+
+  return {
+    id: template.id,
+    name: template.name,
+    subject: template.subject,
+    body: template.body,
+    isDefault: Boolean(template.is_default),
+    category,
+    tags,
+    icon: template.icon?.trim() || CATEGORY_ICON_MAP[category],
+    useCount: Number(template.use_count || 0),
+    createdAt: template.created_at,
+    updatedAt: template.updated_at || undefined,
+    lastUsedAt: template.last_used_at || undefined,
+    description: template.description || undefined,
+  }
+}
+
+function mapLibraryToEditable(template: TemplateLibraryItem): EditableTemplate {
+  return {
+    id: template.id,
+    presetKey: template.presetKey,
+    name: template.name,
+    subject: template.subject,
+    body: template.body,
+    category: template.category,
+    tags: [...template.tags],
+    icon: template.icon,
+    isDefault: template.isDefault,
+    useCount: template.useCount,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+  }
+}
+
+function normalizeKey(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+function normalizeTags(rawTags: unknown, category: TemplateCategory): string[] {
+  if (Array.isArray(rawTags) && rawTags.length > 0) {
+    const tags = rawTags
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean)
+
+    if (tags.length > 0) {
+      return tags
+    }
+  }
+
+  return [category]
+}
+
+function inferCategory(template: EmailTemplate): TemplateCategory {
+  if (template.category) {
+    const normalized = template.category.toLowerCase().replace('_', '-')
+    const valid = [
+      'recruiter',
+      'referral',
+      'advice',
+      'follow-up',
+      'networking',
+      'thank-you',
+      'startup',
+      'custom',
+    ]
+
+    if (valid.includes(normalized)) {
+      return normalized as TemplateCategory
+    }
+  }
+
+  const haystack = `${template.name} ${template.subject}`.toLowerCase()
+
+  for (const rule of CATEGORY_KEYWORDS) {
+    if (rule.keywords.some((keyword) => haystack.includes(keyword))) {
+      return rule.category
+    }
+  }
+
+  return template.is_default ? 'recruiter' : 'custom'
 }

@@ -66,7 +66,23 @@ export async function POST(request: NextRequest) {
     */
 
     const body = await request.json();
-    const { name, subject, body: templateBody } = body;
+    const {
+      name,
+      subject,
+      body: templateBody,
+      category,
+      tags,
+      icon,
+      use_count: useCount,
+    } = body as {
+      name?: string;
+      subject?: string;
+      body?: string;
+      category?: string;
+      tags?: string[];
+      icon?: string;
+      use_count?: number;
+    };
 
     // Validate required fields
     if (!name || !subject || !templateBody) {
@@ -77,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare template data
-    const templateData = {
+    const templateData: Record<string, unknown> = {
       name,
       subject,
       body: templateBody,
@@ -85,12 +101,50 @@ export async function POST(request: NextRequest) {
       // user_id: user.id, // Add this in production
     };
 
+    if (typeof category === 'string' && category.trim()) {
+      templateData.category = category.trim();
+    }
+
+    if (Array.isArray(tags)) {
+      templateData.tags = tags
+        .filter((tag) => typeof tag === 'string')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+    }
+
+    if (typeof icon === 'string' && icon.trim()) {
+      templateData.icon = icon.trim();
+    }
+
+    if (typeof useCount === 'number' && Number.isFinite(useCount)) {
+      templateData.use_count = Math.max(0, Math.trunc(useCount));
+    }
+
     // Insert into database
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('email_templates')
       .insert(templateData)
       .select()
       .single();
+
+    // Fallback for databases that do not yet include metadata columns.
+    if (error && isUndefinedColumnError(error)) {
+      const minimalTemplateData = {
+        name,
+        subject,
+        body: templateBody,
+        is_default: false,
+      };
+
+      const fallbackInsert = await supabase
+        .from('email_templates')
+        .insert(minimalTemplateData)
+        .select()
+        .single();
+
+      data = fallbackInsert.data;
+      error = fallbackInsert.error;
+    }
 
     if (error) {
       console.error('Error creating template:', error);
@@ -112,4 +166,11 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function isUndefinedColumnError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  const message = (error as { message?: string })?.message || '';
+
+  return code === '42703' || /column .* does not exist/i.test(message);
 }

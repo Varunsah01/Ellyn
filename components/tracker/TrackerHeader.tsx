@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import type { RefObject } from "react";
 
 interface TrackerHeaderProps {
+  title?: string;
+  searchPlaceholder?: string;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   searchInputRef?: RefObject<HTMLInputElement>;
@@ -14,6 +16,8 @@ interface TrackerHeaderProps {
 }
 
 export function TrackerHeader({
+  title = "Tracker",
+  searchPlaceholder = "Company name wise search",
   searchQuery,
   onSearchChange,
   searchInputRef,
@@ -26,7 +30,7 @@ export function TrackerHeader({
     <div className={`space-y-3 transition-all duration-200 ${compact ? "space-y-2" : ""}`}>
       <div className="grid gap-3 sm:grid-cols-[auto_minmax(280px,1fr)_auto] sm:items-center">
         <h1 className={`font-fraunces font-bold tracking-tight sm:justify-self-start ${compact ? "text-2xl" : "text-3xl"}`}>
-          Tracker
+          {title}
         </h1>
 
         <div className="relative w-full sm:max-w-none sm:justify-self-stretch">
@@ -35,8 +39,8 @@ export function TrackerHeader({
             ref={searchInputRef}
             value={searchQuery}
             onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Company name wise search"
-            aria-label="Company name wise search"
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
             className={`rounded-lg border border-[#E5E7EB] bg-white py-2 pl-10 pr-10 text-sm focus-visible:border-[#FF7B7B] focus-visible:ring-1 focus-visible:ring-[#FF7B7B] dark:border-slate-700 dark:bg-slate-900 ${compact ? "h-9" : "h-10"}`}
           />
 

@@ -5,10 +5,11 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { PageHeader } from "@/components/dashboard/page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { SequenceCard } from "@/components/sequences/sequence-card"
 import { buildGmailLink, buildOutlookLink } from "@/lib/sequence-engine"
 import { Sequence } from "@/lib/types/sequence"
-import { AlertCircle, CalendarCheck, Mail, RefreshCw } from "lucide-react"
+import { AlertCircle, CalendarCheck, FileText, Info, Mail, RefreshCw } from "lucide-react"
 import Link from "next/link"
 
 interface DigestItem {
@@ -95,6 +96,31 @@ export default function SequencesPage() {
         </div>
       )}
 
+      <Card className="mb-6 border-blue-200/80 bg-blue-50/40">
+        <CardContent className="flex flex-col gap-3 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-2">
+            <Info className="mt-0.5 h-4 w-4 text-blue-700" />
+            <div>
+              <p className="text-sm font-medium text-slate-900">How sequences work</p>
+              <p className="text-sm text-slate-600">
+                Create a sequence, enroll contacts, then use today's digest to send and mark steps complete.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/dashboard/templates">
+                <FileText className="mr-2 h-4 w-4" />
+                Open Templates
+              </Link>
+            </Button>
+            <Button size="sm" asChild>
+              <Link href="/dashboard/sequences/create">Create Sequence</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
         <Card>
           <CardHeader>
@@ -105,9 +131,12 @@ export default function SequencesPage() {
           </CardHeader>
           <CardContent>
             {digest.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No emails scheduled for today.
-              </p>
+              <div className="rounded-lg border border-dashed p-4">
+                <p className="text-sm font-medium text-slate-900">No emails scheduled for today</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Enroll contacts in a sequence to populate this daily send list.
+                </p>
+              </div>
             ) : (
               <div className="space-y-4">
                 {digest.map((item) => (
@@ -125,6 +154,11 @@ export default function SequencesPage() {
                       </span>
                     </div>
                     <p className="text-sm mt-3">{item.subject}</p>
+                    <div className="mt-2">
+                      <Badge variant="outline" className="text-[11px]">
+                        Ready to send
+                      </Badge>
+                    </div>
                     <div className="flex flex-wrap gap-2 mt-3">
                       <Button
                         size="sm"
@@ -175,9 +209,15 @@ export default function SequencesPage() {
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading sequences...</p>
             ) : sequences.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No sequences yet. Create your first one to get started.
-              </p>
+              <div className="rounded-lg border border-dashed p-4">
+                <p className="text-sm font-medium text-slate-900">No sequences yet</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Create a sequence to automate follow-ups and track outcomes.
+                </p>
+                <Button className="mt-3" size="sm" asChild>
+                  <Link href="/dashboard/sequences/create">Create Sequence</Link>
+                </Button>
+              </div>
             ) : (
               sequences.map((sequence) => (
                 <SequenceCard key={sequence.id} sequence={sequence} />

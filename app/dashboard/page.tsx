@@ -6,9 +6,10 @@ import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { QuickStats } from "@/components/dashboard/quick-stats";
 import { Button } from "@/components/ui/button";
 import { AnimatedCard } from "@/components/ui/animated-card";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { Users, Mail, TrendingUp, Zap, Plus, BarChart3, RefreshCw } from "lucide-react";
+import { Users, Mail, Zap, Plus, BarChart3, RefreshCw, CheckCircle2, Circle } from "lucide-react";
 import Link from "next/link";
 import { useDashboardStats, useRecentActivity } from "@/lib/hooks/useAnalytics";
 import { useContacts } from "@/lib/hooks/useContacts";
@@ -48,6 +49,27 @@ export default function DashboardPage() {
   const weeklyProgress = dashboardStats.newContactsThisWeek > 0
     ? Math.min((dashboardStats.newContactsThisWeek / weeklyGoal) * 100, 100)
     : 0;
+
+  const nextSteps = [
+    {
+      key: "contacts",
+      title: "Add your first contacts",
+      description: "Build a contact base from LinkedIn profiles.",
+      completed: dashboardStats.totalContacts > 0,
+      href: "/dashboard/contacts",
+      cta: "Go to Contacts",
+    },
+    {
+      key: "templates",
+      title: "Create reusable templates",
+      description: "Save outreach templates so sending is faster.",
+      completed: sequenceStats.totalTemplates > 0,
+      href: "/dashboard/templates",
+      cta: "Manage Templates",
+    },
+  ];
+
+  const completedSteps = nextSteps.filter((step) => step.completed).length;
 
   // Handle refresh all data
   const handleRefreshAll = async () => {
@@ -118,6 +140,46 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </AnimatedCard>
+
+        <Card className="border-slate-200/80">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-base">Recommended Next Steps</CardTitle>
+              <Badge variant={completedSteps === nextSteps.length ? "secondary" : "outline"}>
+                {completedSteps}/{nextSteps.length} complete
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {nextSteps.map((step) => (
+              <div
+                key={step.key}
+                className="flex flex-col gap-3 rounded-lg border border-slate-200/70 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex items-start gap-3">
+                  {step.completed ? (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <Circle className="mt-0.5 h-4 w-4 text-slate-400" />
+                  )}
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{step.title}</p>
+                    <p className="text-xs text-slate-500">{step.description}</p>
+                  </div>
+                </div>
+                <Button variant={step.completed ? "outline" : "default"} size="sm" asChild>
+                  <Link href={step.href}>{step.cta}</Link>
+                </Button>
+              </div>
+            ))}
+            {completedSteps === nextSteps.length ? (
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                <CheckCircle2 className="h-4 w-4" />
+                Your workspace is set up. Keep your contact statuses updated to improve follow-up timing.
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
 
         {/* Activity Summary Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

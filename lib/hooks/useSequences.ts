@@ -9,6 +9,13 @@ export interface EmailTemplate {
   body: string;
   is_default: boolean;
   created_at: string;
+  updated_at?: string;
+  category?: string | null;
+  tags?: string[] | null;
+  icon?: string | null;
+  use_count?: number | null;
+  last_used_at?: string | null;
+  description?: string | null;
 }
 
 export interface Draft {

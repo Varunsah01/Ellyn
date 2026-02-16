@@ -19,17 +19,17 @@ export interface NavItem {
 // The "Calm Desk" Navigation
 export const mainNavItems: NavItem[] = [
   {
-    name: "Focus",
+    name: "Dashboard",
     href: "/dashboard",
     icon: Home,
   },
   {
-    name: "Sent",
+    name: "Sent Emails",
     href: "/dashboard/sent",
     icon: Send,
   },
   {
-    name: "People",
+    name: "Contacts",
     href: "/dashboard/contacts",
     icon: Users,
   },
@@ -43,7 +43,7 @@ export const mainNavItems: NavItem[] = [
 // Secondary items to be tucked away in the profile menu
 export const secondaryNavItems: NavItem[] = [
   {
-    name: "Insights",
+    name: "Analytics",
     href: "/dashboard/analytics",
     icon: BarChart2,
   },

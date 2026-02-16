@@ -8,11 +8,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Sidebar } from "./sidebar";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { GlobalSearch } from "./global-search";
 import { NotificationsDropdown, type Notification } from "./notifications-dropdown";
 import { Badge } from "@/components/ui/badge";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 interface HeaderProps {
@@ -32,6 +32,25 @@ export function Header({ breadcrumbs }: HeaderProps) {
   const [notifications, setNotifications] = useState(mockNotifications);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
+
+  const currentSectionLabel = useMemo(() => {
+    const sectionMap: Record<string, string> = {
+      "/dashboard": "Dashboard",
+      "/dashboard/contacts": "Contacts",
+      "/dashboard/templates": "Templates",
+      "/dashboard/sequences": "Sequences",
+      "/dashboard/analytics": "Analytics",
+      "/dashboard/sent": "Sent Emails",
+      "/dashboard/settings": "Settings",
+    };
+
+    const exact = sectionMap[pathname];
+    if (exact) return exact;
+
+    const match = Object.entries(sectionMap).find(([route]) => pathname.startsWith(`${route}/`));
+    return match?.[1] || "Dashboard";
+  }, [pathname]);
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -63,6 +82,10 @@ export function Header({ breadcrumbs }: HeaderProps) {
           </SheetContent>
         </Sheet>
 
+        <div className="sm:hidden">
+          <p className="text-sm font-medium text-foreground">{currentSectionLabel}</p>
+        </div>
+
         {/* Breadcrumbs */}
         {breadcrumbs && breadcrumbs.length > 0 && (
           <nav className="hidden lg:flex items-center space-x-2 text-sm">
@@ -90,7 +113,7 @@ export function Header({ breadcrumbs }: HeaderProps) {
         <div className="flex-1 max-w-md ml-auto">
           <Button variant="outline" className="w-full justify-start text-muted-foreground h-9" onClick={() => setSearchOpen(true)}>
             <Search className="mr-2 h-4 w-4" />
-            <span>Search...</span>
+            <span>Search pages, contacts, templates...</span>
             <Badge variant="secondary" className="ml-auto gap-1"><Command className="h-3 w-3" />K</Badge>
           </Button>
         </div>

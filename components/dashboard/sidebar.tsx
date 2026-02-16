@@ -15,11 +15,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { mainNavItems, secondaryNavItems } from "@/lib/constants/navigation";
-import { ChevronLeft, KanbanSquare, LogOut } from "lucide-react";
+import { ChevronLeft, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useAnalytics";
 import { useSequenceStats } from "@/lib/hooks/useSequences";
-import { useTrackerFollowUpCount } from "@/lib/hooks/useTracker";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -30,13 +29,6 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const { stats } = useDashboardStats();
   const { stats: sequenceStats } = useSequenceStats();
-  const { followUpCount } = useTrackerFollowUpCount();
-  const isTrackerActive =
-    pathname === "/tracker" ||
-    pathname.startsWith("/tracker/") ||
-    pathname === "/dashboard/tracker" ||
-    pathname.startsWith("/dashboard/tracker/");
-  const trackerBadgeLabel = followUpCount > 99 ? "99+" : `${followUpCount}`;
 
   return (
     <motion.aside
@@ -79,46 +71,6 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       </div>
 
       <div className="flex flex-col flex-1 overflow-hidden">
-        {/* Primary Action - Tracker */}
-        <div className="p-3">
-          <Button
-            asChild
-            className={cn(
-              "w-full justify-center gap-2 shadow-lg transition-all text-white bg-[#FF7B7B] hover:bg-[#ff6b6b] focus-visible:ring-2 focus-visible:ring-[#FF7B7B]/40",
-              isTrackerActive && "ring-2 ring-offset-2 ring-[#FF7B7B]/50",
-              collapsed ? "px-0" : "px-4"
-            )}
-            size={collapsed ? "icon" : "default"}
-          >
-            <Link
-              href="/tracker"
-              aria-label="Open tracker"
-              title={collapsed ? "Tracker" : undefined}
-              className={cn(
-                "relative flex w-full items-center justify-center",
-                collapsed ? "" : "gap-2"
-              )}
-            >
-              <KanbanSquare className="h-4 w-4" />
-              {!collapsed && <span>Tracker</span>}
-              {followUpCount > 0 ? (
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "border border-white/40 bg-white/20 text-white",
-                    collapsed
-                      ? "absolute -right-1 -top-1 h-5 min-w-5 px-1 text-[10px]"
-                      : "ml-1 h-5 min-w-5 px-1 text-[10px]"
-                  )}
-                  aria-label={`${followUpCount} contacts need follow-up`}
-                >
-                  {trackerBadgeLabel}
-                </Badge>
-              ) : null}
-            </Link>
-          </Button>
-        </div>
-
         {/* Navigation Items */}
         <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
           {mainNavItems.map((item) => {

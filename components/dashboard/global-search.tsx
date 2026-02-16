@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -13,10 +13,9 @@ import {
   Users,
   Mail,
   FileText,
-  Settings,
   Plus,
-  BarChart3,
   Command,
+  Home,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,109 +39,128 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const router = useRouter();
 
-  // Mock search data (replace with actual API calls)
-  const mockData: SearchResult[] = [
-    // Quick Actions
+  const searchableItems = useMemo<SearchResult[]>(() => [
     {
       id: "action-add-contact",
       type: "action",
       title: "Add Contact",
-      subtitle: "Create a new contact",
-      action: () => router.push("/dashboard/contacts"),
+      subtitle: "Create a new contact record",
+      url: "/dashboard/contacts",
+    },
+    {
+      id: "action-create-template",
+      type: "action",
+      title: "Create Template",
+      subtitle: "Open AI-powered template editor",
+      url: "/dashboard/templates",
     },
     {
       id: "action-create-sequence",
       type: "action",
       title: "Create Sequence",
-      subtitle: "Start a new email sequence",
-      action: () => router.push("/dashboard/sequences/create"),
+      subtitle: "Start a new outreach sequence",
+      url: "/dashboard/sequences/create",
     },
     {
-      id: "action-view-analytics",
-      type: "action",
-      title: "View Analytics",
-      subtitle: "See your performance metrics",
-      action: () => router.push("/dashboard/analytics"),
+      id: "page-dashboard",
+      type: "page",
+      title: "Dashboard",
+      subtitle: "Overview and quick actions",
+      url: "/dashboard",
     },
-
-    // Pages
     {
       id: "page-contacts",
       type: "page",
       title: "Contacts",
-      subtitle: "Manage your contacts",
+      subtitle: "Manage your outreach contacts",
       url: "/dashboard/contacts",
+    },
+    {
+      id: "page-templates",
+      type: "page",
+      title: "Templates",
+      subtitle: "Build and manage outreach templates",
+      url: "/dashboard/templates",
     },
     {
       id: "page-sequences",
       type: "page",
       title: "Sequences",
-      subtitle: "Manage email sequences",
+      subtitle: "Automated follow-up workflows",
       url: "/dashboard/sequences",
+    },
+    {
+      id: "page-sent",
+      type: "page",
+      title: "Sent Emails",
+      subtitle: "Review sent outreach history",
+      url: "/dashboard/sent",
     },
     {
       id: "page-analytics",
       type: "page",
       title: "Analytics",
-      subtitle: "View performance reports",
+      subtitle: "Performance and response trends",
       url: "/dashboard/analytics",
     },
     {
       id: "page-settings",
       type: "page",
       title: "Settings",
-      subtitle: "Configure your preferences",
+      subtitle: "Account and product preferences",
       url: "/dashboard/settings",
     },
 
-    // Sample contacts
     {
-      id: "contact-1",
-      type: "contact",
-      title: "John Smith",
-      subtitle: "Software Engineer at Google",
-      url: "/dashboard/contacts",
+      id: "template-recruiter",
+      type: "template",
+      title: "Template: To Recruiter",
+      subtitle: "Cold outreach to recruiting teams",
+      url: "/dashboard/templates",
     },
     {
-      id: "contact-2",
-      type: "contact",
-      title: "Sarah Johnson",
-      subtitle: "Product Manager at Meta",
-      url: "/dashboard/contacts",
+      id: "template-referral",
+      type: "template",
+      title: "Template: Referral Request",
+      subtitle: "Ask employees or alumni for referrals",
+      url: "/dashboard/templates",
     },
 
-    // Sample sequences
     {
-      id: "sequence-1",
+      id: "sequence-sample-1",
       type: "sequence",
-      title: "Software Engineer Outreach Q1 2024",
-      subtitle: "45 contacts enrolled",
-      url: "/dashboard/sequences/1",
+      title: "Sequence: Software Engineer Outreach",
+      subtitle: "Active sequence with follow-ups",
+      url: "/dashboard/sequences",
     },
+
     {
-      id: "sequence-2",
-      type: "sequence",
-      title: "Product Manager Referral Requests",
-      subtitle: "12 contacts enrolled",
-      url: "/dashboard/sequences/2",
+      id: "contact-sample-1",
+      type: "contact",
+      title: "Contact: John Smith",
+      subtitle: "Senior Engineer at Google",
+      url: "/dashboard/contacts",
     },
-  ];
+  ], []);
 
   const performSearch = useCallback((searchQuery: string) => {
     if (!searchQuery.trim()) {
-      // Show quick actions when no query
-      setResults(mockData.filter((item) => item.type === "action"));
+      const defaultActions = searchableItems.filter(
+        (item) => item.type === "action"
+      );
+      setResults(defaultActions);
       return;
     }
 
-    const filtered = mockData.filter(
-      (item) =>
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.subtitle?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const normalized = searchQuery.toLowerCase();
+
+    const filtered = searchableItems.filter((item) => {
+      const haystack = `${item.title} ${item.subtitle || ""}`.toLowerCase();
+      return haystack.includes(normalized);
+    });
 
     setResults(filtered);
-  }, []);
+  }, [searchableItems]);
 
   useEffect(() => {
     performSearch(query);
@@ -159,11 +177,13 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       if (!open) return;
 
       if (e.key === "ArrowDown") {
+        if (results.length === 0) return;
         e.preventDefault();
         setSelectedIndex((prev) => (prev + 1) % results.length);
       }
 
       if (e.key === "ArrowUp") {
+        if (results.length === 0) return;
         e.preventDefault();
         setSelectedIndex((prev) => (prev - 1 + results.length) % results.length);
       }
@@ -192,6 +212,16 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
     setQuery("");
   };
 
+  const groupedResults = useMemo(() => {
+    const order: Array<SearchResult["type"]> = ["action", "page", "template", "sequence", "contact"];
+    return order
+      .map((type) => ({
+        type,
+        items: results.filter((item) => item.type === type),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [results]);
+
   const getResultIcon = (type: SearchResult["type"]) => {
     switch (type) {
       case "contact":
@@ -203,7 +233,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       case "action":
         return <Plus className="h-4 w-4" />;
       case "page":
-        return <BarChart3 className="h-4 w-4" />;
+        return <Home className="h-4 w-4" />;
     }
   };
 
@@ -222,13 +252,30 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
     }
   };
 
+  const getGroupLabel = (type: SearchResult["type"]) => {
+    switch (type) {
+      case "action":
+        return "Quick Actions";
+      case "page":
+        return "Pages";
+      case "template":
+        return "Templates";
+      case "sequence":
+        return "Sequences";
+      case "contact":
+        return "Contacts";
+      default:
+        return "Results";
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl p-0 gap-0">
         <div className="flex items-center border-b px-4">
           <Search className="h-5 w-5 text-muted-foreground mr-2" />
           <Input
-            placeholder="Search contacts, sequences, or type a command..."
+            placeholder="Search pages, contacts, templates, or commands"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 h-12"
@@ -239,83 +286,84 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
           </Badge>
         </div>
 
-        <div className="max-h-[400px] overflow-y-auto p-2">
+        <div className="max-h-[440px] overflow-y-auto p-2">
           {results.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">No results found</p>
               {query && (
                 <p className="text-xs mt-1">
-                  Try searching for contacts, sequences, or pages
+                  Try "contacts", "templates", "sequences", or "analytics"
                 </p>
               )}
             </div>
           ) : (
-            <div className="space-y-1">
-              {!query && (
-                <div className="px-3 py-2">
-                  <p className="text-xs font-medium text-muted-foreground">
-                    Quick Actions
-                  </p>
-                </div>
-              )}
+            <div className="space-y-2">
+              {groupedResults.map((group) => (
+                <div key={group.type}>
+                  <div className="px-3 py-1.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {getGroupLabel(group.type)}
+                    </p>
+                  </div>
 
-              {results.map((result, index) => (
-                <button
-                  key={result.id}
-                  onClick={() => handleSelect(result)}
-                  onMouseEnter={() => setSelectedIndex(index)}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left",
-                    index === selectedIndex
-                      ? "bg-primary/10 text-primary"
-                      : "hover:bg-muted"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "flex-shrink-0",
-                      index === selectedIndex
-                        ? "text-primary"
-                        : getResultColor(result.type)
-                    )}
-                  >
-                    {getResultIcon(result.type)}
+                  <div className="space-y-1">
+                    {group.items.map((result) => {
+                      const globalIndex = results.findIndex((item) => item.id === result.id);
+                      const isSelected = globalIndex === selectedIndex;
+
+                      return (
+                        <button
+                          key={result.id}
+                          onClick={() => handleSelect(result)}
+                          onMouseEnter={() => setSelectedIndex(globalIndex)}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors text-left",
+                            isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "flex-shrink-0",
+                              isSelected ? "text-primary" : getResultColor(result.type)
+                            )}
+                          >
+                            {getResultIcon(result.type)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{result.title}</p>
+                            {result.subtitle && (
+                              <p className="text-xs text-muted-foreground truncate">{result.subtitle}</p>
+                            )}
+                          </div>
+                          <Badge variant="outline" className="text-xs capitalize">
+                            {result.type}
+                          </Badge>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{result.title}</p>
-                    {result.subtitle && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        {result.subtitle}
-                      </p>
-                    )}
-                  </div>
-                  <Badge variant="outline" className="text-xs capitalize">
-                    {result.type}
-                  </Badge>
-                </button>
+                </div>
               ))}
             </div>
           )}
         </div>
 
         <div className="border-t px-4 py-2 bg-muted/50">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-background border rounded text-xs">↑</kbd>
-                <kbd className="px-1.5 py-0.5 bg-background border rounded text-xs">↓</kbd>
-                Navigate
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-background border rounded text-xs">↵</kbd>
-                Select
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1.5 py-0.5 bg-background border rounded text-xs">ESC</kbd>
-                Close
-              </span>
-            </div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground gap-2 flex-wrap">
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-background border rounded text-xs">Up</kbd>
+              <kbd className="px-1.5 py-0.5 bg-background border rounded text-xs">Down</kbd>
+              Navigate
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-background border rounded text-xs">Enter</kbd>
+              Select
+            </span>
+            <span className="flex items-center gap-1">
+              <kbd className="px-1.5 py-0.5 bg-background border rounded text-xs">Esc</kbd>
+              Close
+            </span>
           </div>
         </div>
       </DialogContent>

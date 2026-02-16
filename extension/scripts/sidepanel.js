@@ -968,15 +968,25 @@ async function submitFeedback(worked) {
   };
 
   try {
-    const response = await fetchWithTimeout(`${API_BASE_URL}/api/pattern-feedback`, {
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    let response = await fetchWithTimeout(`${API_BASE_URL}/api/email-feedback`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers,
       body: JSON.stringify(payload),
     });
+
+    if (!response.ok && (response.status === 404 || response.status === 405)) {
+      response = await fetchWithTimeout(`${API_BASE_URL}/api/pattern-feedback`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+    }
 
     if (!response.ok) {
       throw new Error(`Feedback API failed with status ${response.status}`);

@@ -44,6 +44,10 @@ export async function recordPatternFeedback(
       .single();
 
     if (fetchError && fetchError.code !== 'PGRST116') {
+      if (isMissingDbObjectError(fetchError)) {
+        console.warn('[Pattern Learning] learned_patterns table is missing; feedback accepted without persistence.');
+        return { success: true };
+      }
       // PGRST116 = not found, which is OK
       console.error('Error fetching pattern:', fetchError);
       return { success: false, error: fetchError.message };
@@ -89,12 +93,16 @@ export async function recordPatternFeedback(
       );
 
     if (upsertError) {
+      if (isMissingDbObjectError(upsertError)) {
+        console.warn('[Pattern Learning] learned_patterns table is missing; feedback accepted without persistence.');
+        return { success: true };
+      }
       console.error('Error upserting pattern:', upsertError);
       return { success: false, error: upsertError.message };
     }
 
     // Log the feedback for analytics
-    await supabase.from('pattern_feedback_log').insert({
+    const { error: feedbackLogError } = await supabase.from('pattern_feedback_log').insert({
       email: feedback.email,
       pattern,
       company_domain,
@@ -102,6 +110,10 @@ export async function recordPatternFeedback(
       contact_id: feedback.contact_id,
       created_at: new Date().toISOString(),
     });
+
+    if (feedbackLogError && !isMissingDbObjectError(feedbackLogError)) {
+      console.warn('[Pattern Learning] Could not write pattern_feedback_log entry:', feedbackLogError.message);
+    }
 
     return { success: true };
   } catch (error: any) {
@@ -328,4 +340,9 @@ export async function clearCompanyPatterns(
   } catch (error: any) {
     return { success: false, error: error.message };
   }
+}
+
+function isMissingDbObjectError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  return code === '42P01' || code === 'PGRST202' || code === '42883';
 }

@@ -13,6 +13,12 @@ try {
   console.warn('[Extension] Failed to load analytics utility script:', error);
 }
 
+try {
+  importScripts('background/email-predictor.js');
+} catch (error) {
+  console.warn('[Extension] Failed to load AI email predictor utility script:', error);
+}
+
 // Configuration
 const CONFIG = {
   API_BASE_URL: 'https://www.useellyn.com',
@@ -154,6 +160,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'EXTRACT_PROFILE_FROM_TAB') {
     const payload = message.data && typeof message.data === 'object' ? message.data : message;
     handleExtractProfileFromTabMessage(payload, sender, sendResponse);
+    return true;
+  }
+
+  if (message.type === 'EXTRACT_AND_ENRICH_ENHANCED') {
+    const requestedTabId = Number.isFinite(message?.tabId)
+      ? message.tabId
+      : Number.isFinite(sender?.tab?.id)
+      ? sender.tab.id
+      : null;
+
+    (async () => {
+      try {
+        if (!Number.isFinite(requestedTabId)) {
+          throw new Error('Missing tab id for enhanced extraction');
+        }
+
+        const profileData = await extractProfileWithCompany(requestedTabId);
+        const companyName = String(profileData?.company?.name || '').trim();
+        if (!companyName) {
+          throw new Error('Company name not available from profile extraction');
+        }
+
+        const authToken = await getAuthToken();
+        const domainResult = await resolveDomainEnhanced(
+          companyName,
+          typeof profileData?.company?.pageUrl === 'string' ? profileData.company.pageUrl : '',
+          authToken || ''
+        );
+
+        sendResponse({
+          success: true,
+          data: {
+            profile: profileData,
+            domain: domainResult,
+          },
+        });
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: error?.message || 'Enhanced extraction failed',
+        });
+      }
+    })();
+
     return true;
   }
 
@@ -691,6 +741,127 @@ async function requestProfileExtraction(tabId, options = {}) {
   });
 }
 
+async function requestCompanyPageUrlExtraction(tabId, companyName) {
+  try {
+    const response = await chrome.tabs.sendMessage(tabId, {
+      type: 'EXTRACT_COMPANY_PAGE_URL',
+      companyName,
+    });
+    if (response) {
+      return response;
+    }
+  } catch (error) {
+    if (!isMissingReceiverError(error)) {
+      throw error;
+    }
+    console.warn('[Extension] EXTRACT_COMPANY_PAGE_URL receiver missing. Injecting content script and retrying.', {
+      tabId,
+      error: error?.message || String(error),
+    });
+  }
+
+  await ensureContentScriptInjected(tabId);
+
+  return chrome.tabs.sendMessage(tabId, {
+    type: 'EXTRACT_COMPANY_PAGE_URL',
+    companyName,
+  });
+}
+
+async function extractProfileWithCompany(tabId) {
+  const profileResponse = await withTimeout(
+    requestProfileExtraction(tabId, { debug: true }),
+    CONFIG.STAGE_TIMEOUT_MS.extractProfile,
+    'Profile extraction with company URL'
+  );
+
+  if (profileResponse?.success === false) {
+    throw new Error(profileResponse?.error || 'Profile extraction failed');
+  }
+
+  const profileData =
+    profileResponse?.data && typeof profileResponse.data === 'object'
+      ? profileResponse.data
+      : profileResponse && typeof profileResponse === 'object'
+      ? profileResponse
+      : null;
+
+  if (!profileData || typeof profileData !== 'object') {
+    throw new Error('Profile extraction returned invalid payload');
+  }
+
+  const companyName = String(profileData?.company?.name || '').trim();
+  if (!companyName) {
+    return profileData;
+  }
+
+  try {
+    const companyData = await requestCompanyPageUrlExtraction(tabId, companyName);
+    if (companyData?.companyPageUrl) {
+      profileData.company = {
+        ...(profileData.company || {}),
+        pageUrl: companyData.companyPageUrl,
+        extractionMethod: companyData.extractionMethod || '',
+      };
+      console.log('[Extension] Company page URL extracted', {
+        companyName,
+        companyPageUrl: companyData.companyPageUrl,
+        extractionMethod: companyData.extractionMethod || '',
+      });
+    }
+  } catch (error) {
+    console.warn('[Extension] Failed extracting company page URL. Continuing with profile payload.', {
+      error: error?.message || String(error),
+      companyName,
+    });
+  }
+
+  return profileData;
+}
+
+async function resolveDomainEnhanced(companyName, companyPageUrl, authToken = '') {
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(`${CONFIG.API_BASE_URL}/api/resolve-domain-v2`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      companyName,
+      companyPageUrl: companyPageUrl || undefined,
+    }),
+    credentials: 'include',
+    signal: AbortSignal.timeout(Math.max(CONFIG.STAGE_TIMEOUT_MS.resolveDomain, 5000)),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Domain resolution failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!payload?.success || !payload?.result) {
+    throw new Error('Invalid response from /api/resolve-domain-v2');
+  }
+
+  console.log('[Domain] Resolved:', payload.result);
+  return payload.result;
+}
+
 async function handleExtractProfileFromTabMessage(data, sender, sendResponse) {
   try {
     const tabId = Number.isFinite(data?.tabId)
@@ -1066,6 +1237,25 @@ function isMethodNotAllowedError(error) {
   return Number(error?.status) === 405;
 }
 
+function isRecoverableApiError(error) {
+  const status = Number(error?.status);
+  if ([404, 405, 408, 429, 500, 502, 503, 504].includes(status)) {
+    return true;
+  }
+
+  const message = String(error?.message || '').toLowerCase();
+  if (!message) return false;
+
+  return (
+    message.includes('request failed') ||
+    message.includes('failed to fetch') ||
+    message.includes('network') ||
+    message.includes('timeout') ||
+    message.includes('temporarily unavailable') ||
+    message.includes('mx records')
+  );
+}
+
 function normalizeConfidenceToUnit(value, fallback = 0.5) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
@@ -1221,6 +1411,7 @@ async function normalizePipelineInput(data, senderTabId) {
   const company = String(data?.company || '').trim();
   const role = typeof data?.role === 'string' ? data.role.trim() : '';
   const profileUrl = typeof data?.profileUrl === 'string' ? data.profileUrl.trim() : '';
+  const companyPageUrl = typeof data?.companyPageUrl === 'string' ? data.companyPageUrl.trim() : '';
 
   if (!firstName || !company) {
     throw new Error('Profile context incomplete. Refresh and confirm name + company before finding email.');
@@ -1232,11 +1423,28 @@ async function normalizePipelineInput(data, senderTabId) {
     company,
     role,
     profileUrl,
+    companyPageUrl,
     tabId,
   };
 }
 
-async function resolveDomain(companyName, authToken) {
+async function resolveDomain(companyName, authToken, companyPageUrl = '') {
+  // Prefer enhanced resolver when available.
+  try {
+    const enhanced = await resolveDomainEnhanced(companyName, companyPageUrl, authToken);
+    if (enhanced?.domain) {
+      return {
+        domain: enhanced.domain,
+        source: enhanced.source || 'resolve-domain-v2',
+        confidence: Number(enhanced.confidence || 0.75),
+      };
+    }
+  } catch (error) {
+    if (!isMethodNotAllowedError(error) && Number(error?.status) !== 404) {
+      console.warn('[Extension] /api/resolve-domain-v2 failed. Falling back to /api/resolve-domain.', error);
+    }
+  }
+
   return callBackendPost(
     '/api/resolve-domain',
     { companyName },
@@ -1246,6 +1454,49 @@ async function resolveDomain(companyName, authToken) {
 }
 
 async function predictPatterns(input, authToken) {
+  // Prefer richer person-level prediction API.
+  if (input.firstName && input.domain) {
+    try {
+      const predicted = await callBackendPost(
+        '/api/predict-email',
+        {
+          firstName: input.firstName,
+          lastName: input.lastName || '',
+          companyName: input.company,
+          companyDomain: input.domain,
+          role: input.role || undefined,
+          linkedinUrl: input.profileUrl || undefined,
+        },
+        authToken,
+        CONFIG.STAGE_TIMEOUT_MS.predictPatterns
+      );
+
+      const apiPatterns = Array.isArray(predicted?.prediction?.patterns)
+        ? predicted.prediction.patterns
+        : [];
+
+      const normalizedPatterns = apiPatterns
+        .map((item) => ({
+          template: String(item?.pattern || '').trim().toLowerCase(),
+          confidence: normalizeConfidenceToUnit(item?.confidence, 0.5),
+        }))
+        .filter((item) => Boolean(item.template));
+
+      if (normalizedPatterns.length > 0) {
+        return {
+          patterns: normalizedPatterns,
+          reasoning: String(predicted?.prediction?.recommendationReasoning || ''),
+          source: 'predict-email',
+          costUsd: Number(predicted?.debug?.estimatedCost || 0),
+        };
+      }
+    } catch (error) {
+      if (!isMethodNotAllowedError(error) && Number(error?.status) !== 404) {
+        console.warn('[Extension] /api/predict-email failed. Falling back to /api/predict-patterns.', error);
+      }
+    }
+  }
+
   return callBackendPost(
     '/api/predict-patterns',
     {
@@ -1295,6 +1546,55 @@ function getFallbackPatterns() {
     { template: 'flast', confidence: 0.2 },
     { template: 'first', confidence: 0.1 },
   ];
+}
+
+async function buildOfflineFallbackPayload(input, triggerMessage = '') {
+  const guessedDomain = normalizeDomain(guessDomainFromCompanyName(input.company));
+  if (!guessedDomain) {
+    throw new Error(triggerMessage || 'Could not infer company domain.');
+  }
+
+  const fallbackPatterns = getFallbackPatterns();
+  const candidates = buildCandidates(
+    input.firstName,
+    input.lastName,
+    guessedDomain,
+    fallbackPatterns
+  );
+
+  if (candidates.length === 0) {
+    throw new Error(triggerMessage || 'Could not generate heuristic email candidates.');
+  }
+
+  let hasMx = false;
+  try {
+    const mx = await verifyDomainMx(guessedDomain);
+    hasMx = mx?.hasMx === true;
+  } catch {
+    hasMx = false;
+  }
+
+  const top = candidates[0];
+  const baseConfidence = hasMx ? 0.58 : 0.38;
+  const effectiveConfidence = Math.max(baseConfidence, Number(top.confidence || 0.35));
+
+  return {
+    email: top.email,
+    pattern: top.pattern || 'first.last',
+    confidence: effectiveConfidence,
+    source: hasMx ? 'offline_heuristic_mx' : 'offline_heuristic',
+    alternativeEmails: candidates.slice(1, 5).map((candidate) => ({
+      email: candidate.email,
+      pattern: candidate.pattern || 'unknown',
+      confidence: candidate.confidence,
+    })),
+    cost: 0,
+    domain: guessedDomain,
+    verificationResults: [],
+    profileUrl: input.profileUrl || '',
+    warning:
+      'Some APIs are unavailable right now. Returned heuristic candidates so you can continue outreach.',
+  };
 }
 
 function buildCandidates(firstName, lastName, domain, patterns) {
@@ -1427,6 +1727,7 @@ async function handleFindEmail(data, sender, sendResponse) {
   const senderTabId = Number.isFinite(sender?.tab?.id) ? sender.tab.id : null;
   const lookupStartedAt = Date.now();
   let stage = 'init';
+  let normalizedInput = null;
 
   try {
     await startOperation(operationId, {
@@ -1441,6 +1742,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     });
 
     const input = await normalizePipelineInput(data || {}, senderTabId);
+    normalizedInput = input;
     if (!input.firstName || !input.company) {
       throw new Error('Insufficient profile data. Missing first name or company.');
     }
@@ -1521,8 +1823,24 @@ async function handleFindEmail(data, sender, sendResponse) {
     console.log('[Extension] STAGE 1 - Domain resolution');
 
     let domainResult = null;
+    let companyPageUrl = String(input.companyPageUrl || '').trim();
+    if (!companyPageUrl) {
+      try {
+        const companyExtraction = await withTimeout(
+          requestCompanyPageUrlExtraction(input.tabId, input.company),
+          Math.min(3500, CONFIG.STAGE_TIMEOUT_MS.extractProfile),
+          'Company page URL extraction'
+        );
+        companyPageUrl = String(companyExtraction?.companyPageUrl || '').trim();
+      } catch (error) {
+        console.warn('[Extension] Company page URL extraction skipped for find-email pipeline.', {
+          error: error?.message || String(error),
+        });
+      }
+    }
+
     try {
-      domainResult = await resolveDomain(input.company, authToken);
+      domainResult = await resolveDomain(input.company, authToken, companyPageUrl);
     } catch (error) {
       if (isMethodNotAllowedError(error)) {
         console.warn('[Extension] /api/resolve-domain returned 405. Falling back to /api/generate-emails.', error);
@@ -1604,9 +1922,12 @@ async function handleFindEmail(data, sender, sendResponse) {
     try {
       const prediction = await predictPatterns(
         {
+          firstName: input.firstName,
+          lastName: input.lastName,
           domain,
           company: input.company,
           role: input.role || '',
+          profileUrl: input.profileUrl || '',
         },
         authToken
       );
@@ -1764,6 +2085,49 @@ async function handleFindEmail(data, sender, sendResponse) {
     const message = error?.message || 'Unknown error';
     const errorCode = typeof error?.code === 'string' ? error.code : null;
     const resetDate = typeof error?.resetDate === 'string' ? error.resetDate : null;
+
+    if (
+      normalizedInput &&
+      errorCode !== 'QUOTA_EXCEEDED' &&
+      errorCode !== 'UNAUTHORIZED' &&
+      isRecoverableApiError(error)
+    ) {
+      try {
+        const fallbackPayload = await buildOfflineFallbackPayload(normalizedInput, message);
+        fallbackPayload.cost = toRoundedMoney(Number(fallbackPayload.cost || 0));
+
+        await trackLookupAnalytics({
+          profileUrl: fallbackPayload.profileUrl,
+          domain: fallbackPayload.domain || '',
+          email: fallbackPayload.email,
+          pattern: fallbackPayload.pattern,
+          confidence: fallbackPayload.confidence,
+          source: fallbackPayload.source,
+          cacheHit: false,
+          cost: fallbackPayload.cost,
+          duration: Date.now() - lookupStartedAt,
+          success: true,
+        });
+
+        await completeOperation(operationId, 'completed', {
+          stage: 'offline_fallback',
+          warning: fallbackPayload.warning,
+          result: fallbackPayload,
+        });
+
+        await notifyEmailFound(normalizedInput.tabId, fallbackPayload);
+
+        sendResponse({
+          success: true,
+          type: 'EMAIL_FOUND',
+          data: fallbackPayload,
+        });
+        return;
+      } catch (fallbackError) {
+        console.warn('[Extension] Offline heuristic fallback failed:', fallbackError);
+      }
+    }
+
     console.error('[Extension] Error in handleFindEmail pipeline:', {
       operationId,
       stage,

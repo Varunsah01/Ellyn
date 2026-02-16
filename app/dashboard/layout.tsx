@@ -22,7 +22,9 @@ export default function DashboardLayout({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const isTrackerRoute =
+  const isContactsWorkspaceRoute =
+    pathname === "/dashboard/contacts" ||
+    pathname.startsWith("/dashboard/contacts/") ||
     pathname === "/tracker" ||
     pathname === "/dashboard/tracker" ||
     pathname.startsWith("/dashboard/tracker/");
@@ -123,8 +125,9 @@ export default function DashboardLayout({
           <main className="flex-1 overflow-y-auto">
             <div
               className={cn(
-                "p-3 sm:p-4 lg:p-5",
-                isTrackerRoute ? "max-w-none" : "container mx-auto max-w-7xl"
+                isContactsWorkspaceRoute
+                  ? "max-w-none p-0"
+                  : "container mx-auto max-w-7xl p-3 sm:p-4 lg:p-5"
               )}
             >
               {children}

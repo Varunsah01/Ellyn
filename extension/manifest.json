@@ -22,7 +22,7 @@
   "content_scripts": [
     {
       "matches": ["https://linkedin.com/*", "https://*.linkedin.com/*"],
-      "js": ["content/linkedin-extractor.js"],
+      "js": ["content/linkedin-company-extractor.js", "content/linkedin-extractor.js"],
       "run_at": "document_idle"
     }
   ],

@@ -306,8 +306,8 @@ Varun`;
 
   return (
     <>
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <Table className="table-fixed">
+      <div className="overflow-hidden border-y border-slate-200 bg-white dark:border-slate-800">
+        <Table className={compact ? "table-fixed min-w-[980px]" : "table-fixed min-w-[1100px]"}>
           <colgroup>
             <col style={{ width: "3%" }} />
             {!compact ? <col style={{ width: "4%" }} /> : null}

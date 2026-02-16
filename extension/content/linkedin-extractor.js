@@ -1424,10 +1424,16 @@ if (typeof window !== 'undefined') {
 // Runtime message listener.
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== 'object') return;
-  if (message.type !== 'EXTRACT_PROFILE') return;
 
-  handleExtraction(message, sendResponse);
-  return true;
+  if (message.type === 'EXTRACT_PROFILE') {
+    handleExtraction(message, sendResponse);
+    return true;
+  }
+
+  if (message.type === 'EXTRACT_COMPANY_PAGE_URL') {
+    handleCompanyPageUrlExtraction(message, sendResponse);
+    return false;
+  }
 });
 
 async function handleExtraction(message, sendResponse) {
@@ -1469,6 +1475,38 @@ async function handleExtraction(message, sendResponse) {
       response.domAudit = extractor.debugCurrentDom();
     }
     sendResponse(response);
+  }
+}
+
+function handleCompanyPageUrlExtraction(message, sendResponse) {
+  try {
+    const CompanyExtractorClass =
+      typeof window !== 'undefined' ? window.LinkedInCompanyExtractor : null;
+
+    if (typeof CompanyExtractorClass !== 'function') {
+      sendResponse({
+        companyName: String(message?.companyName || '').trim(),
+        companyPageUrl: null,
+        extractionMethod: 'extractor-unavailable',
+        confidence: 0,
+        isCurrent: false,
+      });
+      return;
+    }
+
+    const extractor = new CompanyExtractorClass(message?.debug === true);
+    const result = extractor.extractCompanyWebsite(String(message?.companyName || '').trim());
+    sendResponse(result);
+  } catch (error) {
+    console.error('[LinkedInExtractor] Company page extraction failed:', error);
+    sendResponse({
+      companyName: String(message?.companyName || '').trim(),
+      companyPageUrl: null,
+      extractionMethod: 'failed',
+      confidence: 0,
+      isCurrent: false,
+      error: error?.message || 'Unknown company extraction error',
+    });
   }
 }
 

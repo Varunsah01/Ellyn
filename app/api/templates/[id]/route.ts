@@ -44,7 +44,23 @@ export async function PATCH(
   try {
     const { id } = params;
     const body = await request.json();
-    const { name, subject, body: templateBody } = body;
+    const {
+      name,
+      subject,
+      body: templateBody,
+      category,
+      tags,
+      icon,
+      use_count: useCount,
+    } = body as {
+      name?: string;
+      subject?: string;
+      body?: string;
+      category?: string;
+      tags?: string[];
+      icon?: string;
+      use_count?: number;
+    };
 
     // Validate required fields
     if (!name || !subject || !templateBody) {
@@ -54,17 +70,56 @@ export async function PATCH(
       );
     }
 
-    const { data, error } = await supabase
+    const updatePayload: Record<string, unknown> = {
+      name,
+      subject,
+      body: templateBody,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (typeof category === 'string' && category.trim()) {
+      updatePayload.category = category.trim();
+    }
+
+    if (Array.isArray(tags)) {
+      updatePayload.tags = tags
+        .filter((tag) => typeof tag === 'string')
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+    }
+
+    if (typeof icon === 'string' && icon.trim()) {
+      updatePayload.icon = icon.trim();
+    }
+
+    if (typeof useCount === 'number' && Number.isFinite(useCount)) {
+      updatePayload.use_count = Math.max(0, Math.trunc(useCount));
+    }
+
+    let { data, error } = await supabase
       .from('email_templates')
-      .update({
-        name,
-        subject,
-        body: templateBody,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single();
+
+    // Fallback for DBs that do not include metadata columns yet.
+    if (error && isUndefinedColumnError(error)) {
+      const fallbackUpdate = await supabase
+        .from('email_templates')
+        .update({
+          name,
+          subject,
+          body: templateBody,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      data = fallbackUpdate.data;
+      error = fallbackUpdate.error;
+    }
 
     if (error) {
       console.error('Error updating template:', error);
@@ -120,4 +175,11 @@ export async function DELETE(
       { status: 500 }
     );
   }
+}
+
+function isUndefinedColumnError(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  const message = (error as { message?: string })?.message || '';
+
+  return code === '42703' || /column .* does not exist/i.test(message);
 }
