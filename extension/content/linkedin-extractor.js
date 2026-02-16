@@ -16,21 +16,23 @@ const CONFIG = {
 
 const CONFIDENCE = {
   name: {
-    jsonLd: 0.98,
-    openGraph: 0.9,
-    dom: 0.75,
+    openGraph: 0.95,
+    dom: 0.9,
+    jsonLd: 0.8,
+    slug: 0.6,
   },
   company: {
     jsonLd: 0.95,
-    experience: 0.85,
-    topCard: 0.8,
-    headline: 0.6,
+    topCard: 0.9,
+    headline: 0.75,
+    experience: 0.7,
     notFound: 0,
   },
   role: {
     jsonLd: 0.95,
+    topCard: 0.9,
     headline: 0.85,
-    experience: 0.7,
+    experience: 0.8,
     notFound: 0,
   },
   location: {
@@ -301,77 +303,115 @@ class LinkedInExtractor {
   // Name Extraction ----------------------------------------------------------
 
   async extractName() {
-    this.log('=== Starting name extraction ===');
-    this.log('Tier 1: Attempting JSON-LD extraction');
-    const jsonLd = this.extractFromJsonLd();
-    if (jsonLd) {
-      const parsed = this.parseHumanName(jsonLd.fullName || `${jsonLd.firstName || ''} ${jsonLd.lastName || ''}`);
-      if (parsed.firstName) {
-        this.log('Name extracted from JSON-LD', {
-          firstName: parsed.firstName,
-          lastName: parsed.lastName,
-          fullName: parsed.fullName,
-        });
-        return {
-          firstName: parsed.firstName,
-          lastName: parsed.lastName,
-          fullName: parsed.fullName,
-          source: 'json-ld',
-          confidence: CONFIDENCE.name.jsonLd,
-        };
-      }
-    }
+    this.log('=== NAME EXTRACTION START ===');
 
-    this.log('Tier 2: Attempting Open Graph extraction');
+    this.log('TIER 1: Attempting Open Graph extraction (display name)');
     const og = this.extractFromOpenGraph();
     if (og?.fullName) {
-      const parsed = this.parseHumanName(og.fullName);
-      if (parsed.firstName) {
-        this.log('Name extracted from Open Graph', parsed);
+      const { firstName, lastName } = this.splitName(og.fullName);
+      if (firstName) {
+        this.log('Name from Open Graph (display name)', {
+          fullName: og.fullName,
+          firstName,
+          lastName,
+        });
         return {
-          firstName: parsed.firstName,
-          lastName: parsed.lastName,
-          fullName: parsed.fullName,
+          firstName,
+          lastName,
+          fullName: og.fullName,
           source: 'open-graph',
           confidence: CONFIDENCE.name.openGraph,
         };
       }
     }
+    this.log('Open Graph did not return a valid display name');
 
-    this.log('Tier 3: Attempting DOM extraction');
-    const dom = this.extractFromDom();
-    if (dom?.fullName) {
-      const parsed = this.parseHumanName(dom.fullName);
-      if (parsed.firstName) {
-        this.log('Name extracted from DOM', parsed);
+    this.log('TIER 2: Attempting DOM h1 extraction (display name)');
+    const domName = this.extractNameFromDom();
+    if (domName?.fullName) {
+      const { firstName, lastName } = this.splitName(domName.fullName);
+      if (firstName) {
+        this.log('Name from DOM h1 (display name)', {
+          fullName: domName.fullName,
+          firstName,
+          lastName,
+        });
         return {
-          firstName: parsed.firstName,
-          lastName: parsed.lastName,
-          fullName: parsed.fullName,
+          firstName,
+          lastName,
+          fullName: domName.fullName,
           source: 'dom',
           confidence: CONFIDENCE.name.dom,
         };
       }
     }
+    this.log('DOM h1 did not return a valid display name');
 
-    this.log('Extracting name - attempting URL slug fallback');
-    const slugName = this.extractNameFromProfileSlug();
-    if (slugName) {
-      const parsed = this.parseHumanName(slugName);
-      if (parsed.firstName) {
-        this.log('Name extracted from profile URL slug', parsed);
+    this.log('TIER 3: Attempting JSON-LD extraction');
+    const jsonLd = this.extractFromJsonLd();
+    if (jsonLd?.firstName && jsonLd?.lastName) {
+      const fullName = `${jsonLd.firstName} ${jsonLd.lastName}`.trim();
+      this.log('Name from JSON-LD firstName/lastName', {
+        fullName,
+        firstName: jsonLd.firstName,
+        lastName: jsonLd.lastName,
+      });
+      return {
+        firstName: jsonLd.firstName,
+        lastName: jsonLd.lastName,
+        fullName,
+        source: 'json-ld',
+        confidence: CONFIDENCE.name.jsonLd,
+      };
+    }
+    if (jsonLd?.fullName) {
+      const { firstName, lastName } = this.splitName(jsonLd.fullName);
+      if (firstName) {
+        this.log('Name from JSON-LD fullName', {
+          fullName: jsonLd.fullName,
+          firstName,
+          lastName,
+        });
         return {
-          firstName: parsed.firstName,
-          lastName: parsed.lastName,
-          fullName: parsed.fullName,
-          source: 'url-slug',
-          confidence: 0.65,
+          firstName,
+          lastName,
+          fullName: jsonLd.fullName,
+          source: 'json-ld',
+          confidence: CONFIDENCE.name.jsonLd,
         };
       }
     }
+    this.log('JSON-LD did not return a valid name');
 
-    this.log('Name extraction failed across all tiers');
-    throw new Error('Could not extract name from profile');
+    this.log('TIER 4: Attempting profile slug extraction');
+    const slugName = this.extractNameFromProfileSlug();
+    if (slugName) {
+      const { firstName, lastName } = this.splitName(slugName);
+      if (firstName) {
+        this.log('Name from profile slug', {
+          fullName: slugName,
+          firstName,
+          lastName,
+        });
+        return {
+          firstName,
+          lastName,
+          fullName: slugName,
+          source: 'profile-slug',
+          confidence: CONFIDENCE.name.slug,
+        };
+      }
+    }
+    this.log('Profile slug did not return a valid name');
+
+    this.log('=== NAME EXTRACTION FAILED ===');
+    return {
+      firstName: null,
+      lastName: null,
+      fullName: null,
+      source: 'failed',
+      confidence: 0,
+    };
   }
 
   // Shared Tier Helpers ------------------------------------------------------
@@ -551,60 +591,156 @@ class LinkedInExtractor {
     return null;
   }
 
+  extractNameFromDom() {
+    return this.extractFromDom();
+  }
+
+  splitName(fullName) {
+    if (!fullName || typeof fullName !== 'string') {
+      return { firstName: '', lastName: '' };
+    }
+
+    const cleaned = fullName.trim().replace(/\s+/g, ' ');
+    if (!cleaned) {
+      return { firstName: '', lastName: '' };
+    }
+
+    if (!cleaned.includes(' ')) {
+      return { firstName: cleaned, lastName: '' };
+    }
+
+    const parts = cleaned.split(' ');
+    const firstName = parts[0] || '';
+    const lastName = parts.slice(1).join(' ');
+
+    return { firstName, lastName };
+  }
+
   // Company Extraction -------------------------------------------------------
 
   async extractCompany() {
-    this.log('=== Starting company extraction ===');
-    this.log('Tier 1: Attempting JSON-LD for company');
+    this.log('=== COMPANY EXTRACTION START ===');
+
+    this.log('TIER 1: Attempting JSON-LD extraction');
     const jsonLd = this.extractFromJsonLd();
     if (jsonLd?.company && this.isLikelyCompany(jsonLd.company)) {
-      this.log('Company extracted from JSON-LD', { company: jsonLd.company });
+      this.log('Company from JSON-LD', { company: jsonLd.company });
       return {
         name: jsonLd.company,
         source: 'json-ld',
         confidence: CONFIDENCE.company.jsonLd,
       };
     }
+    this.log('JSON-LD did not return a valid company');
 
-    this.log('Tier 2: Attempting Experience section extraction');
-    const experience = this.extractCurrentExperienceEntry();
-    if (experience?.company && this.isLikelyCompany(experience.company)) {
-      this.log('Company extracted from Experience section', { company: experience.company });
-      return {
-        name: experience.company,
-        source: 'experience-section',
-        confidence: CONFIDENCE.company.experience,
-      };
-    }
-
-    this.log('Tier 3: Attempting top-card extraction');
-    const topCardCompany = this.extractCompanyFromTopCardAffiliations();
+    this.log('TIER 2: Attempting top-card extraction');
+    const topCardCompany = this.extractCompanyFromTopCard();
     if (topCardCompany && this.isLikelyCompany(topCardCompany)) {
-      this.log('Company extracted from top-card affiliations', { company: topCardCompany });
+      this.log('Company from top-card', { company: topCardCompany });
       return {
         name: topCardCompany,
         source: 'top-card',
         confidence: CONFIDENCE.company.topCard,
       };
     }
+    this.log('Top-card did not return a valid company');
 
-    this.log('Tier 4: Attempting headline parsing for company');
+    this.log('TIER 3: Attempting headline parsing');
     const headlineCompany = this.extractCompanyFromHeadline();
     if (headlineCompany && this.isLikelyCompany(headlineCompany)) {
-      this.log('Company extracted from headline', { company: headlineCompany });
+      this.log('Company from headline', { company: headlineCompany });
       return {
         name: headlineCompany,
         source: 'headline',
         confidence: CONFIDENCE.company.headline,
       };
     }
+    this.log('Headline did not return a valid company');
 
-    this.log('No company found (may be student/freelancer)');
+    this.log('TIER 4: Attempting experience section (current only)');
+    const currentExperience = this.extractCurrentCompanyFromExperience();
+    if (currentExperience && this.isLikelyCompany(currentExperience)) {
+      this.log('Company from current experience', { company: currentExperience });
+      return {
+        name: currentExperience,
+        source: 'experience-current',
+        confidence: CONFIDENCE.company.experience,
+      };
+    }
+    this.log('Experience section did not return a valid current company');
+
+    this.log('=== COMPANY EXTRACTION FAILED ===');
     return {
       name: null,
       source: 'not-found',
       confidence: CONFIDENCE.company.notFound,
     };
+  }
+
+  extractCompanyFromTopCard() {
+    this.log('Scanning top-card for company name');
+
+    const topCardSelectors = [
+      'div[class*="pv-text-details"] div.text-body-medium:not(.break-words)',
+      'div.pv-text-details__left-panel div.text-body-medium span[aria-hidden="true"]',
+      'div.mt2.relative div.text-body-medium span[aria-hidden="true"]',
+      'section.pv-top-card div.text-body-medium:not(.break-words)',
+      'div[class*="top-card-layout__entity-info"] div.text-body-medium',
+    ];
+
+    for (const selector of topCardSelectors) {
+      try {
+        const element = document.querySelector(selector);
+        if (!element) continue;
+
+        const text = this.cleanCompanyCandidate(element.textContent || '');
+        if (text && !this.looksLikeRole(text)) {
+          this.log('Top-card company candidate found', { selector, text });
+          return text;
+        }
+      } catch (error) {
+        this.log('Top-card selector failed', { selector, error: error?.message || 'Unknown selector failure' });
+      }
+    }
+
+    this.log('No valid company found in top-card');
+    return null;
+  }
+
+  extractCurrentCompanyFromExperience() {
+    this.log('Scanning experience section for current company only');
+
+    try {
+      const experienceSection = this.getExperienceSection();
+      if (!experienceSection) {
+        this.log('Experience section not found in DOM');
+        return null;
+      }
+
+      const experienceItems = experienceSection.querySelectorAll('li');
+      for (const item of experienceItems) {
+        const itemText = item.textContent || '';
+        const isCurrent = /\b(current|present)\b/i.test(itemText);
+        if (!isCurrent) continue;
+
+        const companySpans = item.querySelectorAll('span[aria-hidden="true"]');
+        for (const span of companySpans) {
+          const text = this.cleanCompanyCandidate(span.textContent || '');
+          if (!text || this.looksLikeRole(text)) continue;
+
+          this.log('Current company found in experience', { text });
+          return text;
+        }
+      }
+
+      this.log('No current company found in experience section');
+      return null;
+    } catch (error) {
+      this.log('Error extracting current company from experience section', {
+        error: error?.message || 'Unknown experience extraction error',
+      });
+      return null;
+    }
   }
 
   extractCompanyFromHeadline() {
@@ -629,39 +765,7 @@ class LinkedInExtractor {
   }
 
   extractCompanyFromTopCardAffiliations() {
-    const selectors = [
-      'main section:first-of-type a[href*="/company/"]',
-      'div[class*="pv-top-card"] a[href*="/company/"]',
-      'div[class*="top-card"] a[href*="/company/"]',
-      'div[class*="pv-text-details__right-panel"] a',
-    ];
-
-    const candidates = [];
-    for (const selector of selectors) {
-      let nodes = [];
-      try {
-        nodes = document.querySelectorAll(selector);
-      } catch (error) {
-        this.logSelectorAttempt('company-top-card', selector, null, '', error);
-        continue;
-      }
-
-      for (const node of nodes) {
-        const text = this.cleanCompanyCandidate(node?.textContent || node?.getAttribute('aria-label') || '');
-        this.logSelectorAttempt('company-top-card', selector, node, text, null);
-        if (text) {
-          candidates.push(text);
-        }
-      }
-    }
-
-    const uniqueCandidates = [...new Set(candidates)];
-    if (uniqueCandidates.length === 0) {
-      return null;
-    }
-
-    const preferred = uniqueCandidates.find((item) => !this.looksLikeEducation(item));
-    return preferred || uniqueCandidates[0] || null;
+    return this.extractCompanyFromTopCard();
   }
 
   // Role Extraction ----------------------------------------------------------
@@ -1139,11 +1243,35 @@ class LinkedInExtractor {
     return /[\p{L}]/u.test(text);
   }
 
+  looksLikeRole(value) {
+    if (!value || typeof value !== 'string') return false;
+    const text = value.trim();
+    if (!text) return false;
+
+    const rolePrefixes =
+      /^(co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|head of|chief)\b/i;
+    return rolePrefixes.test(text);
+  }
+
   isLikelyCompany(value) {
+    if (!value || typeof value !== 'string') return false;
+
     const text = this.cleanText(value);
-    if (!text || text.length < 2 || text.length > 140) return false;
-    if (/linkedin|followers|connections|yrs|mos|present|current/i.test(text)) return false;
+    if (!text || text.length < 2 || text.length > 100) return false;
+    if (this.looksLikeRole(text)) return false;
+    if (/linkedin|followers|connections|yrs|mos/i.test(text)) return false;
     if (/^[0-9]+$/.test(text)) return false;
+
+    const suspiciousPatterns = [
+      /^(full-time|part-time|contract|freelance|self-employed)$/i,
+      /^\d{4}\s*-\s*(present|current|\d{4})$/i,
+      /^(he\/him|she\/her|they\/them)$/i,
+      /^[\u00B7\u2022]\s/i,
+    ];
+    for (const pattern of suspiciousPatterns) {
+      if (pattern.test(text)) return false;
+    }
+
     return true;
   }
 

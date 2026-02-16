@@ -197,3 +197,44 @@ body {
 .terms-text a:hover {
   color: var(--blue-500);
 }
+
+/* Profile context rows and URL treatment in sidepanel profile card */
+.profile-context-url-value {
+  font-size: 0.75rem;
+  color: #64748b;
+  word-break: break-all;
+  max-width: 280px;
+  display: inline-block;
+  vertical-align: top;
+}
+
+.profile-context-url-value:hover {
+  text-decoration: underline;
+}
+
+.profile-context-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.profile-context-row:last-child {
+  border-bottom: none;
+}
+
+.profile-context-label {
+  font-weight: 500;
+  color: #475569;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.profile-context-value {
+  color: #0f172a;
+  text-align: right;
+  word-wrap: break-word;
+  flex: 1;
+}

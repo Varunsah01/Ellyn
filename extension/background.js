@@ -1062,6 +1062,104 @@ async function callBackendPost(path, body, authToken, timeoutMs) {
   return payload || {};
 }
 
+function isMethodNotAllowedError(error) {
+  return Number(error?.status) === 405;
+}
+
+function normalizeConfidenceToUnit(value, fallback = 0.5) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return Math.max(0, Math.min(1, Number(fallback) || 0.5));
+  }
+  if (numeric > 1) {
+    return Math.max(0, Math.min(1, numeric / 100));
+  }
+  return Math.max(0, Math.min(1, numeric));
+}
+
+function guessDomainFromCompanyName(companyName) {
+  const normalized = String(companyName || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(
+      /\b(inc|incorporated|llc|ltd|limited|corp|corporation|company|co|plc|gmbh|ag|sa|bv|pty|private|pvt|holdings|group)\b/g,
+      ' '
+    )
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  return `${normalized}.com`;
+}
+
+async function runLegacyGenerateEmailsPipeline(input, authToken) {
+  const legacyResponse = await callBackendPost(
+    '/api/generate-emails',
+    {
+      firstName: input.firstName,
+      lastName: input.lastName,
+      companyName: input.company,
+      role: input.role || undefined,
+    },
+    authToken,
+    CONFIG.STAGE_TIMEOUT_MS.predictPatterns
+  );
+
+  const rawEmails = Array.isArray(legacyResponse?.emails) ? legacyResponse.emails : [];
+  const candidates = rawEmails
+    .map((item) => {
+      const email = String(item?.email || '')
+        .trim()
+        .toLowerCase();
+      if (!email || !email.includes('@')) return null;
+
+      return {
+        email,
+        pattern: String(item?.pattern || 'unknown')
+          .trim()
+          .toLowerCase(),
+        confidence: normalizeConfidenceToUnit(item?.confidence, 0.6),
+      };
+    })
+    .filter(Boolean);
+
+  if (candidates.length === 0) {
+    throw new Error('Legacy /api/generate-emails did not return any email candidates.');
+  }
+
+  candidates.sort((a, b) => b.confidence - a.confidence);
+
+  const domainVerified =
+    legacyResponse?.verification?.verified === true || legacyResponse?.verification?.hasMxRecords === true;
+  const topCandidate = candidates[0];
+  const domainFromPayload = normalizeDomain(legacyResponse?.domain);
+  const domainFromEmail = normalizeDomain(topCandidate.email.split('@')[1] || '');
+  const domain = domainFromPayload || domainFromEmail;
+  const primaryConfidenceFloor = domainVerified ? 0.85 : 0.65;
+
+  return {
+    email: topCandidate.email,
+    pattern: topCandidate.pattern || 'unknown',
+    confidence: Math.max(topCandidate.confidence, primaryConfidenceFloor),
+    source: domainVerified ? 'legacy_verified' : 'legacy_generate_emails',
+    alternativeEmails: candidates.slice(1, 5).map((candidate) => ({
+      email: candidate.email,
+      pattern: candidate.pattern || 'unknown',
+      confidence: candidate.confidence,
+    })),
+    cost: toRoundedMoney(0),
+    domain,
+    verificationResults: [],
+    profileUrl: input.profileUrl || '',
+  };
+}
+
 async function extractProfileFromTab(tabId) {
   if (!Number.isFinite(tabId)) {
     throw new Error('Missing tab id for profile extraction');
@@ -1343,8 +1441,8 @@ async function handleFindEmail(data, sender, sendResponse) {
     });
 
     const input = await normalizePipelineInput(data || {}, senderTabId);
-    if (!input.firstName || !input.lastName || !input.company) {
-      throw new Error('Insufficient profile data. Missing first name, last name, or company.');
+    if (!input.firstName || !input.company) {
+      throw new Error('Insufficient profile data. Missing first name or company.');
     }
 
     const authToken = await getAuthToken();
@@ -1422,7 +1520,68 @@ async function handleFindEmail(data, sender, sendResponse) {
     await updateOperation(operationId, { stage });
     console.log('[Extension] STAGE 1 - Domain resolution');
 
-    const domainResult = await resolveDomain(input.company, authToken);
+    let domainResult = null;
+    try {
+      domainResult = await resolveDomain(input.company, authToken);
+    } catch (error) {
+      if (isMethodNotAllowedError(error)) {
+        console.warn('[Extension] /api/resolve-domain returned 405. Falling back to /api/generate-emails.', error);
+
+        try {
+          stage = 'legacy_generate_emails';
+          await updateOperation(operationId, {
+            stage,
+            warning: 'Modern API unavailable (405). Used legacy generate-emails fallback.',
+          });
+
+          const legacyPayload = await runLegacyGenerateEmailsPipeline(input, authToken);
+
+          await trackLookupAnalytics({
+            profileUrl: legacyPayload.profileUrl,
+            domain: legacyPayload.domain || '',
+            email: legacyPayload.email,
+            pattern: legacyPayload.pattern,
+            confidence: legacyPayload.confidence,
+            source: legacyPayload.source,
+            cacheHit: false,
+            cost: legacyPayload.cost,
+            duration: Date.now() - lookupStartedAt,
+            success: true,
+          });
+
+          await completeOperation(operationId, 'completed', {
+            stage: 'done',
+            result: legacyPayload,
+          });
+
+          await notifyEmailFound(input.tabId, legacyPayload);
+
+          sendResponse({
+            success: true,
+            type: 'EMAIL_FOUND',
+            data: legacyPayload,
+          });
+          return;
+        } catch (legacyError) {
+          console.warn(
+            '[Extension] Legacy /api/generate-emails fallback failed. Using local heuristic domain fallback.',
+            legacyError
+          );
+        }
+      }
+
+      const guessedDomain = guessDomainFromCompanyName(input.company);
+      if (!guessedDomain) {
+        throw error;
+      }
+
+      domainResult = {
+        domain: guessedDomain,
+        source: 'local_heuristic',
+        confidence: 0.4,
+      };
+    }
+
     domain = normalizeDomain(domainResult?.domain);
 
     if (!domain) {

@@ -74,6 +74,7 @@ const elements = {
   profileContextCard: null,
   profileContextStatus: null,
   profileContextName: null,
+  profileContextRole: null,
   profileContextCompany: null,
   profileContextUrl: null,
   refreshProfileContextBtn: null,
@@ -141,6 +142,7 @@ function cacheElements() {
   elements.profileContextCard = document.getElementById("profileContextCard");
   elements.profileContextStatus = document.getElementById("profileContextStatus");
   elements.profileContextName = document.getElementById("profileContextName");
+  elements.profileContextRole = document.getElementById("profileContextRole");
   elements.profileContextCompany = document.getElementById("profileContextCompany");
   elements.profileContextUrl = document.getElementById("profileContextUrl");
   elements.refreshProfileContextBtn = document.getElementById("refreshProfileContextBtn");
@@ -231,9 +233,9 @@ async function syncAuthStateFromStorage() {
     await refreshProfileContext("auth");
     const linkedInHint = await hasLinkedInProfileOpen();
     if (!linkedInHint) {
-      setStatus("Open a LinkedIn profile tab, then click Find Email.", "neutral");
+      setStatus("Open a LinkedIn profile to get started.", "neutral");
     } else {
-      setStatus("Ready to find email from active LinkedIn profile.", "success");
+      setStatus("Profile ready.", "success");
     }
   } else {
     setStatus("Sign in to use the email finder.", "neutral");
@@ -315,7 +317,7 @@ async function refreshProfileContext(reason = "auto") {
 
     if (!Number.isFinite(tabId) || !isLinkedInProfile(tabUrl)) {
       emailFinderState.lastProfileKey = "";
-      resetProfileContext("Open a LinkedIn profile tab to see extracted data.", "neutral");
+      resetProfileContext("Open a LinkedIn profile to begin.", "neutral");
       return;
     }
 
@@ -338,7 +340,7 @@ async function refreshProfileContext(reason = "auto") {
           lastUpdatedAt: Date.now(),
         },
         isNeutral ? "neutral" : "error",
-        isNeutral ? "Open a LinkedIn profile tab to see extracted data." : "Could not read profile data from this tab."
+        isNeutral ? "Open a LinkedIn profile to begin." : "Unable to load profile."
       );
       emailFinderState.lastProfileKey = incomingKey;
       return;
@@ -372,10 +374,10 @@ async function refreshProfileContext(reason = "auto") {
     };
 
     let tone = "success";
-    let status = "Extracted profile data from active LinkedIn tab.";
+    let status = "Profile loaded.";
     if (!fullName && !company) {
       tone = "error";
-      status = "Could not read profile data from this tab.";
+      status = "Unable to load profile.";
     } else if (!fullName) {
       tone = "warning";
       status = "Profile detected, but name was not found.";
@@ -389,7 +391,7 @@ async function refreshProfileContext(reason = "auto") {
     emailFinderState.lastProfileKey = buildProfileContextKey(tabId, profileUrl || tabUrl);
   } catch (error) {
     console.warn("[Sidepanel] Failed refreshing profile context:", error);
-    renderProfileContext(emailFinderState.profileContext || getDefaultProfileContext(), "error", "Could not read profile data from this tab.");
+    renderProfileContext(emailFinderState.profileContext || getDefaultProfileContext(), "error", "Unable to load profile.");
   } finally {
     emailFinderState.profileRefreshInFlight = false;
     setProfileRefreshButtonBusy(false);
@@ -403,8 +405,29 @@ function normalizeProfileResponseData(response, fallbackUrl = "") {
   const firstName = String(normalized.firstName || data?.name?.firstName || "").trim();
   const lastName = String(normalized.lastName || data?.name?.lastName || "").trim();
   const fullName = String(normalized.fullName || data?.name?.fullName || [firstName, lastName].filter(Boolean).join(" ")).trim();
-  const company = String(normalized.company || data?.company?.name || data?.company || "").trim();
-  const role = String(normalized.role || data?.role?.title || data?.role || "").trim();
+  let company = "";
+  if (typeof normalized.company === "string") {
+    company = normalized.company.trim();
+  } else if (normalized.company && typeof normalized.company === "object" && normalized.company.name) {
+    company = String(normalized.company.name).trim();
+  } else if (typeof data?.company === "string") {
+    company = data.company.trim();
+  } else if (data?.company && typeof data.company === "object" && data.company.name) {
+    company = String(data.company.name).trim();
+  } else if (data?.company && typeof data.company === "object") {
+    console.warn("[Sidepanel] Company is an object without a name field:", data.company);
+  }
+
+  let role = "";
+  if (typeof normalized.role === "string") {
+    role = normalized.role.trim();
+  } else if (normalized.role && typeof normalized.role === "object" && normalized.role.title) {
+    role = String(normalized.role.title).trim();
+  } else if (typeof data?.role === "string") {
+    role = data.role.trim();
+  } else if (data?.role && typeof data.role === "object" && data.role.title) {
+    role = String(data.role.title).trim();
+  }
   const profileUrl = String(normalized.profileUrl || data?.profileUrl || fallbackUrl || "").trim();
   const nameSource = String(data?.name?.source || "").trim();
   const companySource = String(data?.company?.source || "").trim();
@@ -423,7 +446,7 @@ function normalizeProfileResponseData(response, fallbackUrl = "") {
   };
 }
 
-function renderProfileContext(context, statusTone = "neutral", statusText = "Open a LinkedIn profile tab to see extracted data.") {
+function renderProfileContext(context, statusTone = "neutral", statusText = "Open a LinkedIn profile to begin.") {
   const merged = {
     ...getDefaultProfileContext(),
     ...(context || {}),
@@ -437,23 +460,56 @@ function renderProfileContext(context, statusTone = "neutral", statusText = "Ope
   }
 
   if (elements.profileContextName) {
-    elements.profileContextName.textContent = merged.fullName || "Not detected";
+    elements.profileContextName.textContent = merged.fullName || "\u2014";
+  }
+
+  if (elements.profileContextRole) {
+    let roleText = "\u2014";
+    if (merged.role) {
+      if (typeof merged.role === "string") {
+        roleText = merged.role;
+      } else if (typeof merged.role === "object") {
+        roleText = merged.role.title || "\u2014";
+      }
+    }
+    elements.profileContextRole.textContent = roleText;
   }
 
   if (elements.profileContextCompany) {
-    elements.profileContextCompany.textContent = merged.company || "Not detected";
+    let companyText = "\u2014";
+    if (merged.company) {
+      if (typeof merged.company === "string") {
+        companyText = merged.company;
+      } else if (typeof merged.company === "object") {
+        companyText = merged.company.name || "\u2014";
+        console.warn("[Sidepanel] Company was object in renderProfileContext:", merged.company);
+      }
+    }
+    elements.profileContextCompany.textContent = companyText;
   }
 
   if (elements.profileContextUrl) {
     const displayUrl = formatProfileUrlForDisplay(merged.profileUrl);
-    elements.profileContextUrl.textContent = displayUrl || "-";
+    elements.profileContextUrl.textContent = displayUrl || "\u2014";
     elements.profileContextUrl.title = merged.profileUrl || "";
+
+    if (merged.profileUrl && merged.profileUrl.startsWith("http")) {
+      elements.profileContextUrl.style.cursor = "pointer";
+      elements.profileContextUrl.style.color = "#3b82f6";
+      elements.profileContextUrl.onclick = () => {
+        chrome.tabs.create({ url: merged.profileUrl });
+      };
+    } else {
+      elements.profileContextUrl.style.cursor = "default";
+      elements.profileContextUrl.style.color = "inherit";
+      elements.profileContextUrl.onclick = null;
+    }
   }
 
   applyFindEmailAvailability();
 }
 
-function resetProfileContext(statusText = "Open a LinkedIn profile tab to see extracted data.", tone = "neutral") {
+function resetProfileContext(statusText = "Open a LinkedIn profile to begin.", tone = "neutral") {
   emailFinderState.profileContext = getDefaultProfileContext();
   emailFinderState.lastProfileKey = "";
   renderProfileContext(emailFinderState.profileContext, tone, statusText);
@@ -500,7 +556,7 @@ function getProfileContextGateStatus() {
   if (!context || !Number.isFinite(context.tabId)) {
     return {
       ready: false,
-      message: "Open a LinkedIn profile tab to preview name and company.",
+      message: "Open a LinkedIn profile to begin.",
     };
   }
 
@@ -1090,7 +1146,7 @@ async function getLinkedInProfileTab() {
     return candidate;
   }
 
-  throw new Error("Open a LinkedIn profile tab (linkedin.com/in/*) and try again.");
+  throw new Error("Open a LinkedIn profile to get started.");
 }
 
 async function hasLinkedInProfileOpen() {

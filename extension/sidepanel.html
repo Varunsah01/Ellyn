@@ -97,47 +97,51 @@
 
       .profile-context-grid {
         display: grid;
-        gap: 6px;
+        gap: 0;
       }
 
       .profile-context-row {
         display: flex;
-        align-items: baseline;
         justify-content: space-between;
+        align-items: flex-start;
         gap: 12px;
+        padding: 8px 0;
+        border-bottom: 1px solid #e2e8f0;
+      }
+
+      .profile-context-row:last-child {
+        border-bottom: none;
       }
 
       .profile-context-label {
+        min-width: 80px;
+        flex-shrink: 0;
         font-size: 11px;
-        color: #64748b;
+        font-weight: 500;
+        color: #475569;
       }
 
       .profile-context-value {
-        max-width: 210px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        flex: 1;
         text-align: right;
         font-size: 12px;
         font-weight: 600;
         color: #0f172a;
-      }
-
-      .profile-context-url {
-        margin: 0;
-        font-size: 11px;
-        color: #64748b;
-        display: flex;
-        align-items: center;
-        gap: 6px;
+        white-space: normal;
+        overflow-wrap: anywhere;
       }
 
       .profile-context-url-value {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        font-size: 12px;
+        color: #64748b;
+        word-break: break-all;
+        max-width: 280px;
+        display: inline-block;
+        vertical-align: top;
+      }
+
+      .profile-context-url-value:hover {
+        text-decoration: underline;
       }
 
       .finder-primary-btn {
@@ -583,26 +587,30 @@
         <div id="emailFinderSection" class="hidden space-y-4" aria-live="polite">
           <article id="profileContextCard" class="finder-panel profile-context-card">
             <div class="profile-context-header">
-              <h2 class="profile-context-title">Current LinkedIn Profile</h2>
+              <h2 class="profile-context-title">Profile Information</h2>
               <button id="refreshProfileContextBtn" type="button" class="profile-context-refresh">Refresh</button>
             </div>
             <p id="profileContextStatus" class="profile-context-status" data-tone="neutral">
-              Open a LinkedIn profile to preview extracted data.
+              Open a LinkedIn profile to begin.
             </p>
             <div class="profile-context-grid">
               <div class="profile-context-row">
                 <span class="profile-context-label">Name</span>
-                <span id="profileContextName" class="profile-context-value">—</span>
+                <span id="profileContextName" class="profile-context-value">&mdash;</span>
+              </div>
+              <div class="profile-context-row">
+                <span class="profile-context-label">Designation</span>
+                <span id="profileContextRole" class="profile-context-value">&mdash;</span>
               </div>
               <div class="profile-context-row">
                 <span class="profile-context-label">Company</span>
-                <span id="profileContextCompany" class="profile-context-value">—</span>
+                <span id="profileContextCompany" class="profile-context-value">&mdash;</span>
+              </div>
+              <div class="profile-context-row">
+                <span class="profile-context-label">URL</span>
+                <span id="profileContextUrl" class="profile-context-value profile-context-url-value">&mdash;</span>
               </div>
             </div>
-            <p class="profile-context-url">
-              <span>URL:</span>
-              <span id="profileContextUrl" class="profile-context-url-value">—</span>
-            </p>
           </article>
 
           <article class="finder-panel">
