@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateEmailPatterns, guessDomain } from '@/lib/email-patterns';
+import { guessDomain } from '@/lib/email-patterns';
 import {
-  generateSmartEmailPatterns,
+  generateSmartEmailPatternsCached,
   estimateCompanySize,
   getKnownDomain,
 } from '@/lib/enhanced-email-patterns';
+import { invalidateCompanyDomainLookupCache } from '@/lib/cache/tags'
 import {
   verifyDomainMxRecords,
   validateEmailFormat,
@@ -14,57 +15,50 @@ import {
 } from '@/lib/email-verification';
 import { getLearnedPatterns, applyLearnedBoosts } from '@/lib/pattern-learning';
 import { supabase } from '@/lib/supabase';
+import { EmailGenerateSchema, formatZodError } from '@/lib/validation/schemas';
 
-interface GenerateEmailsRequest {
-  firstName: string;
-  lastName: string;
-  companyName: string;
-  companyDomain?: string;
-  role?: string;
-}
-
+/**
+ * Handle POST requests for `/api/generate-emails`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/generate-emails request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/generate-emails
+ * fetch('/api/generate-emails', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
-    const body: GenerateEmailsRequest = await request.json();
+    const parsed = EmailGenerateSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
+        { status: 400 }
+      );
+    }
+    const body = parsed.data;
     const { firstName, lastName, companyName, companyDomain, role } = body;
 
-    // Validate inputs
-    if (!firstName || !lastName || !companyName) {
-      return NextResponse.json(
-        { error: 'Missing required fields: firstName, lastName, and companyName are required' },
-        { status: 400 }
-      );
-    }
-
-    // Validate minimum length
-    if (firstName.trim().length < 2) {
-      return NextResponse.json(
-        { error: 'First name must be at least 2 characters' },
-        { status: 400 }
-      );
-    }
-
-    if (lastName.trim().length < 2) {
-      return NextResponse.json(
-        { error: 'Last name must be at least 2 characters' },
-        { status: 400 }
-      );
-    }
-
-    if (companyName.trim().length < 2) {
-      return NextResponse.json(
-        { error: 'Company name must be at least 2 characters' },
-        { status: 400 }
-      );
-    }
-
     // Step 1: Determine domain
-    let domain = companyDomain || getKnownDomain(companyName) || guessDomain(companyName);
+    const _knownDomain = await getKnownDomain(companyName);
+    const _guessedDomain = (!companyDomain && !_knownDomain)
+      ? await guessDomain(companyName)
+      : null;
+
+    let domain: string | null = companyDomain || _knownDomain || _guessedDomain || null;
     let domainSource: 'provided' | 'known' | 'cache' | 'inferred' = companyDomain
       ? 'provided'
-      : getKnownDomain(companyName)
+      : _knownDomain
       ? 'known'
       : 'inferred';
+
+    if (!domain) {
+      return NextResponse.json(
+        { error: 'Could not determine company domain', suggestion: 'Please provide companyDomain directly' },
+        { status: 400 }
+      );
+    }
 
     // Check domain cache if domain was inferred
     if (domainSource === 'inferred') {
@@ -75,12 +69,12 @@ export async function POST(request: NextRequest) {
           .eq('company_name', companyName.trim().toLowerCase())
           .single();
 
-        // Use cached domain if it exists and was verified within 30 days
+        // Use cached domain if it exists and was verified within 7 days
         if (cachedDomain && !cacheError) {
           const lastVerified = new Date(cachedDomain.last_verified);
-          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-          if (lastVerified > thirtyDaysAgo) {
+          if (lastVerified > sevenDaysAgo) {
             domain = cachedDomain.domain;
             domainSource = 'cache';
             console.log(`Using cached domain for ${companyName}: ${domain}`);
@@ -105,7 +99,7 @@ export async function POST(request: NextRequest) {
     const learnedPatterns = await getLearnedPatterns(domain);
 
     // Step 5: Generate smart email patterns
-    const smartPatterns = generateSmartEmailPatterns(
+    const smartPatterns = await generateSmartEmailPatternsCached(
       firstName,
       lastName,
       {
@@ -162,6 +156,7 @@ export async function POST(request: NextRequest) {
             }
           );
         console.log(`Cached verified domain for ${companyName}: ${domain}`);
+        await invalidateCompanyDomainLookupCache(companyName)
       } catch (cacheWriteError) {
         console.warn('Failed to write to cache:', cacheWriteError);
       }
@@ -208,6 +203,15 @@ export async function POST(request: NextRequest) {
 }
 
 // Handle unsupported methods
+/**
+ * Handle GET requests for `/api/generate-emails`.
+ * @returns {unknown} JSON response for the GET /api/generate-emails request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/generate-emails
+ * fetch('/api/generate-emails')
+ */
 export async function GET() {
   return NextResponse.json(
     { error: 'Method not allowed. Use POST to generate email patterns.' },

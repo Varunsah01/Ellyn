@@ -18,6 +18,13 @@ export type QuotaStatusRow = {
   plan_type: 'free' | 'pro' | string
 }
 
+/**
+ * Extract bearer token.
+ * @param {Headers} headers - Headers input.
+ * @returns {string | null} Computed string | null.
+ * @example
+ * extractBearerToken({})
+ */
 export function extractBearerToken(headers: Headers): string | null {
   const authHeader = headers.get('authorization')
   if (!authHeader) return null
@@ -29,6 +36,14 @@ export function extractBearerToken(headers: Headers): string | null {
   return token.length > 0 ? token : null
 }
 
+/**
+ * Create quota client.
+ * @param {Pick<Request, 'headers'>} request - Request input.
+ * @returns {Promise<QuotaRpcClient>} Computed Promise<QuotaRpcClient>.
+ * @throws {Error} If the operation fails.
+ * @example
+ * createQuotaClient(request)
+ */
 export async function createQuotaClient(request: Pick<Request, 'headers'>): Promise<QuotaRpcClient> {
   const token = extractBearerToken(request.headers)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
@@ -52,16 +67,37 @@ export async function createQuotaClient(request: Pick<Request, 'headers'>): Prom
   return createServerClient()
 }
 
+/**
+ * Is missing db object error.
+ * @param {unknown} error - Error input.
+ * @returns {boolean} Computed boolean.
+ * @example
+ * isMissingDbObjectError({})
+ */
 export function isMissingDbObjectError(error: unknown): boolean {
   const code = (error as { code?: string })?.code
   return code === '42P01' || code === 'PGRST202' || code === '42883'
 }
 
+/**
+ * Is quota not found error.
+ * @param {unknown} error - Error input.
+ * @returns {boolean} Computed boolean.
+ * @example
+ * isQuotaNotFoundError({})
+ */
 export function isQuotaNotFoundError(error: unknown): boolean {
   const message = ((error as { message?: string })?.message || '').toLowerCase()
   return message.includes('quota not found')
 }
 
+/**
+ * To retry after seconds.
+ * @param {string | null} resetDate - Reset date input.
+ * @returns {number} Computed number.
+ * @example
+ * toRetryAfterSeconds('resetDate')
+ */
 export function toRetryAfterSeconds(resetDate: string | null): number {
   if (!resetDate) return 60
   const resetTime = new Date(resetDate).getTime()
@@ -69,6 +105,13 @@ export function toRetryAfterSeconds(resetDate: string | null): number {
   return Math.max(1, Math.ceil((resetTime - Date.now()) / 1000))
 }
 
+/**
+ * Sanitize error for log.
+ * @param {unknown} error - Error input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * sanitizeErrorForLog({})
+ */
 export function sanitizeErrorForLog(error: unknown) {
   if (error instanceof Error) {
     return {
@@ -90,6 +133,15 @@ export function sanitizeErrorForLog(error: unknown) {
   return { message: String(error) }
 }
 
+/**
+ * Ensure quota row.
+ * @param {QuotaRpcClient} client - Client input.
+ * @param {string} userId - User id input.
+ * @returns {Promise<boolean>} Computed Promise<boolean>.
+ * @throws {Error} If the operation fails.
+ * @example
+ * ensureQuotaRow({}, 'userId')
+ */
 export async function ensureQuotaRow(
   client: QuotaRpcClient,
   userId: string

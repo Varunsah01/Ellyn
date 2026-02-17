@@ -33,7 +33,7 @@ export function parseName(firstName: string, lastName: string): ParsedName {
 
   // Handle middle initials (e.g., "John A. Smith" -> "John")
   // Remove anything after a space (middle names/initials)
-  cleanFirst = cleanFirst.split(/\s+/)[0];
+  cleanFirst = cleanFirst.split(/\s+/)[0] ?? '';
 
   // Remove dots and special characters
   cleanFirst = cleanFirst.replace(/[.\-]/g, '');
@@ -131,48 +131,12 @@ export function generateEmailPatterns(
 }
 
 /**
- * Guess the domain from a company name
+ * Guess the domain from a company name using smart TLD resolution with MX verification
  */
-export function guessDomain(companyName: string): string {
-  let cleanName = companyName.toLowerCase().trim();
-
-  // Remove common company suffixes
-  const suffixes = [
-    'incorporated',
-    'corporation',
-    'company',
-    'limited',
-    'inc',
-    'llc',
-    'ltd',
-    'corp',
-    'co',
-    'plc',
-    'group',
-    'holdings',
-    'international',
-    'global'
-  ];
-
-  // Remove suffixes with optional period and whitespace
-  suffixes.forEach(suffix => {
-    const regex = new RegExp(`\\s*${suffix}\\.?\\s*$`, 'i');
-    cleanName = cleanName.replace(regex, '');
-  });
-
-  // Remove special characters and punctuation
-  cleanName = cleanName.replace(/[^a-z0-9\s]/g, '');
-
-  // Remove extra whitespace and replace spaces with empty string
-  cleanName = cleanName.replace(/\s+/g, '');
-
-  // If the cleaned name is empty, return the original with .com
-  if (!cleanName) {
-    cleanName = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  }
-
-  // Append .com (most common TLD)
-  return `${cleanName}.com`;
+export async function guessDomain(companyName: string): Promise<string | null> {
+  const { smartResolveDomain } = await import('@/lib/smart-tld-resolver')
+  const result = await smartResolveDomain(companyName)
+  return result?.domain ?? null
 }
 
 /**

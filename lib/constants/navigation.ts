@@ -4,6 +4,7 @@ import {
   Send,
   FileText,
   BarChart2,
+  Gauge,
   Settings,
   CreditCard,
   type LucideIcon,
@@ -46,6 +47,11 @@ export const secondaryNavItems: NavItem[] = [
     name: "Analytics",
     href: "/dashboard/analytics",
     icon: BarChart2,
+  },
+  {
+    name: "Performance",
+    href: "/dashboard/performance",
+    icon: Gauge,
   },
   {
     name: "Settings",

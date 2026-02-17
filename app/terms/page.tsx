@@ -1,5 +1,5 @@
-import { Navigation } from "@/components/landing/navigation";
-import { Footer } from "@/components/landing/footer";
+import { Navigation } from "@/components/landing/Navigation";
+import { Footer } from "@/components/landing/Footer";
 
 export default function TermsOfService() {
   return (

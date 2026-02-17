@@ -1,53 +1,45 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
+import { invalidateEmailPatternCache } from '@/lib/cache/tags'
 import { type PatternFeedback, recordPatternFeedback } from '@/lib/pattern-learning'
+import { EmailFeedbackSchema, formatZodError } from '@/lib/validation/schemas'
 
-interface EmailFeedbackRequest {
-  email: string
-  pattern: string
-  companyDomain: string
-  worked: boolean
-  contactId?: string
-}
-
+/**
+ * Handle POST requests for `/api/email-feedback`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/email-feedback request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/email-feedback
+ * fetch('/api/email-feedback', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
     await getAuthenticatedUserFromRequest(request)
 
-    const body = (await request.json()) as Partial<EmailFeedbackRequest>
-
-    const email = String(body.email || '').trim().toLowerCase()
-    const pattern = String(body.pattern || '').trim().toLowerCase()
-    const companyDomain = String(body.companyDomain || '').trim().toLowerCase()
-    const worked = body.worked
-
-    if (!email || !pattern || !companyDomain || typeof worked !== 'boolean') {
+    const parsed = EmailFeedbackSchema.safeParse(await request.json())
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Missing required fields: email, pattern, companyDomain, worked',
+          error: 'Validation failed',
+          details: formatZodError(parsed.error),
         },
         { status: 400 }
       )
     }
 
-    if (!isLikelyEmail(email)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid email format.',
-        },
-        { status: 400 }
-      )
-    }
+    const { email, pattern, companyDomain, worked, contactId } = parsed.data
 
     const feedback: PatternFeedback = {
       email,
       pattern,
       company_domain: companyDomain,
       worked,
-      contact_id: typeof body.contactId === 'string' ? body.contactId : undefined,
+      contact_id: contactId,
     }
 
     const result = await recordPatternFeedback(feedback)
@@ -60,6 +52,12 @@ export async function POST(request: NextRequest) {
         },
         { status: 500 }
       )
+    }
+
+    try {
+      await invalidateEmailPatternCache(companyDomain)
+    } catch (invalidateError) {
+      console.warn('[API][email-feedback] Pattern cache invalidation failed:', invalidateError)
     }
 
     return NextResponse.json({
@@ -93,6 +91,15 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * Handle GET requests for `/api/email-feedback`.
+ * @returns {unknown} JSON response for the GET /api/email-feedback request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/email-feedback
+ * fetch('/api/email-feedback')
+ */
 export async function GET() {
   return NextResponse.json(
     {
@@ -101,8 +108,4 @@ export async function GET() {
     },
     { status: 405 }
   )
-}
-
-function isLikelyEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }

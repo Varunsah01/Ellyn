@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/Button";
+import { Textarea } from "@/components/ui/Textarea";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/ui/Dialog";
 
 interface AddNoteModalProps {
   open: boolean;
@@ -21,6 +21,13 @@ interface AddNoteModalProps {
   onSave: (note: string) => Promise<void> | void;
 }
 
+/**
+ * Render the AddNoteModal component.
+ * @param {AddNoteModalProps} props - Component props.
+ * @returns {unknown} JSX output for AddNoteModal.
+ * @example
+ * <AddNoteModal />
+ */
 export function AddNoteModal({
   open,
   contactName,

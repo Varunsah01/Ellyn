@@ -1,24 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { Button } from "@/components/ui/Button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { RefreshCw, TrendingUp, Users, BarChart, Activity } from "lucide-react";
 import { subDays, format } from "date-fns";
 import { DateRange } from "react-day-picker";
 
 // Analytics components
-import { OverviewMetrics } from "@/components/analytics/overview-metrics";
-import { TimeSeriesCharts } from "@/components/analytics/time-series-charts";
-import { SequencePerformanceTable } from "@/components/analytics/sequence-performance-table";
-import { ContactInsights } from "@/components/analytics/contact-insights";
-import { ActivityHeatmap } from "@/components/analytics/activity-heatmap";
-import { TrackerPerformance } from "@/components/analytics/tracker-performance";
-import { DateRangeFilter } from "@/components/analytics/date-range-filter";
-import { ExportMenu } from "@/components/analytics/export-menu";
-import { GoalTracker } from "@/components/analytics/goal-tracker";
-import { EmptyAnalytics } from "@/components/empty-state";
+import { OverviewMetrics } from "@/components/analytics/OverviewMetrics";
+import { TimeSeriesCharts } from "@/components/analytics/TimeSeriesCharts";
+import { SequencePerformanceTable } from "@/components/analytics/SequencePerformanceTable";
+import { ContactInsights } from "@/components/analytics/ContactInsights";
+import { ActivityHeatmap } from "@/components/analytics/ActivityHeatmap";
+import { TrackerPerformance } from "@/components/analytics/TrackerPerformance";
+import { DateRangeFilter } from "@/components/analytics/DateRangeFilter";
+import { ExportMenu } from "@/components/analytics/ExportMenu";
+import { GoalTracker } from "@/components/analytics/GoalTracker";
+import { EmptyAnalytics } from "@/components/EmptyState";
 import { showToast } from "@/lib/toast";
 
 export default function AnalyticsPage() {
@@ -49,12 +49,12 @@ export default function AnalyticsPage() {
 
       // Fetch all analytics data in parallel
       const [overview, contacts, sequences, insights, heatmap, tracker] = await Promise.all([
-        fetch(`/api/analytics?metric=overview&${params.toString()}`).then((r) => r.json()),
-        fetch(`/api/analytics?metric=contacts_over_time&${params.toString()}`).then((r) => r.json()),
-        fetch(`/api/analytics?metric=sequence_performance&${params.toString()}`).then((r) => r.json()),
-        fetch(`/api/analytics?metric=contact_insights&${params.toString()}`).then((r) => r.json()),
-        fetch(`/api/analytics?metric=activity_heatmap&${params.toString()}`).then((r) => r.json()),
-        fetch(`/api/analytics?metric=tracker_performance&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/v1/analytics?metric=overview&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/v1/analytics?metric=contacts_over_time&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/v1/analytics?metric=sequence_performance&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/v1/analytics?metric=contact_insights&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/v1/analytics?metric=activity_heatmap&${params.toString()}`).then((r) => r.json()),
+        fetch(`/api/v1/analytics?metric=tracker_performance&${params.toString()}`).then((r) => r.json()),
       ]);
 
       setOverviewData(overview);
@@ -210,3 +210,4 @@ export default function AnalyticsPage() {
     </DashboardShell>
   );
 }
+

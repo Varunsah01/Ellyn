@@ -18,6 +18,17 @@ type QuotaCheckResponse = {
   resetDate: string | null
 }
 
+/**
+ * Handle POST requests for `/api/quota/check`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/quota/check request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/quota/check
+ * fetch('/api/quota/check', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request)
@@ -62,6 +73,15 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * Handle GET requests for `/api/quota/check`.
+ * @returns {unknown} JSON response for the GET /api/quota/check request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/quota/check
+ * fetch('/api/quota/check')
+ */
 export async function GET() {
   return NextResponse.json(
     { error: 'Method not allowed. Use POST.' },

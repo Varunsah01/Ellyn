@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { BellRing, Pencil, RefreshCw } from "lucide-react";
 import type { TrackerContact } from "@/lib/types/tracker";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/Button";
+import { Checkbox } from "@/components/ui/Checkbox";
 import {
   EditContactModal,
   type EditableTrackerContact,
@@ -283,6 +283,13 @@ function MobileContactCard({
   );
 }
 
+/**
+ * Render the MobileContactsList component.
+ * @param {MobileContactsListProps} props - Component props.
+ * @returns {unknown} JSX output for MobileContactsList.
+ * @example
+ * <MobileContactsList />
+ */
 export function MobileContactsList({
   contacts,
   onRefresh,

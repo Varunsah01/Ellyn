@@ -7,19 +7,32 @@ import {
   encryptToken,
 } from "@/lib/gmail-helper";
 import { supabase } from "@/lib/supabase";
+import { GmailSendSchema, formatZodError, type GmailSendInput } from "@/lib/validation/schemas";
 
+/**
+ * Handle POST requests for `/api/gmail/send`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/gmail/send request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/gmail/send
+ * fetch('/api/gmail/send', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { leadId, to, subject, body: emailBody, isHtml = true } = body;
+  let requestBody: GmailSendInput | null = null;
 
-    // Validate required fields
-    if (!leadId || !to || !subject || !emailBody) {
+  try {
+    const parsed = GmailSendSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Missing required fields: leadId, to, subject, body" },
+        { error: "Validation failed", details: formatZodError(parsed.error) },
         { status: 400 }
       );
     }
+    requestBody = parsed.data;
+    const { leadId, to, subject, body: emailBody, isHtml = true } = requestBody;
 
     // Get Gmail credentials
     const { data: credentials, error: credError } = await supabase
@@ -38,17 +51,15 @@ export async function POST(request: NextRequest) {
     let accessToken = decryptToken(credentials.access_token);
 
     // Try sending email
-    let emailSent = false;
     let messageId = "";
     let retryWithRefresh = false;
 
     try {
       const encodedMessage = formatEmail(to, subject, emailBody, isHtml);
       messageId = await sendEmail(accessToken, encodedMessage);
-      emailSent = true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // If 401, try refreshing the token
-      if (error.message?.includes("401") || error.message?.includes("invalid_grant")) {
+      if (error instanceof Error && (error.message.includes("401") || error.message.includes("invalid_grant"))) {
         retryWithRefresh = true;
       } else {
         throw error;
@@ -74,7 +85,6 @@ export async function POST(request: NextRequest) {
       // Retry sending
       const encodedMessage = formatEmail(to, subject, emailBody, isHtml);
       messageId = await sendEmail(newAccessToken, encodedMessage);
-      emailSent = true;
     }
 
     // Log to email_history
@@ -109,17 +119,17 @@ export async function POST(request: NextRequest) {
       messageId: messageId,
       message: "Email sent successfully",
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error sending email:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to send email";
 
     // Log failed attempt to email_history
     try {
-      const body = await request.json();
       await supabase.from("email_history").insert({
-        lead_id: body.leadId,
-        to_email: body.to,
-        subject: body.subject,
-        body: body.body,
+        lead_id: requestBody?.leadId ?? null,
+        to_email: requestBody?.to ?? null,
+        subject: requestBody?.subject ?? null,
+        body: requestBody?.body ?? null,
         status: "failed",
       });
     } catch (logError) {
@@ -127,7 +137,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: error.message || "Failed to send email" },
+      { error: errorMessage || "Failed to send email" },
       { status: 500 }
     );
   }

@@ -7,6 +7,7 @@ import {
   normalizeDomain,
   validateDomainWithMX,
 } from '@/lib/domain-utils'
+import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
 
 export type DomainSource =
   | 'cache'
@@ -38,7 +39,7 @@ export interface ResolveDomainParams {
   skipMXValidation?: boolean
 }
 
-const DOMAIN_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const DOMAIN_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const LINKEDIN_FETCH_TIMEOUT_MS = 5000
 const API_FETCH_TIMEOUT_MS = 3000
 
@@ -208,11 +209,44 @@ export async function extractDomainFromLinkedIn(companyPageUrl: string): Promise
   }
 
   console.log('[LinkedIn] Fetching company page', { companyPageUrl: normalizedUrl })
-  const response = await fetch(normalizedUrl, {
-    method: 'GET',
-    credentials: 'include',
-    signal: AbortSignal.timeout(LINKEDIN_FETCH_TIMEOUT_MS),
-    cache: 'no-store',
+  const startedAt = Date.now()
+  let response: Response
+  try {
+    response = await timeOperation(
+      'external.linkedin.company-page.fetch',
+      async () => await fetch(normalizedUrl, {
+        method: 'GET',
+        credentials: 'include',
+        signal: AbortSignal.timeout(LINKEDIN_FETCH_TIMEOUT_MS),
+        cache: 'no-store',
+      }),
+      {
+        slowThresholdMs: 500,
+        context: {
+          source: 'linkedin-company-page',
+        },
+      }
+    )
+  } catch (error) {
+    const statusCode = Number((error as { status?: number })?.status)
+    recordExternalApiUsage({
+      service: 'linkedin',
+      operation: 'company-page-fetch',
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: Number.isFinite(statusCode) ? statusCode : 500,
+      success: false,
+    })
+    throw error
+  }
+
+  recordExternalApiUsage({
+    service: 'linkedin',
+    operation: 'company-page-fetch',
+    costUsd: 0,
+    durationMs: Date.now() - startedAt,
+    statusCode: response.status,
+    success: response.ok,
   })
 
   if (!response.ok) {
@@ -551,7 +585,8 @@ function parseLinkedInCompanyPage(
 
   if (matches.length === 0) return null
   matches.sort((a, b) => b.confidence - a.confidence)
-  return matches[0]
+  const topMatch = matches[0]
+  return topMatch ?? null
 }
 
 function extractBrandfetchDomain(payload: unknown): string | null {
@@ -621,24 +656,92 @@ async function searchGoogle(
 }
 
 async function requestJson(url: string, timeoutMs: number): Promise<unknown | null> {
+  const startedAt = Date.now()
+  const { service, operation, host } = classifyExternalRequest(url)
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      signal: AbortSignal.timeout(timeoutMs),
-      cache: 'no-store',
-      headers: {
-        Accept: 'application/json',
-      },
-    })
+    const response = await timeOperation(
+      `external.${service}.request`,
+      async () => await fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(timeoutMs),
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+        },
+      }),
+      {
+        slowThresholdMs: 500,
+        context: {
+          service,
+          operation,
+          host,
+        },
+      }
+    )
 
     if (!response.ok) {
+      recordExternalApiUsage({
+        service,
+        operation,
+        costUsd: 0,
+        durationMs: Date.now() - startedAt,
+        statusCode: response.status,
+        success: false,
+      })
       return null
     }
 
-    return (await response.json()) as unknown
-  } catch {
+    const payload = (await response.json()) as unknown
+    recordExternalApiUsage({
+      service,
+      operation,
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: response.status,
+      success: true,
+    })
+
+    return payload
+  } catch (error) {
+    const statusCode = Number((error as { status?: number })?.status)
+    recordExternalApiUsage({
+      service,
+      operation,
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: Number.isFinite(statusCode) ? statusCode : 500,
+      success: false,
+    })
     return null
   }
+}
+
+function classifyExternalRequest(url: string): {
+  service: string
+  operation: string
+  host: string
+} {
+  let host = 'unknown'
+  try {
+    host = new URL(url).hostname.toLowerCase()
+  } catch {
+    host = 'unknown'
+  }
+
+  if (host.includes('clearbit.com')) {
+    return { service: 'clearbit', operation: 'company-autocomplete', host }
+  }
+  if (host.includes('brandfetch.io')) {
+    return { service: 'brandfetch', operation: 'company-search', host }
+  }
+  if (host.includes('googleapis.com')) {
+    return { service: 'google-custom-search', operation: 'company-search', host }
+  }
+  if (host.includes('linkedin.com')) {
+    return { service: 'linkedin', operation: 'company-page-fetch', host }
+  }
+
+  return { service: 'other', operation: 'http-request', host }
 }
 
 function sanitizeError(error: unknown): { message: string; name?: string } {

@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { DashboardShell } from "@/components/dashboard/dashboard-shell"
-import { PageHeader } from "@/components/dashboard/page-header"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DashboardShell } from "@/components/dashboard/DashboardShell"
+import { PageHeader } from "@/components/dashboard/PageHeader"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
+import { Button } from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
+import { Label } from "@/components/ui/Label"
+import { Textarea } from "@/components/ui/Textarea"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog"
 import { AlertCircle, ArrowLeft, Pencil } from "lucide-react"
 import { useContacts } from "@/lib/hooks/useContacts"
 import { SequenceStep } from "@/lib/types/sequence"
@@ -44,7 +44,7 @@ export default function EnrollContactsPage() {
     const loadSequence = async () => {
       try {
         setSequenceLoading(true)
-        const response = await fetch(`/api/sequences/${sequenceId}`)
+        const response = await fetch(`/api/v1/sequences/${sequenceId}`)
         if (!response.ok) {
           const data = await response.json()
           throw new Error(data.error || "Failed to load sequence")
@@ -103,7 +103,7 @@ export default function EnrollContactsPage() {
     setError(null)
 
     try {
-      const response = await fetch(`/api/sequences/${sequenceId}/enroll`, {
+      const response = await fetch(`/api/v1/sequences/${sequenceId}/enroll`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -306,3 +306,4 @@ export default function EnrollContactsPage() {
     </DashboardShell>
   )
 }
+

@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
 import {
@@ -18,17 +18,15 @@ import {
 } from '@/lib/company-intelligence'
 import { normalizeDomain } from '@/lib/domain-utils'
 import { verifyDomainMxRecords } from '@/lib/email-verification'
+import {
+  captureApiException,
+  captureSlowApiRoute,
+  withApiRouteSpan,
+} from '@/lib/monitoring/sentry'
+import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
 import { applyLearnedBoosts, getLearnedPatterns } from '@/lib/pattern-learning'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-
-interface PredictEmailRequest {
-  firstName: string
-  lastName: string
-  companyName: string
-  companyDomain: string
-  role?: string
-  linkedinUrl?: string
-}
+import { PredictEmailSchema, formatZodError } from '@/lib/validation/schemas'
 
 interface PredictionMetadata {
   companySize: CompanySize
@@ -56,6 +54,7 @@ interface PredictEmailResponse {
   warnings?: string[]
   error?: string
   message?: string
+  details?: Array<{ path: string; message: string; code: string }>
 }
 
 type AnthropicUsage = {
@@ -77,232 +76,318 @@ const RATE_WINDOW_MS = 60 * 60 * 1000
 
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
 
+/**
+ * Handle POST requests for `/api/predict-email`.
+ * @param {NextRequest} request - Request input.
+ * @returns {Promise<NextResponse<PredictEmailResponse>>} JSON response for the POST /api/predict-email request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/predict-email
+ * fetch('/api/predict-email', { method: 'POST' })
+ */
 export async function POST(request: NextRequest): Promise<NextResponse<PredictEmailResponse>> {
   const startedAt = Date.now()
+  let userId = ''
 
-  try {
-    const user = await getAuthenticatedUserFromRequest(request)
+  return withApiRouteSpan(
+    'POST /api/predict-email',
+    async () => {
+      try {
+        const user = await getAuthenticatedUserFromRequest(request)
+        userId = user.id
 
-    const limiter = checkRateLimit(user.id)
-    if (!limiter.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Rate limit exceeded. Try again later.',
-        },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': String(limiter.retryAfterSeconds),
-          },
+        const limiter = checkRateLimit(user.id)
+        if (!limiter.allowed) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Rate limit exceeded. Try again later.',
+            },
+            {
+              status: 429,
+              headers: {
+                'Retry-After': String(limiter.retryAfterSeconds),
+              },
+            }
+          )
         }
-      )
+
+        const validation = PredictEmailSchema.safeParse(await request.json())
+        if (!validation.success) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Validation failed',
+              details: formatZodError(validation.error),
+            },
+            { status: 400 }
+          )
+        }
+        const body = validation.data
+
+        const firstName = sanitizeName(body.firstName)
+        const lastName = sanitizeName(body.lastName)
+        const companyName = sanitizeText(body.companyName)
+        const companyDomain = normalizeDomain(body.companyDomain || '')
+        const role = sanitizeText(body.role)
+        const linkedinUrl = sanitizeText(body.linkedinUrl)
+
+        if (!firstName || !lastName || !companyDomain) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Missing required fields: firstName, lastName, companyDomain',
+            },
+            { status: 400 }
+          )
+        }
+
+        if (!isLikelyDomain(companyDomain)) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Invalid company domain.',
+            },
+            { status: 400 }
+          )
+        }
+
+        const domainVerification = await verifyDomainMxRecords(companyDomain)
+        if (!domainVerification.hasMxRecords) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Domain cannot receive emails.',
+              message: domainVerification.error,
+            },
+            { status: 400 }
+          )
+        }
+
+        const inferredCompanyName = companyDomain.split('.')[0] ?? ''
+        const resolvedCompanyName = companyName || inferredCompanyName || companyDomain
+        const companySize = estimateCompanySize(companyDomain, resolvedCompanyName)
+        const industry = detectIndustry(resolvedCompanyName, companyDomain)
+        const emailProvider = await detectEmailProvider(companyDomain)
+
+        const learnedRows = await getLearnedPatterns(companyDomain)
+        const historicalPatterns = mapHistoricalPatterns(learnedRows)
+
+        const context: EmailPredictionContext = {
+          firstName,
+          lastName,
+          companyName: resolvedCompanyName,
+          companyDomain,
+          role: role || undefined,
+          companySize,
+          industry,
+          emailProvider: emailProvider.provider,
+          historicalPatterns,
+          linkedinUrl: linkedinUrl || undefined,
+        }
+
+        const userMessage = buildPredictionUserMessage(context)
+
+        console.log('[AI][predict-email] Calling Claude', {
+          userId: user.id,
+          companyDomain,
+          companySize,
+          provider: emailProvider.provider,
+          hasHistoricalData: historicalPatterns.length > 0,
+        })
+
+        const anthropic = getAnthropicClient()
+        const modelStartedAt = Date.now()
+
+        let message: Awaited<ReturnType<Anthropic['messages']['create']>>
+        try {
+          message = await timeOperation(
+            'anthropic.predict-email.messages.create',
+            async () => await anthropic.messages.create({
+              model: ANTHROPIC_MODEL,
+              max_tokens: MAX_TOKENS,
+              temperature: 0.3,
+              system: [
+                {
+                  type: 'text',
+                  text: EMAIL_PREDICTION_SYSTEM_PROMPT,
+                  cache_control: { type: 'ephemeral' },
+                },
+              ],
+              messages: [
+                {
+                  role: 'user',
+                  content: userMessage,
+                },
+              ],
+              metadata: {
+                user_id: user.id,
+              },
+            }),
+            {
+              slowThresholdMs: 500,
+              context: {
+                route: '/api/predict-email',
+                domain: companyDomain,
+              },
+            }
+          )
+        } catch (error) {
+          const statusCode = Number((error as { status?: number })?.status)
+          recordExternalApiUsage({
+            service: 'anthropic',
+            operation: 'messages.create:predict-email',
+            costUsd: 0,
+            durationMs: Date.now() - modelStartedAt,
+            statusCode: Number.isFinite(statusCode) ? statusCode : 500,
+            success: false,
+          })
+          throw error
+        }
+
+        const aiLatencyMs = Date.now() - modelStartedAt
+        const rawText = extractTextContent(message.content)
+        const parsed = parseAiResponse(rawText, firstName, lastName, companyDomain)
+
+        let patterns = parsed.prediction.patterns
+
+        if (historicalPatterns.length > 0) {
+          patterns = applyLearnedBoosts(patterns, learnedRows).map((pattern) => ({
+            email: String(pattern.email || '').toLowerCase(),
+            pattern: String(pattern.pattern || '').toLowerCase(),
+            confidence: clampInt(pattern.confidence, 10, 95),
+            reasoning: findReasoning(parsed.prediction.patterns, String(pattern.pattern || '').toLowerCase()),
+          }))
+        }
+
+        patterns = dedupeAndSortPatterns(patterns).slice(0, 6)
+
+        if (patterns.length < 4) {
+          patterns = ensureMinimumPatterns(patterns, firstName, lastName, companyDomain)
+        }
+
+        const prediction: AIEmailPredictionResponse = {
+          patterns,
+          topRecommendation: patterns[0]?.email || '',
+          recommendationReasoning:
+            parsed.prediction.recommendationReasoning ||
+            'Top recommendation selected from ranked pattern confidence.',
+        }
+
+        const usage = {
+          input_tokens: message.usage?.input_tokens ?? 0,
+          output_tokens: message.usage?.output_tokens ?? 0,
+          cache_creation_input_tokens: message.usage?.cache_creation_input_tokens ?? 0,
+          cache_read_input_tokens: message.usage?.cache_read_input_tokens ?? 0,
+        }
+
+        const estimatedCost = calculateCost(usage)
+        recordExternalApiUsage({
+          service: 'anthropic',
+          operation: 'messages.create:predict-email',
+          costUsd: estimatedCost,
+          durationMs: aiLatencyMs,
+          statusCode: 200,
+          success: true,
+        })
+
+        await logPrediction({
+          userId: user.id,
+          companyDomain,
+          topPattern: patterns[0]?.pattern || 'unknown',
+          aiLatencyMs,
+          usage,
+          estimatedCost,
+        })
+
+        const response: PredictEmailResponse = {
+          success: true,
+          prediction,
+          metadata: {
+            companySize,
+            emailProvider: emailProvider.providerName,
+            domainVerified: domainVerification.hasMxRecords,
+            hasHistoricalData: historicalPatterns.length > 0,
+            historicalPatternCount: historicalPatterns.length,
+            aiLatencyMs,
+            model: ANTHROPIC_MODEL,
+          },
+          debug: {
+            tokensUsed: {
+              inputTokens: usage.input_tokens ?? 0,
+              outputTokens: usage.output_tokens ?? 0,
+              cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
+              cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+            },
+            estimatedCost,
+          },
+          warnings: parsed.warnings,
+        }
+
+        const totalMs = Date.now() - startedAt
+        captureSlowApiRoute('/api/predict-email', totalMs, {
+          method: 'POST',
+          thresholdMs: 2000,
+        })
+
+        console.log('[AI][predict-email] Completed', {
+          userId: user.id,
+          domain: companyDomain,
+          aiLatencyMs,
+          totalMs,
+          topRecommendation: prediction.topRecommendation,
+          cost: estimatedCost,
+        })
+
+        return NextResponse.json(response)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+
+        if (message === 'Unauthorized') {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Unauthorized',
+            },
+            { status: 401 }
+          )
+        }
+
+        captureApiException(error, {
+          route: '/api/predict-email',
+          method: 'POST',
+          userId,
+        })
+        console.error('[API][predict-email] Error:', sanitizeErrorForLog(error))
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Failed to predict email',
+            message,
+          },
+          { status: 500 }
+        )
+      }
+    },
+    {
+      'api.route': '/api/predict-email',
+      'api.method': 'POST',
     }
-
-    const body = (await request.json()) as Partial<PredictEmailRequest>
-
-    const firstName = sanitizeName(body.firstName)
-    const lastName = sanitizeName(body.lastName)
-    const companyName = sanitizeText(body.companyName)
-    const companyDomain = normalizeDomain(body.companyDomain || '')
-    const role = sanitizeText(body.role)
-    const linkedinUrl = sanitizeText(body.linkedinUrl)
-
-    if (!firstName || !lastName || !companyDomain) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required fields: firstName, lastName, companyDomain',
-        },
-        { status: 400 }
-      )
-    }
-
-    if (!isLikelyDomain(companyDomain)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid company domain.',
-        },
-        { status: 400 }
-      )
-    }
-
-    const domainVerification = await verifyDomainMxRecords(companyDomain)
-    if (!domainVerification.hasMxRecords) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Domain cannot receive emails.',
-          message: domainVerification.error,
-        },
-        { status: 400 }
-      )
-    }
-
-    const resolvedCompanyName = companyName || companyDomain.split('.')[0]
-    const companySize = estimateCompanySize(companyDomain, resolvedCompanyName)
-    const industry = detectIndustry(resolvedCompanyName, companyDomain)
-    const emailProvider = await detectEmailProvider(companyDomain)
-
-    const learnedRows = await getLearnedPatterns(companyDomain)
-    const historicalPatterns = mapHistoricalPatterns(learnedRows)
-
-    const context: EmailPredictionContext = {
-      firstName,
-      lastName,
-      companyName: resolvedCompanyName,
-      companyDomain,
-      role: role || undefined,
-      companySize,
-      industry,
-      emailProvider: emailProvider.provider,
-      historicalPatterns,
-      linkedinUrl: linkedinUrl || undefined,
-    }
-
-    const userMessage = buildPredictionUserMessage(context)
-
-    console.log('[AI][predict-email] Calling Claude', {
-      userId: user.id,
-      companyDomain,
-      companySize,
-      provider: emailProvider.provider,
-      hasHistoricalData: historicalPatterns.length > 0,
-    })
-
-    const anthropic = getAnthropicClient()
-    const modelStartedAt = Date.now()
-
-    const message = await anthropic.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: MAX_TOKENS,
-      temperature: 0.3,
-      system: [
-        {
-          type: 'text',
-          text: EMAIL_PREDICTION_SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
-      messages: [
-        {
-          role: 'user',
-          content: userMessage,
-        },
-      ],
-      metadata: {
-        user_id: user.id,
-      },
-    })
-
-    const aiLatencyMs = Date.now() - modelStartedAt
-    const rawText = extractTextContent(message.content)
-    const parsed = parseAiResponse(rawText, firstName, lastName, companyDomain)
-
-    let patterns = parsed.prediction.patterns
-
-    if (historicalPatterns.length > 0) {
-      patterns = applyLearnedBoosts(patterns, learnedRows).map((pattern) => ({
-        email: String(pattern.email || '').toLowerCase(),
-        pattern: String(pattern.pattern || '').toLowerCase(),
-        confidence: clampInt(pattern.confidence, 10, 95),
-        reasoning: findReasoning(parsed.prediction.patterns, String(pattern.pattern || '').toLowerCase()),
-      }))
-    }
-
-    patterns = dedupeAndSortPatterns(patterns).slice(0, 6)
-
-    if (patterns.length < 4) {
-      patterns = ensureMinimumPatterns(patterns, firstName, lastName, companyDomain)
-    }
-
-    const prediction: AIEmailPredictionResponse = {
-      patterns,
-      topRecommendation: patterns[0]?.email || '',
-      recommendationReasoning:
-        parsed.prediction.recommendationReasoning ||
-        'Top recommendation selected from ranked pattern confidence.',
-    }
-
-    const usage = {
-      input_tokens: message.usage?.input_tokens ?? 0,
-      output_tokens: message.usage?.output_tokens ?? 0,
-      cache_creation_input_tokens: message.usage?.cache_creation_input_tokens ?? 0,
-      cache_read_input_tokens: message.usage?.cache_read_input_tokens ?? 0,
-    }
-
-    const estimatedCost = calculateCost(usage)
-
-    await logPrediction({
-      userId: user.id,
-      companyDomain,
-      topPattern: patterns[0]?.pattern || 'unknown',
-      aiLatencyMs,
-      usage,
-      estimatedCost,
-    })
-
-    const response: PredictEmailResponse = {
-      success: true,
-      prediction,
-      metadata: {
-        companySize,
-        emailProvider: emailProvider.providerName,
-        domainVerified: domainVerification.hasMxRecords,
-        hasHistoricalData: historicalPatterns.length > 0,
-        historicalPatternCount: historicalPatterns.length,
-        aiLatencyMs,
-        model: ANTHROPIC_MODEL,
-      },
-      debug: {
-        tokensUsed: {
-          inputTokens: usage.input_tokens ?? 0,
-          outputTokens: usage.output_tokens ?? 0,
-          cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
-          cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
-        },
-        estimatedCost,
-      },
-      warnings: parsed.warnings,
-    }
-
-    console.log('[AI][predict-email] Completed', {
-      userId: user.id,
-      domain: companyDomain,
-      aiLatencyMs,
-      totalMs: Date.now() - startedAt,
-      topRecommendation: prediction.topRecommendation,
-      cost: estimatedCost,
-    })
-
-    return NextResponse.json(response)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-
-    if (message === 'Unauthorized') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unauthorized',
-        },
-        { status: 401 }
-      )
-    }
-
-    console.error('[API][predict-email] Error:', sanitizeErrorForLog(error))
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to predict email',
-        message,
-      },
-      { status: 500 }
-    )
-  }
+  )
 }
 
+/**
+ * Handle GET requests for `/api/predict-email`.
+ * @returns {Promise<NextResponse<PredictEmailResponse>>} JSON response for the GET /api/predict-email request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/predict-email
+ * fetch('/api/predict-email')
+ */
 export async function GET(): Promise<NextResponse<PredictEmailResponse>> {
   return NextResponse.json(
     {

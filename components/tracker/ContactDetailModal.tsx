@@ -10,10 +10,10 @@ import {
   NotebookText,
   Send,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { Textarea } from "@/components/ui/Textarea";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +21,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/ui/Dialog";
 import type { TrackerContact, TrackerTimelineEvent } from "@/lib/types/tracker";
 import { getDisplayEmail, getDisplayName } from "@/lib/tracker-v2";
 
@@ -83,6 +83,13 @@ function fromDateInputValue(value: string): string | null {
   return date.toISOString();
 }
 
+/**
+ * Render the ContactDetailModal component.
+ * @param {ContactDetailModalProps} props - Component props.
+ * @returns {unknown} JSX output for ContactDetailModal.
+ * @example
+ * <ContactDetailModal />
+ */
 export function ContactDetailModal({ open, contact, onOpenChange, onSave }: ContactDetailModalProps) {
   const [notes, setNotes] = useState("");
   const [reminderDate, setReminderDate] = useState("");
@@ -111,7 +118,7 @@ export function ContactDetailModal({ open, contact, onOpenChange, onSave }: Cont
         setIsLoadingDrafts(true);
         setDraftHistoryError(null);
 
-        const response = await fetch(`/api/drafts?contactId=${encodeURIComponent(contactId)}`, {
+        const response = await fetch(`/api/v1/drafts?contactId=${encodeURIComponent(contactId)}`, {
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -279,3 +286,4 @@ export function ContactDetailModal({ open, contact, onOpenChange, onSave }: Cont
     </Dialog>
   );
 }
+

@@ -120,14 +120,14 @@ export function normalizeDomain(domain: string): string {
     return ''
   }
 
-  return domain
+  const normalized = domain
     .trim()
     .toLowerCase()
     .replace(/^https?:\/\//, '')
     .replace(/^www\./, '')
-    .split('/')[0]
-    .split('?')[0]
-    .split('#')[0]
+  const withoutPath = normalized.split('/')[0] ?? ''
+  const withoutQuery = withoutPath.split('?')[0] ?? ''
+  return withoutQuery.split('#')[0] ?? ''
 }
 
 /**

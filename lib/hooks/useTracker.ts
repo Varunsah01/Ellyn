@@ -8,6 +8,12 @@ interface ContactsApiResponse {
   contacts?: ContactLikeForTracker[];
 }
 
+/**
+ * Custom hook for tracker follow up count.
+ * @returns {unknown} Hook state and actions for tracker follow up count.
+ * @example
+ * const state = useTrackerFollowUpCount()
+ */
 export function useTrackerFollowUpCount() {
   const [followUpCount, setFollowUpCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -15,7 +21,7 @@ export function useTrackerFollowUpCount() {
   const refresh = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch("/api/contacts?limit=500&includeOutreach=true");
+      const response = await fetch("/api/v1/contacts?limit=500&includeOutreach=true");
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -40,4 +46,5 @@ export function useTrackerFollowUpCount() {
     refresh,
   };
 }
+
 

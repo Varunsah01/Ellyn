@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { requireAdminEndpointAccess } from '@/lib/auth/admin-endpoint-guard'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { AdminQuotaSchema, formatZodError } from '@/lib/validation/schemas'
 
 type AdminQuotaAction = 'reset_user' | 'adjust_user' | 'reset_all'
 
@@ -18,22 +20,46 @@ type AdminQuotaRpcRow = {
   details: Record<string, unknown> | null
 }
 
+/**
+ * Handle POST requests for `/api/admin/quota/reset`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/admin/quota/reset request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/admin/quota/reset
+ * fetch('/api/admin/quota/reset', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
-    const configuredAdminKey = process.env.QUOTA_ADMIN_API_KEY?.trim()
-    if (!configuredAdminKey) {
+    const guard = requireAdminEndpointAccess(request)
+    if (!guard.ok) {
+      return guard.response
+    }
+
+    let rawBody: unknown
+    try {
+      rawBody = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+
+    const parsed = AdminQuotaSchema.safeParse(rawBody)
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'QUOTA_ADMIN_API_KEY is not configured' },
-        { status: 503 }
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
+        { status: 400 }
       )
     }
 
-    const suppliedAdminKey = request.headers.get('x-admin-key')?.trim()
-    if (!suppliedAdminKey || suppliedAdminKey !== configuredAdminKey) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const body: AdminQuotaRequest = {
+      action: parsed.data.action,
+      userId: parsed.data.userId,
+      used: parsed.data.used,
+      limit: parsed.data.limit,
+      planType: parsed.data.planType,
     }
-
-    const body = await parseBody(request)
     const serviceClient = await createServiceRoleClient()
 
     const result = await runAdminAdjustment(serviceClient, body)
@@ -58,44 +84,26 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+/**
+ * Handle GET requests for `/api/admin/quota/reset`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/admin/quota/reset request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/admin/quota/reset
+ * fetch('/api/admin/quota/reset')
+ */
+export async function GET(request: NextRequest) {
+  const guard = requireAdminEndpointAccess(request)
+  if (!guard.ok) {
+    return guard.response
+  }
+
   return NextResponse.json(
     { error: 'Method not allowed. Use POST.' },
     { status: 405 }
   )
-}
-
-async function parseBody(request: NextRequest): Promise<AdminQuotaRequest> {
-  let payload: Partial<AdminQuotaRequest> = {}
-  try {
-    payload = (await request.json()) as Partial<AdminQuotaRequest>
-  } catch {
-    throw new Error('Invalid JSON body')
-  }
-
-  if (
-    payload.action !== 'reset_user' &&
-    payload.action !== 'adjust_user' &&
-    payload.action !== 'reset_all'
-  ) {
-    throw new Error('Invalid action. Allowed: reset_user, adjust_user, reset_all')
-  }
-
-  if ((payload.action === 'reset_user' || payload.action === 'adjust_user') && !payload.userId) {
-    throw new Error(`userId is required for action ${payload.action}`)
-  }
-
-  if (payload.planType && payload.planType !== 'free' && payload.planType !== 'pro') {
-    throw new Error('planType must be free or pro')
-  }
-
-  return {
-    action: payload.action,
-    userId: payload.userId,
-    used: Number.isFinite(Number(payload.used)) ? Math.max(0, Math.trunc(Number(payload.used))) : undefined,
-    limit: Number.isFinite(Number(payload.limit)) ? Math.max(1, Math.trunc(Number(payload.limit))) : undefined,
-    planType: payload.planType,
-  }
 }
 
 async function runAdminAdjustment(

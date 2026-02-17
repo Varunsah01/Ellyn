@@ -1,5 +1,4 @@
 import toast from 'react-hot-toast';
-import { CheckCircle2, XCircle, AlertCircle, Info, Loader2 } from 'lucide-react';
 
 /**
  * Enhanced toast notifications with icons and styling
@@ -69,7 +68,7 @@ export const showToast = {
     messages: {
       loading: string;
       success: string | ((data: T) => string);
-      error: string | ((error: any) => string);
+      error: string | ((error: unknown) => string);
     }
   ) => {
     return toast.promise(

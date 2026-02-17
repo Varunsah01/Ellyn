@@ -1,7 +1,8 @@
 "use client";
 
-import { Navigation } from "@/components/landing/navigation";
-import { Footer } from "@/components/landing/footer";
+import { Navigation } from "@/components/landing/Navigation";
+import { Footer } from "@/components/landing/Footer";
+import { CsrfHiddenInput } from "@/components/CsrfHiddenInput";
 import { Mail, MessageSquare, Send } from "lucide-react";
 import { useState } from "react";
 
@@ -80,6 +81,7 @@ export default function ContactPage() {
           {/* Contact Form */}
           <div className="bg-white p-8 md:p-10 rounded-3xl border border-border shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-6">
+              <CsrfHiddenInput />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label htmlFor="name" className="font-dm-sans text-sm font-medium text-foreground">

@@ -1,12 +1,12 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { DashboardShell } from "@/components/dashboard/dashboard-shell"
-import { PageHeader } from "@/components/dashboard/page-header"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { SequenceCard } from "@/components/sequences/sequence-card"
+import { DashboardShell } from "@/components/dashboard/DashboardShell"
+import { PageHeader } from "@/components/dashboard/PageHeader"
+import { Button } from "@/components/ui/Button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
+import { Badge } from "@/components/ui/Badge"
+import { SequenceCard } from "@/components/sequences/SequenceCard"
 import { buildGmailLink, buildOutlookLink } from "@/lib/sequence-engine"
 import { Sequence } from "@/lib/types/sequence"
 import { AlertCircle, CalendarCheck, FileText, Info, Mail, RefreshCw } from "lucide-react"
@@ -33,8 +33,8 @@ export default function SequencesPage() {
     try {
       setLoading(true)
       const [sequencesRes, digestRes] = await Promise.all([
-        fetch("/api/sequences"),
-        fetch("/api/sequences/execute"),
+        fetch("/api/v1/sequences"),
+        fetch("/api/v1/sequences/execute"),
       ])
 
       if (!sequencesRes.ok) {
@@ -60,7 +60,7 @@ export default function SequencesPage() {
   }, [fetchData])
 
   const handleMarkSent = async (enrollmentStepId: string) => {
-    await fetch("/api/sequences/execute", {
+    await fetch("/api/v1/sequences/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "mark_sent", enrollmentStepId }),
@@ -229,3 +229,4 @@ export default function SequencesPage() {
     </DashboardShell>
   )
 }
+

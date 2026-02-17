@@ -17,6 +17,14 @@ const STRIPE_PRO_PRICE_IDS: Record<PricingRegion, Record<BillingCycle, string>> 
   },
 };
 
+/**
+ * Get validated pro stripe price id.
+ * @param {PricingRegion} region - Region input.
+ * @param {BillingCycle} billingCycle - Billing cycle input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * getValidatedProStripePriceId({}, {})
+ */
 export function getValidatedProStripePriceId(
   region: PricingRegion,
   billingCycle: BillingCycle,

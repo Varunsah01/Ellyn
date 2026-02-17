@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { computeSequenceStats } from "@/lib/sequence-engine"
+import { SequenceCreateSchema, formatZodError } from "@/lib/validation/schemas"
 
+/**
+ * Handle GET requests for `/api/sequences`.
+ * @returns {unknown} JSON response for the GET /api/sequences request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/sequences
+ * fetch('/api/sequences')
+ */
 export async function GET() {
   try {
     if (!isSupabaseConfigured) {
@@ -83,6 +93,17 @@ export async function GET() {
   }
 }
 
+/**
+ * Handle POST requests for `/api/sequences`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/sequences request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/sequences
+ * fetch('/api/sequences', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
     if (!isSupabaseConfigured) {
@@ -92,15 +113,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const body = await request.json()
-    const { name, description, goal, status = "draft", steps = [] } = body
-
-    if (!name || !Array.isArray(steps) || steps.length === 0) {
+    const parsed = SequenceCreateSchema.safeParse(await request.json())
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Name and at least one step are required." },
+        { error: "Validation failed", details: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
+    const { name, description, goal, status = "draft", steps } = parsed.data
 
     const { data: sequence, error: seqError } = await supabase
       .from("sequences")
@@ -120,7 +140,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const stepPayload = steps.map((step: any, index: number) => ({
+    const stepPayload = steps.map((step, index: number) => ({
       sequence_id: sequence.id,
       step_order: step.order ?? index + 1,
       delay_days: step.delay_days ?? 0,

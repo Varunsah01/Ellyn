@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { DashboardShell } from "@/components/dashboard/dashboard-shell"
-import { PageHeader } from "@/components/dashboard/page-header"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { SequenceTimeline } from "@/components/sequence-timeline"
+import { DashboardShell } from "@/components/dashboard/DashboardShell"
+import { PageHeader } from "@/components/dashboard/PageHeader"
+import { Button } from "@/components/ui/Button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
+import { Badge } from "@/components/ui/Badge"
+import { SequenceTimeline } from "@/components/SequenceTimeline"
 import { computeSequenceStats, getSequenceStatusLabel } from "@/lib/sequence-engine"
 import {
   Sequence,
@@ -39,7 +39,7 @@ export default function SequenceDetailPage() {
   const refresh = useCallback(async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/sequences/${sequenceId}`)
+      const response = await fetch(`/api/v1/sequences/${sequenceId}`)
       if (!response.ok) {
         const payload = await response.json()
         throw new Error(payload.error || "Failed to load sequence")
@@ -155,7 +155,7 @@ export default function SequenceDetailPage() {
 
   const handleSequenceStatus = async (status: "paused" | "active") => {
     try {
-      await fetch(`/api/sequences/${sequenceId}`, {
+      await fetch(`/api/v1/sequences/${sequenceId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -168,7 +168,7 @@ export default function SequenceDetailPage() {
 
   const handleEnrollmentAction = async (action: string, enrollmentStepId?: string) => {
     try {
-      await fetch(`/api/sequences/execute`, {
+      await fetch(`/api/v1/sequences/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -373,3 +373,4 @@ export default function SequenceDetailPage() {
     </DashboardShell>
   )
 }
+

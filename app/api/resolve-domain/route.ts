@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import {
+  captureApiException,
+  captureSlowApiRoute,
+  withApiRouteSpan,
+} from '@/lib/monitoring/sentry'
+import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-
-type ResolveDomainRequest = {
-  companyName: string
-}
+import { ResolveDomainSchema, formatZodError } from '@/lib/validation/schemas'
 
 type DomainSource = 'known_db' | 'clearbit' | 'brandfetch' | 'heuristic'
 
@@ -21,7 +24,7 @@ type DomainCacheRow = {
   timestamp: string
 }
 
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const EXTERNAL_LOOKUP_TIMEOUT_MS = 900
 
 const SOURCE_CONFIDENCE: Record<DomainSource, number> = {
@@ -173,75 +176,143 @@ const KNOWN_DOMAINS: Record<string, string> = {
   honeywell: 'honeywell.com',
 }
 
+/**
+ * Handle POST requests for `/api/resolve-domain`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/resolve-domain request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/resolve-domain
+ * fetch('/api/resolve-domain', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now()
   const failures: string[] = []
 
-  try {
-    const body = await parseRequest(request)
-    const normalizedCompanyName = normalizeCompanyName(body.companyName)
-    const companyKey = normalizeCompanyKey(body.companyName)
+  return withApiRouteSpan(
+    'POST /api/resolve-domain',
+    async () => {
+      try {
+        let rawBody: unknown
+        try {
+          rawBody = await request.json()
+        } catch {
+          return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+        }
 
-    if (!normalizedCompanyName || normalizedCompanyName.length < 2 || !companyKey) {
-      return NextResponse.json(
-        { error: 'Invalid companyName. Provide a valid company name.' },
-        { status: 400 }
-      )
+        const parsed = ResolveDomainSchema.safeParse(rawBody)
+        if (!parsed.success) {
+          return NextResponse.json(
+            { error: 'Validation failed', details: formatZodError(parsed.error) },
+            { status: 400 }
+          )
+        }
+
+        const body = parsed.data
+        const normalizedCompanyName = normalizeCompanyName(body.companyName)
+        const companyKey = normalizeCompanyKey(body.companyName)
+
+        if (!normalizedCompanyName || normalizedCompanyName.length < 2 || !companyKey) {
+          return NextResponse.json(
+            { error: 'Invalid companyName. Provide a valid company name.' },
+            { status: 400 }
+          )
+        }
+
+        const serviceClient = await getServiceClientSafely()
+        const cacheAvailable = serviceClient
+          ? await ensureDomainCacheTableExists(serviceClient)
+          : false
+
+        // Level 1: known domains
+        const knownDomain = resolveKnownDomain(companyKey)
+        if (knownDomain) {
+          await writeDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, knownDomain, 'known_db')
+          logFailuresIfAny(failures, 'known_db')
+          captureSlowApiRoute('/api/resolve-domain', Date.now() - startedAt, {
+            method: 'POST',
+            thresholdMs: 1500,
+          })
+          return NextResponse.json(buildResponse(knownDomain, 'known_db'))
+        }
+
+        // Cache check before external APIs (30-day TTL)
+        const cached = await readDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, failures)
+        if (cached) {
+          logFailuresIfAny(failures, cached.source)
+          captureSlowApiRoute('/api/resolve-domain', Date.now() - startedAt, {
+            method: 'POST',
+            thresholdMs: 1500,
+          })
+          return NextResponse.json(cached)
+        }
+
+        // Level 2: Clearbit autocomplete
+        const clearbitDomain = await resolveFromClearbit(normalizedCompanyName, failures)
+        if (clearbitDomain) {
+          await writeDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, clearbitDomain, 'clearbit')
+          logFailuresIfAny(failures, 'clearbit')
+          captureSlowApiRoute('/api/resolve-domain', Date.now() - startedAt, {
+            method: 'POST',
+            thresholdMs: 1500,
+          })
+          return NextResponse.json(buildResponse(clearbitDomain, 'clearbit'))
+        }
+
+        // Level 3: Brandfetch
+        const brandfetchDomain = await resolveFromBrandfetch(normalizedCompanyName, failures)
+        if (brandfetchDomain) {
+          await writeDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, brandfetchDomain, 'brandfetch')
+          logFailuresIfAny(failures, 'brandfetch')
+          captureSlowApiRoute('/api/resolve-domain', Date.now() - startedAt, {
+            method: 'POST',
+            thresholdMs: 1500,
+          })
+          return NextResponse.json(buildResponse(brandfetchDomain, 'brandfetch'))
+        }
+
+        // Level 4: heuristic fallback (always returns)
+        const guessedDomain = heuristicGuessDomain(normalizedCompanyName)
+        await writeDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, guessedDomain, 'heuristic')
+
+        logFailuresIfAny(failures, 'heuristic')
+        captureSlowApiRoute('/api/resolve-domain', Date.now() - startedAt, {
+          method: 'POST',
+          thresholdMs: 1500,
+        })
+        return NextResponse.json(buildResponse(guessedDomain, 'heuristic'))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        if (message === 'Invalid JSON body') {
+          return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+        }
+
+        captureApiException(error, {
+          route: '/api/resolve-domain',
+          method: 'POST',
+        })
+        console.error('[resolve-domain] Internal error:', sanitizeErrorForLog(error))
+        return NextResponse.json({ error: 'Failed to resolve domain' }, { status: 500 })
+      }
+    },
+    {
+      'api.route': '/api/resolve-domain',
+      'api.method': 'POST',
     }
-
-    const serviceClient = await getServiceClientSafely()
-    const cacheAvailable = serviceClient
-      ? await ensureDomainCacheTableExists(serviceClient)
-      : false
-
-    // Level 1: known domains
-    const knownDomain = resolveKnownDomain(companyKey)
-    if (knownDomain) {
-      await writeDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, knownDomain, 'known_db')
-      logFailuresIfAny(failures, 'known_db')
-      return NextResponse.json(buildResponse(knownDomain, 'known_db'))
-    }
-
-    // Cache check before external APIs (30-day TTL)
-    const cached = await readDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, failures)
-    if (cached) {
-      logFailuresIfAny(failures, cached.source)
-      return NextResponse.json(cached)
-    }
-
-    // Level 2: Clearbit autocomplete
-    const clearbitDomain = await resolveFromClearbit(normalizedCompanyName, failures)
-    if (clearbitDomain) {
-      await writeDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, clearbitDomain, 'clearbit')
-      logFailuresIfAny(failures, 'clearbit')
-      return NextResponse.json(buildResponse(clearbitDomain, 'clearbit'))
-    }
-
-    // Level 3: Brandfetch
-    const brandfetchDomain = await resolveFromBrandfetch(normalizedCompanyName, failures)
-    if (brandfetchDomain) {
-      await writeDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, brandfetchDomain, 'brandfetch')
-      logFailuresIfAny(failures, 'brandfetch')
-      return NextResponse.json(buildResponse(brandfetchDomain, 'brandfetch'))
-    }
-
-    // Level 4: heuristic fallback (always returns)
-    const guessedDomain = heuristicGuessDomain(normalizedCompanyName)
-    await writeDomainCacheBestEffort(serviceClient, cacheAvailable, companyKey, guessedDomain, 'heuristic')
-
-    logFailuresIfAny(failures, 'heuristic')
-
-    return NextResponse.json(buildResponse(guessedDomain, 'heuristic'))
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    if (message === 'Invalid JSON body') {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
-    }
-
-    console.error('[resolve-domain] Internal error:', sanitizeErrorForLog(error))
-    return NextResponse.json({ error: 'Failed to resolve domain' }, { status: 500 })
-  }
+  )
 }
 
+/**
+ * Handle GET requests for `/api/resolve-domain`.
+ * @returns {unknown} JSON response for the GET /api/resolve-domain request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/resolve-domain
+ * fetch('/api/resolve-domain')
+ */
 export async function GET() {
   return NextResponse.json(
     { error: 'Method not allowed. Use POST.' },
@@ -257,59 +328,120 @@ function buildResponse(domain: string, source: DomainSource): ResolveDomainRespo
   }
 }
 
-async function parseRequest(request: NextRequest): Promise<ResolveDomainRequest> {
-  try {
-    const body = (await request.json()) as Partial<ResolveDomainRequest>
-    return {
-      companyName: typeof body.companyName === 'string' ? body.companyName : '',
-    }
-  } catch {
-    throw new Error('Invalid JSON body')
-  }
-}
-
 async function resolveFromClearbit(companyName: string, failures: string[]): Promise<string | null> {
+  const startedAt = Date.now()
   try {
     const url = `https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(companyName)}`
-    const response = await fetch(url, {
-      method: 'GET',
-      signal: AbortSignal.timeout(EXTERNAL_LOOKUP_TIMEOUT_MS),
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    })
+    const response = await timeOperation(
+      'clearbit.company-autocomplete.fetch',
+      async () => await fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(EXTERNAL_LOOKUP_TIMEOUT_MS),
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      }),
+      {
+        slowThresholdMs: 500,
+        context: {
+          route: '/api/resolve-domain',
+          provider: 'clearbit',
+        },
+      }
+    )
 
     if (!response.ok) {
       failures.push(`clearbit:${response.status}`)
+      recordExternalApiUsage({
+        service: 'clearbit',
+        operation: 'company-autocomplete',
+        costUsd: 0,
+        durationMs: Date.now() - startedAt,
+        statusCode: response.status,
+        success: false,
+      })
       return null
     }
 
     const data = (await response.json()) as unknown
+    recordExternalApiUsage({
+      service: 'clearbit',
+      operation: 'company-autocomplete',
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: response.status,
+      success: true,
+    })
     return extractDomainFromCandidateList(data)
   } catch (error) {
     failures.push(`clearbit:exception:${compactErrorMessage(error)}`)
+    const statusCode = Number((error as { status?: number })?.status)
+    recordExternalApiUsage({
+      service: 'clearbit',
+      operation: 'company-autocomplete',
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: Number.isFinite(statusCode) ? statusCode : 500,
+      success: false,
+    })
     return null
   }
 }
 
 async function resolveFromBrandfetch(companyName: string, failures: string[]): Promise<string | null> {
+  const startedAt = Date.now()
   try {
     const url = `https://api.brandfetch.io/v2/search/${encodeURIComponent(companyName)}`
-    const response = await fetch(url, {
-      method: 'GET',
-      signal: AbortSignal.timeout(EXTERNAL_LOOKUP_TIMEOUT_MS),
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    })
+    const response = await timeOperation(
+      'brandfetch.company-search.fetch',
+      async () => await fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(EXTERNAL_LOOKUP_TIMEOUT_MS),
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      }),
+      {
+        slowThresholdMs: 500,
+        context: {
+          route: '/api/resolve-domain',
+          provider: 'brandfetch',
+        },
+      }
+    )
 
     if (!response.ok) {
       failures.push(`brandfetch:${response.status}`)
+      recordExternalApiUsage({
+        service: 'brandfetch',
+        operation: 'company-search',
+        costUsd: 0,
+        durationMs: Date.now() - startedAt,
+        statusCode: response.status,
+        success: false,
+      })
       return null
     }
 
     const data = (await response.json()) as unknown
+    recordExternalApiUsage({
+      service: 'brandfetch',
+      operation: 'company-search',
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: response.status,
+      success: true,
+    })
     return extractBrandfetchDomain(data)
   } catch (error) {
     failures.push(`brandfetch:exception:${compactErrorMessage(error)}`)
+    const statusCode = Number((error as { status?: number })?.status)
+    recordExternalApiUsage({
+      service: 'brandfetch',
+      operation: 'company-search',
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: Number.isFinite(statusCode) ? statusCode : 500,
+      success: false,
+    })
     return null
   }
 }
@@ -512,9 +644,18 @@ function normalizeDomain(value: unknown): string | null {
 
   domain = domain.replace(/^https?:\/\//, '')
   domain = domain.replace(/^www\./, '')
-  domain = domain.split('/')[0]
-  domain = domain.split('?')[0]
-  domain = domain.split('#')[0]
+
+  const withoutPath = domain.split('/')[0]
+  if (!withoutPath) return null
+  domain = withoutPath
+
+  const withoutQuery = domain.split('?')[0]
+  if (!withoutQuery) return null
+  domain = withoutQuery
+
+  const withoutFragment = domain.split('#')[0]
+  if (!withoutFragment) return null
+  domain = withoutFragment
 
   if (!/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(domain)) {
     return null

@@ -200,6 +200,13 @@ function safeDate(value?: string | null): Date | null {
   return date;
 }
 
+/**
+ * Get display name.
+ * @param {TrackerContact} contact - Contact input.
+ * @returns {string} Computed string.
+ * @example
+ * getDisplayName({})
+ */
 export function getDisplayName(contact: TrackerContact): string {
   const fromFullName = contact.full_name?.trim();
   if (fromFullName) return fromFullName;
@@ -208,10 +215,24 @@ export function getDisplayName(contact: TrackerContact): string {
   return composed || "Unknown";
 }
 
+/**
+ * Get display email.
+ * @param {TrackerContact} contact - Contact input.
+ * @returns {string} Computed string.
+ * @example
+ * getDisplayEmail({})
+ */
 export function getDisplayEmail(contact: TrackerContact): string {
   return contact.confirmed_email || contact.inferred_email || "";
 }
 
+/**
+ * Derive outreach stage.
+ * @param {TrackerContact} contact - Contact input.
+ * @returns {"draft" | "sent" | "opened" | "replied"} Computed "draft" | "sent" | "opened" | "replied".
+ * @example
+ * deriveOutreachStage({})
+ */
 export function deriveOutreachStage(contact: TrackerContact): "draft" | "sent" | "opened" | "replied" {
   const raw = contact.outreach_status?.toLowerCase();
   if (raw === "sent") return "sent";
@@ -225,6 +246,13 @@ export function deriveOutreachStage(contact: TrackerContact): "draft" | "sent" |
   return "draft";
 }
 
+/**
+ * Get board lane from contact.
+ * @param {TrackerContact} contact - Contact input.
+ * @returns {TrackerBoardLane} Computed TrackerBoardLane.
+ * @example
+ * getBoardLaneFromContact({})
+ */
 export function getBoardLaneFromContact(contact: TrackerContact): TrackerBoardLane {
   switch (contact.status) {
     case "contacted":
@@ -301,6 +329,14 @@ function parseDateInput(value: string, endOfDay: boolean): Date | null {
   return date;
 }
 
+/**
+ * Is needs follow up.
+ * @param {TrackerContact} contact - Contact input.
+ * @param {Date} nowDate - Now date input.
+ * @returns {boolean} Computed boolean.
+ * @example
+ * isNeedsFollowUp({}, new Date())
+ */
 export function isNeedsFollowUp(contact: TrackerContact, nowDate: Date = new Date()): boolean {
   if (contact.status === "replied") return false;
   const outreachStage = deriveOutreachStage(contact);
@@ -334,6 +370,16 @@ export function matchesTrackerSearch(
   return name.includes(query) || company.includes(query) || role.includes(query);
 }
 
+/**
+ * Apply tracker filters.
+ * @param {TrackerContact[]} contacts - Contacts input.
+ * @param {string} searchQuery - Search query input.
+ * @param {TrackerFilterState} filters - Filters input.
+ * @param {Date} nowDate - Now date input.
+ * @returns {TrackerContact[]} Computed TrackerContact[].
+ * @example
+ * applyTrackerFilters([], 'searchQuery', {}, new Date())
+ */
 export function applyTrackerFilters(
   contacts: TrackerContact[],
   searchQuery: string,
@@ -408,6 +454,14 @@ function compareDatesDesc(left?: string | null, right?: string | null): number {
   return (safeDate(right)?.getTime() || 0) - (safeDate(left)?.getTime() || 0);
 }
 
+/**
+ * Apply sort preset.
+ * @param {TrackerContact[]} contacts - Contacts input.
+ * @param {TrackerSortPreset} sortPreset - Sort preset input.
+ * @returns {TrackerContact[]} Computed TrackerContact[].
+ * @example
+ * applySortPreset([], {})
+ */
 export function applySortPreset(contacts: TrackerContact[], sortPreset: TrackerSortPreset): TrackerContact[] {
   const sorted = [...contacts];
 
@@ -452,6 +506,13 @@ export function applySortPreset(contacts: TrackerContact[], sortPreset: TrackerS
   return sorted;
 }
 
+/**
+ * Build company counts.
+ * @param {TrackerContact[]} contacts - Contacts input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * buildCompanyCounts([])
+ */
 export function buildCompanyCounts(contacts: TrackerContact[]) {
   const counts = new Map<string, number>();
 
@@ -466,6 +527,13 @@ export function buildCompanyCounts(contacts: TrackerContact[]) {
     .sort((a, b) => a.company.localeCompare(b.company));
 }
 
+/**
+ * Group contacts by company.
+ * @param {TrackerContact[]} contacts - Contacts input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * groupContactsByCompany([])
+ */
 export function groupContactsByCompany(contacts: TrackerContact[]) {
   const groups = new Map<string, TrackerContact[]>();
   for (const contact of contacts) {
@@ -497,6 +565,13 @@ function getWindowLabel(date: Date): string {
   return `${day} ${bucket}`;
 }
 
+/**
+ * Compute tracker analytics.
+ * @param {TrackerContact[]} contacts - Contacts input.
+ * @returns {TrackerAnalyticsData} Computed TrackerAnalyticsData.
+ * @example
+ * computeTrackerAnalytics([])
+ */
 export function computeTrackerAnalytics(contacts: TrackerContact[]): TrackerAnalyticsData {
   const drafted = contacts.filter((contact) => deriveOutreachStage(contact) === "draft").length;
   const sent = contacts.filter((contact) => {
@@ -626,6 +701,14 @@ function toCsvDate(value?: string | null): string {
   return date ? date.toISOString() : "";
 }
 
+/**
+ * Export contacts to csv.
+ * @param {TrackerContact[]} contacts - Contacts input.
+ * @param {TrackerExportColumn[]} columns - Columns input.
+ * @returns {string} Computed string.
+ * @example
+ * exportContactsToCsv([], [])
+ */
 export function exportContactsToCsv(contacts: TrackerContact[], columns: TrackerExportColumn[]): string {
   const headers = columns.map((column) => TRACKER_EXPORT_COLUMN_LABELS[column]);
   const rows = contacts.map((contact) =>
@@ -660,6 +743,14 @@ export function exportContactsToCsv(contacts: TrackerContact[], columns: Tracker
   return [headers.map(csvEscape).join(","), ...rows.map((row) => row.join(","))].join("\n");
 }
 
+/**
+ * Download csv.
+ * @param {string} filename - Filename input.
+ * @param {string} content - Content input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * downloadCsv('filename', 'content')
+ */
 export function downloadCsv(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
   const url = window.URL.createObjectURL(blob);
@@ -673,6 +764,16 @@ export function downloadCsv(filename: string, content: string) {
   window.URL.revokeObjectURL(url);
 }
 
+/**
+ * Add timeline event.
+ * @param {TrackerContact} contact - Contact input.
+ * @param {TrackerTimelineEventType} type - Type input.
+ * @param {string} title - Title input.
+ * @param {string} description - Description input.
+ * @returns {TrackerTimelineEvent[]} Computed TrackerTimelineEvent[].
+ * @example
+ * addTimelineEvent({}, {}, 'title', 'description')
+ */
 export function addTimelineEvent(
   contact: TrackerContact,
   type: TrackerTimelineEventType,

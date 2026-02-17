@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, type Contact, type EmailResult } from '@/lib/supabase';
+import { supabase } from '@/lib/supabase';
+import { getAuthenticatedUser } from '@/lib/auth/helpers';
+import { LeadCreateSchema, formatZodError } from '@/lib/validation/schemas';
 
 // GET /api/leads - Fetch all leads
+/**
+ * Handle GET requests for `/api/leads`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/leads request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/leads
+ * fetch('/api/leads')
+ */
 export async function GET(request: NextRequest) {
   try {
+    const user = await getAuthenticatedUser();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const search = searchParams.get('search');
@@ -15,6 +28,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('leads')
       .select('*', { count: 'exact' })
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     // Apply filters
@@ -50,6 +64,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Error in GET /api/leads:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
@@ -59,33 +76,37 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/leads - Create a new lead
+/**
+ * Handle POST requests for `/api/leads`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/leads request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/leads
+ * fetch('/api/leads', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { personName, companyName, emails, selectedEmail } = body;
-
-    // Validate required fields
-    if (!personName || !companyName || !emails || !Array.isArray(emails)) {
+    const user = await getAuthenticatedUser();
+    const parsed = LeadCreateSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Missing required fields: personName, companyName, and emails are required' },
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
         { status: 400 }
       );
     }
-
-    if (emails.length === 0) {
-      return NextResponse.json(
-        { error: 'At least one email must be provided' },
-        { status: 400 }
-      );
-    }
+    const { personName, companyName, emails, selectedEmail, status } = parsed.data;
 
     // Prepare lead data
     const leadData = {
+      user_id: user.id,
       person_name: personName,
       company_name: companyName,
       discovered_emails: emails,
       selected_email: selectedEmail || null,
-      status: 'discovered' as const,
+      status: status || ('discovered' as const),
     };
 
     // Insert into database
@@ -109,6 +130,9 @@ export async function POST(request: NextRequest) {
       message: 'Lead created successfully',
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Error in POST /api/leads:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },

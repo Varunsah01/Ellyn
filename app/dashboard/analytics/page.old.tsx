@@ -1,18 +1,16 @@
 "use client";
 
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Users, Mail, TrendingUp, RefreshCw } from "lucide-react";
 import { useAnalytics, useDashboardStats } from "@/lib/hooks/useAnalytics";
-import { useContactStats } from "@/lib/hooks/useContacts";
 
 export default function AnalyticsPage() {
   const { analytics, loading: analyticsLoading, refresh: refreshAnalytics } = useAnalytics();
   const { stats, loading: statsLoading, refresh: refreshStats } = useDashboardStats();
-  const { stats: contactStats, loading: contactStatsLoading } = useContactStats();
 
-  const isLoading = analyticsLoading || statsLoading || contactStatsLoading;
+  const isLoading = analyticsLoading || statsLoading;
 
   const handleRefreshAll = async () => {
     await Promise.all([refreshAnalytics(), refreshStats()]);

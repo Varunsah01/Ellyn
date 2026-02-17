@@ -1,34 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getAuthenticatedUser } from '@/lib/auth/helpers';
+import { LeadUpdateSchema, formatZodError } from '@/lib/validation/schemas';
 
 // PATCH /api/leads/[id] - Update a lead
+/**
+ * Handle PATCH requests for `/api/leads/[id]`.
+ * @param {NextRequest} request - Request input.
+ * @param {{ params: { id: string } }} param2 - Param2 input.
+ * @returns {unknown} JSON response for the PATCH /api/leads/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // PATCH /api/leads/[id]
+ * fetch('/api/leads/[id]', { method: 'PATCH' })
+ */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    const user = await getAuthenticatedUser();
     const { id } = params;
-    const body = await request.json();
-    const { status, selectedEmail } = body;
-
-    // Validate at least one field to update
-    if (!status && !selectedEmail) {
+    const parsed = LeadUpdateSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'At least one field (status or selectedEmail) must be provided' },
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
         { status: 400 }
       );
     }
-
-    // Validate status if provided
-    if (status && !['discovered', 'sent', 'bounced', 'replied'].includes(status)) {
-      return NextResponse.json(
-        { error: 'Invalid status. Must be one of: discovered, sent, bounced, replied' },
-        { status: 400 }
-      );
-    }
+    const { status, selectedEmail } = parsed.data;
 
     // Build update object
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (status) updateData.status = status;
     if (selectedEmail !== undefined) updateData.selected_email = selectedEmail;
 
@@ -37,6 +42,7 @@ export async function PATCH(
       .from('leads')
       .update(updateData)
       .eq('id', id)
+      .eq('user_id', user.id)
       .select()
       .single();
 
@@ -62,6 +68,9 @@ export async function PATCH(
       message: 'Lead updated successfully',
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Error in PATCH /api/leads/[id]:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
@@ -71,18 +80,31 @@ export async function PATCH(
 }
 
 // DELETE /api/leads/[id] - Delete a lead
+/**
+ * Handle DELETE requests for `/api/leads/[id]`.
+ * @param {NextRequest} request - Request input.
+ * @param {{ params: { id: string } }} param2 - Param2 input.
+ * @returns {unknown} JSON response for the DELETE /api/leads/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // DELETE /api/leads/[id]
+ * fetch('/api/leads/[id]', { method: 'DELETE' })
+ */
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    const user = await getAuthenticatedUser();
     const { id } = params;
 
     // Delete from database
     const { error } = await supabase
       .from('leads')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', user.id);
 
     if (error) {
       console.error('Error deleting lead:', error);
@@ -105,6 +127,9 @@ export async function DELETE(
       message: 'Lead deleted successfully',
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Error in DELETE /api/leads/[id]:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
@@ -114,17 +139,30 @@ export async function DELETE(
 }
 
 // GET /api/leads/[id] - Get a single lead
+/**
+ * Handle GET requests for `/api/leads/[id]`.
+ * @param {NextRequest} request - Request input.
+ * @param {{ params: { id: string } }} param2 - Param2 input.
+ * @returns {unknown} JSON response for the GET /api/leads/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/leads/[id]
+ * fetch('/api/leads/[id]')
+ */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    const user = await getAuthenticatedUser();
     const { id } = params;
 
     const { data, error } = await supabase
       .from('leads')
       .select('*')
       .eq('id', id)
+      .eq('user_id', user.id)
       .single();
 
     if (error) {
@@ -148,6 +186,9 @@ export async function GET(
       lead: data,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Error in GET /api/leads/[id]:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },

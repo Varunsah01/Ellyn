@@ -1,4 +1,4 @@
-import { ContactTable } from "@/components/contact-table";
+import { ContactTable } from "@/components/ContactTable";
 
 export default function ContactsPage() {
   return (

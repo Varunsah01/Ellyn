@@ -18,6 +18,16 @@ function getCountryFromHeaders(request: NextRequest) {
   return null;
 }
 
+/**
+ * Handle GET requests for `/api/pricing-region`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/pricing-region request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/pricing-region
+ * fetch('/api/pricing-region')
+ */
 export async function GET(request: NextRequest) {
   try {
     const headerCountry = getCountryFromHeaders(request);

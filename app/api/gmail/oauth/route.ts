@@ -4,6 +4,16 @@ import { supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Handle GET requests for `/api/gmail/oauth`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/gmail/oauth request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/gmail/oauth
+ * fetch('/api/gmail/oauth')
+ */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;

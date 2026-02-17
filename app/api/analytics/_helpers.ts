@@ -4,6 +4,13 @@ export type AnalyticsPeriod = 'day' | 'week' | 'month' | 'all'
 
 const VALID_PERIODS: AnalyticsPeriod[] = ['day', 'week', 'month', 'all']
 
+/**
+ * Normalize period.
+ * @param {string | null | undefined} value - Value input.
+ * @returns {AnalyticsPeriod} Computed AnalyticsPeriod.
+ * @example
+ * normalizePeriod('value')
+ */
 export function normalizePeriod(value: string | null | undefined): AnalyticsPeriod {
   if (!value) return 'month'
   const normalized = value.trim().toLowerCase()
@@ -12,6 +19,13 @@ export function normalizePeriod(value: string | null | undefined): AnalyticsPeri
     : 'month'
 }
 
+/**
+ * Get period start date.
+ * @param {AnalyticsPeriod} period - Period input.
+ * @returns {Date | null} Computed Date | null.
+ * @example
+ * getPeriodStartDate({})
+ */
 export function getPeriodStartDate(period: AnalyticsPeriod): Date | null {
   const now = Date.now()
   switch (period) {
@@ -26,22 +40,52 @@ export function getPeriodStartDate(period: AnalyticsPeriod): Date | null {
   }
 }
 
+/**
+ * Is missing db object error.
+ * @param {unknown} error - Error input.
+ * @returns {boolean} Computed boolean.
+ * @example
+ * isMissingDbObjectError({})
+ */
 export function isMissingDbObjectError(error: unknown): boolean {
   const code = (error as { code?: string })?.code
   return code === '42P01' || code === 'PGRST202' || code === '42883'
 }
 
+/**
+ * Round to.
+ * @param {number} value - Value input.
+ * @param {number} decimals - Decimals input.
+ * @returns {number} Computed number.
+ * @example
+ * roundTo(0, 0)
+ */
 export function roundTo(value: number, decimals: number): number {
   if (!Number.isFinite(value)) return 0
   const factor = 10 ** decimals
   return Math.round(value * factor) / factor
 }
 
+/**
+ * To safe number.
+ * @param {unknown} value - Value input.
+ * @param {unknown} fallback - Fallback input.
+ * @returns {number} Computed number.
+ * @example
+ * toSafeNumber({}, {})
+ */
 export function toSafeNumber(value: unknown, fallback = 0): number {
   const num = Number(value)
   return Number.isFinite(num) ? num : fallback
 }
 
+/**
+ * Sanitize error for log.
+ * @param {unknown} error - Error input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * sanitizeErrorForLog({})
+ */
 export function sanitizeErrorForLog(error: unknown) {
   if (error instanceof Error) {
     return {
@@ -63,6 +107,13 @@ export function sanitizeErrorForLog(error: unknown) {
   return { message: String(error) }
 }
 
+/**
+ * Csv escape.
+ * @param {unknown} value - Value input.
+ * @returns {string} Computed string.
+ * @example
+ * csvEscape({})
+ */
 export function csvEscape(value: unknown): string {
   const raw = String(value ?? '')
   if (/[,"\n]/.test(raw)) {
@@ -71,6 +122,13 @@ export function csvEscape(value: unknown): string {
   return raw
 }
 
+/**
+ * Is admin user.
+ * @param {User} user - User input.
+ * @returns {boolean} Computed boolean.
+ * @example
+ * isAdminUser({})
+ */
 export function isAdminUser(user: User): boolean {
   const appMetadata = (user.app_metadata || {}) as Record<string, unknown>
   const userMetadata = (user.user_metadata || {}) as Record<string, unknown>

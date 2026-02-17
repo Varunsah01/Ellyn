@@ -69,6 +69,14 @@ export function toTrackerContact(contact: ContactLikeForTracker): TrackerContact
   };
 }
 
+/**
+ * Build tracker contact href.
+ * @param {string} contactId - Contact id input.
+ * @param {{ source?: string }} options - Options input.
+ * @returns {string} Computed string.
+ * @example
+ * buildTrackerContactHref('contactId', 'options')
+ */
 export function buildTrackerContactHref(
   contactId: string,
   options: { source?: string } = {}
@@ -81,6 +89,13 @@ export function buildTrackerContactHref(
   return `${TRACKER_ENTRY_ROUTE}?${params.toString()}`;
 }
 
+/**
+ * Get tracker contact id from params.
+ * @param {Pick<URLSearchParams, "get">} params - Params input.
+ * @returns {string | null} Computed string | null.
+ * @example
+ * getTrackerContactIdFromParams({})
+ */
 export function getTrackerContactIdFromParams(params: Pick<URLSearchParams, "get">): string | null {
   const value = params.get("contactId");
   if (!value) return null;
@@ -88,6 +103,14 @@ export function getTrackerContactIdFromParams(params: Pick<URLSearchParams, "get
   return trimmed.length > 0 ? trimmed : null;
 }
 
+/**
+ * Count contacts needing follow up.
+ * @param {ContactLikeForTracker[]} contacts - Contacts input.
+ * @param {Date} nowDate - Now date input.
+ * @returns {number} Computed number.
+ * @example
+ * countContactsNeedingFollowUp([], new Date())
+ */
 export function countContactsNeedingFollowUp(
   contacts: ContactLikeForTracker[],
   nowDate: Date = new Date()
@@ -98,6 +121,14 @@ export function countContactsNeedingFollowUp(
   }, 0);
 }
 
+/**
+ * Map sequence action to tracker contact patch.
+ * @param {string} action - Action input.
+ * @param {string} nowIso - Now iso input.
+ * @returns {{ status: TrackerContactStatus; last_contacted_at?: string; updated_at: string } | null} Computed { status: TrackerContactStatus; last_contacted_at?: string; updated_at: string } | null.
+ * @example
+ * mapSequenceActionToTrackerContactPatch('action', 'nowIso')
+ */
 export function mapSequenceActionToTrackerContactPatch(
   action: string,
   nowIso: string = new Date().toISOString()
@@ -120,6 +151,13 @@ export function mapSequenceActionToTrackerContactPatch(
   return null;
 }
 
+/**
+ * Save tracker deep link contact.
+ * @param {ContactLikeForTracker} contact - Contact input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * saveTrackerDeepLinkContact({})
+ */
 export function saveTrackerDeepLinkContact(contact: ContactLikeForTracker) {
   if (typeof window === "undefined") return;
   try {
@@ -129,6 +167,13 @@ export function saveTrackerDeepLinkContact(contact: ContactLikeForTracker) {
   }
 }
 
+/**
+ * Consume tracker deep link contact.
+ * @param {string} contactId - Contact id input.
+ * @returns {ContactLikeForTracker | null} Computed ContactLikeForTracker | null.
+ * @example
+ * consumeTrackerDeepLinkContact('contactId')
+ */
 export function consumeTrackerDeepLinkContact(contactId: string): ContactLikeForTracker | null {
   if (typeof window === "undefined") return null;
   try {

@@ -16,6 +16,14 @@ export const emailVariables: EmailVariable[] = [
   { key: "userCompany", label: "Your Company", example: "Ellyn" },
 ];
 
+/**
+ * Replace variables.
+ * @param {string} template - Template input.
+ * @param {Record<string, string>} data - Data input.
+ * @returns {string} Computed string.
+ * @example
+ * replaceVariables('template', 'data')
+ */
 export function replaceVariables(
   template: string,
   data: Record<string, string>
@@ -30,6 +38,15 @@ export function replaceVariables(
   return result;
 }
 
+/**
+ * Insert variable.
+ * @param {string} text - Text input.
+ * @param {number} cursorPosition - Cursor position input.
+ * @param {string} variableKey - Variable key input.
+ * @returns {{ text: string; newCursorPosition: number }} Computed { text: string; newCursorPosition: number }.
+ * @example
+ * insertVariable('text', 0, 'variableKey')
+ */
 export function insertVariable(
   text: string,
   cursorPosition: number,
@@ -45,13 +62,23 @@ export function insertVariable(
   };
 }
 
+/**
+ * Get variables in text.
+ * @param {string} text - Text input.
+ * @returns {string[]} Computed string[].
+ * @example
+ * getVariablesInText('text')
+ */
 export function getVariablesInText(text: string): string[] {
   const regex = /{{(\w+)}}/g;
-  const matches = [];
-  let match;
+  const matches: string[] = [];
+  let match: RegExpExecArray | null;
 
   while ((match = regex.exec(text)) !== null) {
-    matches.push(match[1]);
+    const variable = match[1];
+    if (variable) {
+      matches.push(variable);
+    }
   }
 
   return [...new Set(matches)];

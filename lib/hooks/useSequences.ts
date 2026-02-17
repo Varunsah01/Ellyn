@@ -43,6 +43,12 @@ export interface UseSequencesResult {
   refreshDrafts: () => Promise<void>;
 }
 
+/**
+ * Custom hook for sequences.
+ * @returns {UseSequencesResult} Hook state and actions for sequences.
+ * @example
+ * const state = useSequences()
+ */
 export function useSequences(): UseSequencesResult {
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -51,7 +57,7 @@ export function useSequences(): UseSequencesResult {
 
   const fetchTemplates = useCallback(async () => {
     try {
-      const response = await fetch('/api/templates');
+      const response = await fetch('/api/v1/templates');
 
       if (!response.ok) {
         throw new Error('Failed to fetch templates');
@@ -72,7 +78,7 @@ export function useSequences(): UseSequencesResult {
 
   const fetchDrafts = useCallback(async () => {
     try {
-      const response = await fetch('/api/drafts');
+      const response = await fetch('/api/v1/drafts');
 
       if (!response.ok) {
         throw new Error('Failed to fetch drafts');
@@ -127,6 +133,12 @@ export interface SequenceStats {
   pendingDrafts: number;
 }
 
+/**
+ * Custom hook for sequence stats.
+ * @returns {unknown} Hook state and actions for sequence stats.
+ * @example
+ * const state = useSequenceStats()
+ */
 export function useSequenceStats() {
   const [stats, setStats] = useState<SequenceStats>({
     totalTemplates: 0,
@@ -143,8 +155,8 @@ export function useSequenceStats() {
       setError(null);
 
       const [templatesRes, draftsRes] = await Promise.all([
-        fetch('/api/templates'),
-        fetch('/api/drafts'),
+        fetch('/api/v1/templates'),
+        fetch('/api/v1/drafts'),
       ]);
 
       if (!templatesRes.ok || !draftsRes.ok) {
@@ -181,3 +193,4 @@ export function useSequenceStats() {
 
   return { stats, loading, error, refresh: fetchStats };
 }
+

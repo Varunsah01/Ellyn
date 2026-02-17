@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { TemplateCreateSchema, formatZodError } from "@/lib/validation/schemas";
 
 // Default email templates
 const defaultTemplates = [
@@ -67,7 +68,17 @@ Looking forward to hearing from you,
   },
 ];
 
-export async function GET(request: NextRequest) {
+/**
+ * Handle GET requests for `/api/email-templates`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/email-templates request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/email-templates
+ * fetch('/api/email-templates')
+ */
+export async function GET(_request: NextRequest) {
   try {
     // In a production app, you'd fetch user's custom templates from database
     // For now, return default templates
@@ -84,18 +95,26 @@ export async function GET(request: NextRequest) {
 }
 
 // For future implementation: save custom templates
+/**
+ * Handle POST requests for `/api/email-templates`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/email-templates request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/email-templates
+ * fetch('/api/email-templates', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { name, subject, body: templateBody } = body;
-
-    if (!name || !subject || !templateBody) {
+    const parsed = TemplateCreateSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "Missing required fields: name, subject, body" },
+        { error: "Validation failed", details: formatZodError(parsed.error) },
         { status: 400 }
       );
     }
-
     // TODO: Save custom template to database
     // For now, return success
     return NextResponse.json({

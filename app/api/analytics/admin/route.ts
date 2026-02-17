@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
+import { requireAdminEndpointAccess } from '@/lib/auth/admin-endpoint-guard'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 import {
   getPeriodStartDate,
-  isAdminUser,
   isMissingDbObjectError,
   normalizePeriod,
   roundTo,
@@ -48,11 +47,21 @@ type TrendPoint = {
   costUsd: number
 }
 
+/**
+ * Handle GET requests for `/api/analytics/admin`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/analytics/admin request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/analytics/admin
+ * fetch('/api/analytics/admin')
+ */
 export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUserFromRequest(request)
-    if (!isAdminUser(user)) {
-      return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
+    const guard = requireAdminEndpointAccess(request)
+    if (!guard.ok) {
+      return guard.response
     }
 
     const period = normalizePeriod(request.nextUrl.searchParams.get('period') || 'day')

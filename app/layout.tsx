@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { DM_Sans, Fraunces } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
-import { Toaster } from "@/components/ui/toaster";
+import { CsrfFetchProvider } from "@/components/CsrfFetchProvider";
+import { WebVitalsReporter } from "@/components/monitoring/WebVitalsReporter";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { Toaster } from "@/components/ui/Toaster";
 import { Toaster as HotToaster } from "react-hot-toast";
 
 // Initialize DM Sans
@@ -63,6 +65,8 @@ export default function RootLayout({
           forcedTheme="light"
           disableTransitionOnChange
         >
+          <CsrfFetchProvider />
+          <WebVitalsReporter />
           {children}
           <Toaster />
           <HotToaster position="top-right" />

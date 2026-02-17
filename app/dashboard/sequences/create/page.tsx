@@ -1,9 +1,9 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { DashboardShell } from "@/components/dashboard/dashboard-shell"
-import { PageHeader } from "@/components/dashboard/page-header"
-import { SequenceBuilder } from "@/components/sequence-builder"
+import { DashboardShell } from "@/components/dashboard/DashboardShell"
+import { PageHeader } from "@/components/dashboard/PageHeader"
+import { SequenceBuilder } from "@/components/SequenceBuilder"
 
 export default function CreateSequencePage() {
   const router = useRouter()

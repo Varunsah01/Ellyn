@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
+import { buildCacheKey, getOrSet } from '@/lib/cache/redis'
+import { CACHE_TAGS, userAnalyticsTag } from '@/lib/cache/tags'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 import {
@@ -25,6 +27,18 @@ type UserAnalyticsMetrics = {
   mostCommonPattern: string | null
 }
 
+const USER_ANALYTICS_CACHE_TTL_SECONDS = 60 * 60
+
+/**
+ * Handle GET requests for `/api/analytics/user`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/analytics/user request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/analytics/user
+ * fetch('/api/analytics/user')
+ */
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request)
@@ -78,33 +92,47 @@ async function getUserMetrics(
   userId: string,
   period: AnalyticsPeriod
 ): Promise<UserAnalyticsMetrics> {
-  const rpc = await serviceClient.rpc('get_user_analytics', {
-    p_user_id: userId,
-    p_period: period,
-  })
+  const key = buildCacheKey(['cache', 'user-analytics', userId, period])
+  return getOrSet<UserAnalyticsMetrics>({
+    key,
+    ttlSeconds: USER_ANALYTICS_CACHE_TTL_SECONDS,
+    tags: [CACHE_TAGS.userAnalytics, userAnalyticsTag(userId)],
+    fetcher: async () => {
+      const rpc = await serviceClient.rpc('get_user_analytics', {
+        p_user_id: userId,
+        p_period: period,
+      })
 
-  if (!rpc.error) {
-    const row = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data
-    if (row) {
-      return {
-        totalLookups: toSafeNumber((row as any).total_lookups, 0),
-        successfulLookups: toSafeNumber((row as any).successful_lookups, 0),
-        successRate: roundTo(toSafeNumber((row as any).success_rate, 0), 2),
-        totalCostUsd: roundTo(toSafeNumber((row as any).total_cost_usd, 0), 6),
-        avgCostPerLookup: roundTo(toSafeNumber((row as any).avg_cost_per_lookup, 0), 6),
-        cacheHitRate: roundTo(toSafeNumber((row as any).cache_hit_rate, 0), 2),
-        avgConfidence: roundTo(toSafeNumber((row as any).avg_confidence, 0), 2),
-        mostCommonPattern: ((row as any).most_common_pattern as string | null) || null,
+      if (!rpc.error) {
+        const row = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data
+        if (row) {
+          return {
+            totalLookups: toSafeNumber((row as any).total_lookups, 0),
+            successfulLookups: toSafeNumber((row as any).successful_lookups, 0),
+            successRate: roundTo(toSafeNumber((row as any).success_rate, 0), 2),
+            totalCostUsd: roundTo(toSafeNumber((row as any).total_cost_usd, 0), 6),
+            avgCostPerLookup: roundTo(toSafeNumber((row as any).avg_cost_per_lookup, 0), 6),
+            cacheHitRate: roundTo(toSafeNumber((row as any).cache_hit_rate, 0), 2),
+            avgConfidence: roundTo(toSafeNumber((row as any).avg_confidence, 0), 2),
+            mostCommonPattern: ((row as any).most_common_pattern as string | null) || null,
+          }
+        }
+      } else if (!isMissingDbObjectError(rpc.error)) {
+        console.error('[analytics/user] get_user_analytics RPC failed:', {
+          code: rpc.error.code,
+          message: rpc.error.message,
+        })
       }
-    }
-  } else if (!isMissingDbObjectError(rpc.error)) {
-    console.error('[analytics/user] get_user_analytics RPC failed:', {
-      code: rpc.error.code,
-      message: rpc.error.message,
-    })
-  }
 
-  return fallbackUserMetrics(serviceClient, userId, period)
+      return fallbackUserMetrics(serviceClient, userId, period)
+    },
+    backgroundRefresh: {
+      enabled: true,
+      hotThreshold: 6,
+      refreshAheadSeconds: 5 * 60,
+      cooldownSeconds: 90,
+    },
+  })
 }
 
 async function fallbackUserMetrics(

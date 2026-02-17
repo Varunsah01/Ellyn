@@ -19,6 +19,16 @@ type QuotaStatusResponse = {
   planType: string
 }
 
+/**
+ * Handle GET requests for `/api/quota/status`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/quota/status request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/quota/status
+ * fetch('/api/quota/status')
+ */
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request)
@@ -55,6 +65,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * Handle POST requests for `/api/quota/status`.
+ * @returns {unknown} JSON response for the POST /api/quota/status request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/quota/status
+ * fetch('/api/quota/status', { method: 'POST' })
+ */
 export async function POST() {
   return NextResponse.json(
     { error: 'Method not allowed. Use GET.' },

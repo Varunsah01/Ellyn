@@ -1,20 +1,52 @@
 import { Sequence, SequenceStats } from "@/lib/types/sequence";
 
+/**
+ * Calculate open rate.
+ * @param {SequenceStats} stats - Stats input.
+ * @returns {number} Computed number.
+ * @example
+ * calculateOpenRate({})
+ */
 export function calculateOpenRate(stats: SequenceStats): number {
   if (stats.emailsSent === 0) return 0;
   return Math.round((stats.opened / stats.emailsSent) * 100);
 }
 
+/**
+ * Calculate reply rate.
+ * @param {SequenceStats} stats - Stats input.
+ * @returns {number} Computed number.
+ * @example
+ * calculateReplyRate({})
+ */
 export function calculateReplyRate(stats: SequenceStats): number {
   if (stats.emailsSent === 0) return 0;
   return Math.round((stats.replied / stats.emailsSent) * 100);
 }
 
+/**
+ * Calculate bounce rate.
+ * @param {SequenceStats} stats - Stats input.
+ * @returns {number} Computed number.
+ * @example
+ * calculateBounceRate({})
+ */
 export function calculateBounceRate(stats: SequenceStats): number {
   if (stats.emailsSent === 0) return 0;
   return Math.round((stats.bounced / stats.emailsSent) * 100);
 }
 
+/**
+ * Get status color.
+ * @param {Sequence["status"]} status - Status input.
+ * @returns {{
+  bg: string;
+  text: string;
+  border: string;
+}} Computed { bg: string; text: string; border: string; }.
+ * @example
+ * getStatusColor({})
+ */
 export function getStatusColor(
   status: Sequence["status"]
 ): {
@@ -56,6 +88,13 @@ export function getStatusColor(
   }
 }
 
+/**
+ * Get status label.
+ * @param {Sequence["status"]} status - Status input.
+ * @returns {string} Computed string.
+ * @example
+ * getStatusLabel({})
+ */
 export function getStatusLabel(status: Sequence["status"]): string {
   switch (status) {
     case "active":
@@ -71,12 +110,26 @@ export function getStatusLabel(status: Sequence["status"]): string {
   }
 }
 
+/**
+ * Calculate estimated duration.
+ * @param {Sequence} sequence - Sequence input.
+ * @returns {number} Computed number.
+ * @example
+ * calculateEstimatedDuration({})
+ */
 export function calculateEstimatedDuration(sequence: Sequence): number {
   if (!sequence.steps || sequence.steps.length === 0) return 0;
 
   return sequence.steps.reduce((total, step) => total + step.delay_days, 0);
 }
 
+/**
+ * Format duration.
+ * @param {number} days - Days input.
+ * @returns {string} Computed string.
+ * @example
+ * formatDuration(0)
+ */
 export function formatDuration(days: number): string {
   if (days === 0) return "Same day";
   if (days === 1) return "1 day";
@@ -92,10 +145,22 @@ export function formatDuration(days: number): string {
   return `${weeks} week${weeks > 1 ? "s" : ""} ${remainingDays} day${remainingDays > 1 ? "s" : ""}`;
 }
 
+/**
+ * Generate sequence id.
+ * @returns {string} Computed string.
+ * @example
+ * generateSequenceId()
+ */
 export function generateSequenceId(): string {
   return `seq_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+/**
+ * Generate step id.
+ * @returns {string} Computed string.
+ * @example
+ * generateStepId()
+ */
 export function generateStepId(): string {
   return `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }

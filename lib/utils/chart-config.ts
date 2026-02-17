@@ -39,7 +39,17 @@ export const defaultChartConfig = {
   tooltipCursor: { fill: "rgba(0, 0, 0, 0.05)" },
 };
 
+/**
+ * Get color by index.
+ * @param {number} index - Index input.
+ * @returns {string} Computed string.
+ * @example
+ * getColorByIndex(0)
+ */
 export function getColorByIndex(index: number): string {
   const colors = Object.values(chartColors);
-  return colors[index % colors.length];
+  if (colors.length === 0) {
+    return '#3B82F6';
+  }
+  return colors[index % colors.length] ?? '#3B82F6';
 }

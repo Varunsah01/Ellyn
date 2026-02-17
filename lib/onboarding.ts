@@ -42,6 +42,12 @@ const safeParse = <T,>(value: string | null, fallback: T): T => {
   }
 }
 
+/**
+ * Get client id.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * getClientId()
+ */
 export const getClientId = () => {
   if (!isBrowser()) return ""
   const existing = window.localStorage.getItem(CLIENT_ID_STORAGE_KEY)
@@ -54,11 +60,24 @@ export const getClientId = () => {
   return generated
 }
 
+/**
+ * Get onboarding state.
+ * @returns {OnboardingState} Computed OnboardingState.
+ * @example
+ * getOnboardingState()
+ */
 export const getOnboardingState = (): OnboardingState => {
   if (!isBrowser()) return defaultState
   return safeParse(window.localStorage.getItem(ONBOARDING_STORAGE_KEY), defaultState)
 }
 
+/**
+ * Set onboarding state.
+ * @param {Partial<OnboardingState>} partial - Partial input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * setOnboardingState({})
+ */
 export const setOnboardingState = (partial: Partial<OnboardingState>) => {
   if (!isBrowser()) return
   const current = getOnboardingState()
@@ -66,6 +85,12 @@ export const setOnboardingState = (partial: Partial<OnboardingState>) => {
   window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(next))
 }
 
+/**
+ * Get user preferences.
+ * @returns {UserPreferences} Computed UserPreferences.
+ * @example
+ * getUserPreferences()
+ */
 export const getUserPreferences = (): UserPreferences => {
   if (!isBrowser()) {
     return { fullName: "", currentRole: "", targetRole: "", aiApiKey: "" }
@@ -78,11 +103,26 @@ export const getUserPreferences = (): UserPreferences => {
   })
 }
 
+/**
+ * Set user preferences.
+ * @param {UserPreferences} preferences - Preferences input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * setUserPreferences({})
+ */
 export const setUserPreferences = (preferences: UserPreferences) => {
   if (!isBrowser()) return
   window.localStorage.setItem(PREFERENCES_STORAGE_KEY, JSON.stringify(preferences))
 }
 
+/**
+ * Sync onboarding state.
+ * @param {Partial<OnboardingState>} partial - Partial input.
+ * @returns {unknown} Computed unknown.
+ * @throws {Error} If the operation fails.
+ * @example
+ * syncOnboardingState({})
+ */
 export const syncOnboardingState = async (partial: Partial<OnboardingState>) => {
   setOnboardingState(partial)
 
@@ -112,6 +152,14 @@ export const syncOnboardingState = async (partial: Partial<OnboardingState>) => 
   }
 }
 
+/**
+ * Sync user preferences.
+ * @param {UserPreferences} preferences - Preferences input.
+ * @returns {unknown} Computed unknown.
+ * @throws {Error} If the operation fails.
+ * @example
+ * syncUserPreferences({})
+ */
 export const syncUserPreferences = async (preferences: UserPreferences) => {
   setUserPreferences(preferences)
 

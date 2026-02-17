@@ -1,8 +1,8 @@
 "use client";
 
 import { Search, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import type { RefObject } from "react";
 
 interface TrackerHeaderProps {
@@ -15,6 +15,13 @@ interface TrackerHeaderProps {
   compact?: boolean;
 }
 
+/**
+ * Render the TrackerHeader component.
+ * @param {TrackerHeaderProps} props - Component props.
+ * @returns {unknown} JSX output for TrackerHeader.
+ * @example
+ * <TrackerHeader />
+ */
 export function TrackerHeader({
   title = "Tracker",
   searchPlaceholder = "Company name wise search",

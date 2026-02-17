@@ -25,7 +25,7 @@ class Analytics {
     }
 
     try {
-      const response = await this.request(`/api/analytics/user?period=${encodeURIComponent(normalizedPeriod)}`, {
+      const response = await this.request(`/api/v1/analytics/user?period=${encodeURIComponent(normalizedPeriod)}`, {
         method: 'GET',
       });
 
@@ -87,7 +87,7 @@ class Analytics {
   async trackLookup(data) {
     try {
       const payload = this.normalizeLookupPayload(data);
-      const response = await this.request('/api/analytics/track-lookup', {
+      const response = await this.request('/api/v1/analytics/track-lookup', {
         method: 'POST',
         body: payload,
       });
@@ -127,7 +127,7 @@ class Analytics {
 
     try {
       const response = await fetch(
-        `${this.config.apiBaseUrl}/api/analytics/user?period=${encodeURIComponent(normalizedPeriod)}&format=csv`,
+        `${this.config.apiBaseUrl}/api/v1/analytics/user?period=${encodeURIComponent(normalizedPeriod)}&format=csv`,
         {
           method: 'GET',
           headers: {
@@ -314,3 +314,4 @@ if (typeof globalThis !== 'undefined') {
   globalThis.Analytics = Analytics;
   globalThis.analytics = analytics;
 }
+

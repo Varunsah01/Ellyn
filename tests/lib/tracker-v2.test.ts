@@ -64,12 +64,17 @@ const CONTACTS: TrackerContact[] = [
   },
 ];
 
+const primaryContact = CONTACTS[0];
+if (!primaryContact) {
+  throw new Error("Test setup failed: expected seed contacts to exist.");
+}
+
 describe("tracker-v2 shared logic", () => {
   test("matchesTrackerSearch checks name, company, and role", () => {
-    expect(matchesTrackerSearch(CONTACTS[0], "alice")).toBe(true);
-    expect(matchesTrackerSearch(CONTACTS[0], "figma")).toBe(true);
-    expect(matchesTrackerSearch(CONTACTS[0], "designer")).toBe(true);
-    expect(matchesTrackerSearch(CONTACTS[0], "stripe")).toBe(false);
+    expect(matchesTrackerSearch(primaryContact, "alice")).toBe(true);
+    expect(matchesTrackerSearch(primaryContact, "figma")).toBe(true);
+    expect(matchesTrackerSearch(primaryContact, "designer")).toBe(true);
+    expect(matchesTrackerSearch(primaryContact, "stripe")).toBe(false);
   });
 
   test("applyTrackerFilters supports needs_follow_up and company filters", () => {
@@ -91,18 +96,18 @@ describe("tracker-v2 shared logic", () => {
   test("applySortPreset(no_response) prioritizes no_response contacts", () => {
     const contactsWithNoResponse: TrackerContact[] = [
       {
-        ...CONTACTS[0],
+        ...primaryContact,
         id: "n-1",
         status: "no_response",
         last_contacted_at: "2026-02-02T10:00:00.000Z",
       },
       {
-        ...CONTACTS[0],
+        ...primaryContact,
         id: "n-2",
         status: "new",
       },
       {
-        ...CONTACTS[0],
+        ...primaryContact,
         id: "n-3",
         status: "no_response",
         last_contacted_at: "2026-02-10T10:00:00.000Z",
@@ -110,8 +115,8 @@ describe("tracker-v2 shared logic", () => {
     ];
 
     const sorted = applySortPreset(contactsWithNoResponse, "no_response");
-    expect(sorted[0].id).toBe("n-3");
-    expect(sorted[1].id).toBe("n-1");
+    expect(sorted[0]?.id).toBe("n-3");
+    expect(sorted[1]?.id).toBe("n-1");
   });
 
   test("computeTrackerAnalytics returns funnel and reply rate", () => {
@@ -125,4 +130,3 @@ describe("tracker-v2 shared logic", () => {
     expect(analytics.averageResponseHours).toBe(24);
   });
 });
-

@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Mail, Users, Zap, Bell, Check, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
-import type { Notification } from "@/components/dashboard/notifications-dropdown";
+import type { Notification } from "@/components/dashboard/NotificationsDropdown";
 
 // Mock notifications
 const mockNotifications: Notification[] = [

@@ -18,9 +18,24 @@ export type EnrollmentOverrides = Record<
   Record<string, { subject?: string; body?: string }>
 >
 
+/**
+ * Sort steps.
+ * @param {SequenceStep[]} steps - Steps input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * sortSteps([])
+ */
 export const sortSteps = (steps: SequenceStep[]) =>
   [...steps].sort((a, b) => a.order - b.order)
 
+/**
+ * Calculate schedule.
+ * @param {SequenceStep[]} steps - Steps input.
+ * @param {Date} startDate - Start date input.
+ * @returns {StepSchedule[]} Computed StepSchedule[].
+ * @example
+ * calculateSchedule([], new Date())
+ */
 export const calculateSchedule = (
   steps: SequenceStep[],
   startDate: Date
@@ -39,6 +54,18 @@ export const calculateSchedule = (
   })
 }
 
+/**
+ * Build enrollment steps.
+ * @param {{
+  steps: SequenceStep[]
+  startDate: Date
+  overrides?: EnrollmentOverrides
+  contactId: string
+}} param1 - Param1 input.
+ * @returns {Omit<SequenceEnrollmentStep, "id" | "enrollment_id">[]} Computed Omit<SequenceEnrollmentStep, "id" | "enrollment_id">[].
+ * @example
+ * buildEnrollmentSteps('param1')
+ */
 export const buildEnrollmentSteps = ({
   steps,
   startDate,
@@ -67,6 +94,13 @@ export const buildEnrollmentSteps = ({
   })
 }
 
+/**
+ * Get next step date.
+ * @param {SequenceEnrollmentStep[]} steps - Steps input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * getNextStepDate([])
+ */
 export const getNextStepDate = (steps: SequenceEnrollmentStep[]) => {
   const pending = steps
     .filter((step) => step.status === "pending")
@@ -77,6 +111,17 @@ export const getNextStepDate = (steps: SequenceEnrollmentStep[]) => {
   return pending[0]?.scheduled_for ?? null
 }
 
+/**
+ * Build mailto link.
+ * @param {{
+  to: string
+  subject: string
+  body: string
+}} param1 - Param1 input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * buildMailtoLink('param1')
+ */
 export const buildMailtoLink = ({
   to,
   subject,
@@ -93,6 +138,17 @@ export const buildMailtoLink = ({
   return `mailto:${encodeURIComponent(to)}?${params.toString()}`
 }
 
+/**
+ * Build gmail link.
+ * @param {{
+  to: string
+  subject: string
+  body: string
+}} param1 - Param1 input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * buildGmailLink('param1')
+ */
 export const buildGmailLink = ({
   to,
   subject,
@@ -112,6 +168,17 @@ export const buildGmailLink = ({
   return `https://mail.google.com/mail/?${params.toString()}`
 }
 
+/**
+ * Build outlook link.
+ * @param {{
+  to: string
+  subject: string
+  body: string
+}} param1 - Param1 input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * buildOutlookLink('param1')
+ */
 export const buildOutlookLink = ({
   to,
   subject,
@@ -129,6 +196,16 @@ export const buildOutlookLink = ({
   return `https://outlook.office.com/mail/deeplink/compose?${params.toString()}`
 }
 
+/**
+ * Compute sequence stats.
+ * @param {{
+  enrollments: SequenceEnrollment[]
+  events: SequenceEvent[]
+}} param1 - Param1 input.
+ * @returns {SequenceStats} Computed SequenceStats.
+ * @example
+ * computeSequenceStats([])
+ */
 export const computeSequenceStats = ({
   enrollments,
   events,
@@ -160,6 +237,13 @@ export const computeSequenceStats = ({
   }
 }
 
+/**
+ * Get sequence status label.
+ * @param {string} status - Status input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * getSequenceStatusLabel('status')
+ */
 export const getSequenceStatusLabel = (status: string) => {
   switch (status) {
     case "not_started":

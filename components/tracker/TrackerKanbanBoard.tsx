@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { BellRing, CalendarClock, Circle, Loader2 } from "lucide-react";
 import type { TrackerContact } from "@/lib/types/tracker";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/Checkbox";
 import {
   EditContactButton,
   FollowUpButton,
@@ -411,6 +411,13 @@ function LaneColumn({
   );
 }
 
+/**
+ * Render the TrackerKanbanBoard component.
+ * @param {TrackerKanbanBoardProps} props - Component props.
+ * @returns {unknown} JSX output for TrackerKanbanBoard.
+ * @example
+ * <TrackerKanbanBoard />
+ */
 export function TrackerKanbanBoard({
   contacts,
   selectedContactIds,

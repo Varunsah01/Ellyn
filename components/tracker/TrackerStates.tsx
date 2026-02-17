@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AlertTriangle, ClipboardList, SearchX } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 import {
   Table,
   TableBody,
@@ -10,7 +10,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@/components/ui/Table";
 
 interface ErrorStateProps {
   error?: string | null;
@@ -26,6 +26,12 @@ interface EmptyStateProps {
   extensionHref?: string;
 }
 
+/**
+ * Render the LoadingState component.
+ * @returns {unknown} JSX output for LoadingState.
+ * @example
+ * <LoadingState />
+ */
 export function LoadingState() {
   return (
     <div className="space-y-5">
@@ -41,6 +47,13 @@ export function LoadingState() {
   );
 }
 
+/**
+ * Render the EmptyState component.
+ * @param {EmptyStateProps} props - Component props.
+ * @returns {unknown} JSX output for EmptyState.
+ * @example
+ * <EmptyState />
+ */
 export function EmptyState({ extensionHref = "https://www.useellyn.com" }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-4 py-20 text-center dark:border-slate-700 dark:bg-slate-900">
@@ -64,6 +77,13 @@ export function EmptyState({ extensionHref = "https://www.useellyn.com" }: Empty
   );
 }
 
+/**
+ * Render the NoResultsState component.
+ * @param {NoResultsStateProps} props - Component props.
+ * @returns {unknown} JSX output for NoResultsState.
+ * @example
+ * <NoResultsState />
+ */
 export function NoResultsState({ searchQuery, onClearSearch }: NoResultsStateProps) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white px-4 py-14 text-center dark:border-slate-700 dark:bg-slate-900">
@@ -86,6 +106,13 @@ export function NoResultsState({ searchQuery, onClearSearch }: NoResultsStatePro
   );
 }
 
+/**
+ * Render the ErrorState component.
+ * @param {ErrorStateProps} props - Component props.
+ * @returns {unknown} JSX output for ErrorState.
+ * @example
+ * <ErrorState />
+ */
 export function ErrorState({ error, onRetry }: ErrorStateProps) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-20 text-center">
@@ -105,6 +132,12 @@ export function ErrorState({ error, onRetry }: ErrorStateProps) {
   );
 }
 
+/**
+ * Render the SkeletonRow component.
+ * @returns {unknown} JSX output for SkeletonRow.
+ * @example
+ * <SkeletonRow />
+ */
 export function SkeletonRow() {
   return (
     <TableRow className="animate-pulse hover:bg-transparent">
@@ -139,6 +172,12 @@ export function SkeletonRow() {
   );
 }
 
+/**
+ * Render the TrackerTableSkeleton component.
+ * @returns {unknown} JSX output for TrackerTableSkeleton.
+ * @example
+ * <TrackerTableSkeleton />
+ */
 export function TrackerTableSkeleton() {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">

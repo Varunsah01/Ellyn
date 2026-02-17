@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/ui/Dialog";
 
 interface ConfirmDeleteModalProps {
   open: boolean;
@@ -22,6 +22,13 @@ interface ConfirmDeleteModalProps {
   onConfirm: () => Promise<void> | void;
 }
 
+/**
+ * Render the ConfirmDeleteModal component.
+ * @param {ConfirmDeleteModalProps} props - Component props.
+ * @returns {unknown} JSX output for ConfirmDeleteModal.
+ * @example
+ * <ConfirmDeleteModal />
+ */
 export function ConfirmDeleteModal({
   open,
   contactName,

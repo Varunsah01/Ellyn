@@ -25,7 +25,7 @@ export function PricingSection() {
 
     async function loadPricingRegion() {
       try {
-        const response = await fetch("/api/pricing-region", {
+        const response = await fetch("/api/v1/pricing-region", {
           method: "GET",
           cache: "no-store",
           headers: {
@@ -128,3 +128,4 @@ export function PricingSection() {
     </section>
   );
 }
+

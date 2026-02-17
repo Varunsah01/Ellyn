@@ -3,7 +3,10 @@
  * Uses DNS lookups to verify domains can accept email (MX records)
  */
 
-import { promises as dns } from 'dns';
+import { promises as dns } from 'dns'
+
+import { buildCacheKey, getOrSet, normalizeCacheToken } from '@/lib/cache/redis'
+import { CACHE_TAGS, mxVerificationDomainTag } from '@/lib/cache/tags'
 
 export interface DomainVerificationResult {
   domain: string;
@@ -27,74 +30,92 @@ export interface VerifiedEmailPattern {
   };
 }
 
+const MX_CACHE_TTL_SECONDS = 24 * 60 * 60
+
 /**
  * Verify domain has MX records and can accept email
  * This is a free DNS lookup that requires no API key
  */
 export async function verifyDomainMxRecords(domain: string): Promise<DomainVerificationResult> {
-  try {
-    // Clean domain
-    const cleanDomain = domain.replace('@', '').trim().toLowerCase();
+  const cleanDomain = domain.replace('@', '').trim().toLowerCase()
+  const key = buildCacheKey(['cache', 'mx-verification', 'email-verification', normalizeCacheToken(cleanDomain)])
 
-    // Resolve MX records
-    const mxRecords = await dns.resolveMx(cleanDomain);
+  return getOrSet<DomainVerificationResult>({
+    key,
+    ttlSeconds: MX_CACHE_TTL_SECONDS,
+    tags: [CACHE_TAGS.mxVerification, mxVerificationDomainTag(cleanDomain)],
+    fetcher: async () => {
+      try {
+        // Resolve MX records.
+        const mxRecords = await dns.resolveMx(cleanDomain)
 
-    if (!mxRecords || mxRecords.length === 0) {
-      return {
-        domain: cleanDomain,
-        isValid: false,
-        hasMxRecords: false,
-        mxRecords: [],
-        error: 'No MX records found',
-      };
-    }
+        if (!mxRecords || mxRecords.length === 0) {
+          return {
+            domain: cleanDomain,
+            isValid: false,
+            hasMxRecords: false,
+            mxRecords: [],
+            error: 'No MX records found',
+          }
+        }
 
-    // Sort by priority (lower number = higher priority)
-    const sortedMx = mxRecords
-      .sort((a, b) => a.priority - b.priority)
-      .map(mx => mx.exchange);
+        // Sort by priority (lower number = higher priority).
+        const sortedMx = mxRecords
+          .sort((a, b) => a.priority - b.priority)
+          .map(mx => mx.exchange)
 
-    // Detect email provider from MX records
-    let emailProvider: 'google' | 'microsoft' | 'custom' = 'custom';
-    const primaryMx = sortedMx[0].toLowerCase();
+        // Detect email provider from MX records.
+        let emailProvider: 'google' | 'microsoft' | 'custom' = 'custom'
+        const primaryMx = sortedMx[0]?.toLowerCase() ?? ''
 
-    if (primaryMx.includes('google.com') || primaryMx.includes('googlemail.com')) {
-      emailProvider = 'google';
-    } else if (
-      primaryMx.includes('outlook.com') ||
-      primaryMx.includes('microsoft.com') ||
-      primaryMx.includes('office365.com')
-    ) {
-      emailProvider = 'microsoft';
-    }
+        if (primaryMx.includes('google.com') || primaryMx.includes('googlemail.com')) {
+          emailProvider = 'google'
+        } else if (
+          primaryMx.includes('outlook.com') ||
+          primaryMx.includes('microsoft.com') ||
+          primaryMx.includes('office365.com')
+        ) {
+          emailProvider = 'microsoft'
+        }
 
-    return {
-      domain: cleanDomain,
-      isValid: true,
-      hasMxRecords: true,
-      mxRecords: sortedMx,
-      emailProvider,
-    };
-  } catch (error: any) {
-    // Common DNS error codes
-    let errorMessage = 'Domain verification failed';
+        return {
+          domain: cleanDomain,
+          isValid: true,
+          hasMxRecords: true,
+          mxRecords: sortedMx,
+          emailProvider,
+        }
+      } catch (error: unknown) {
+        // Common DNS error codes.
+        let errorMessage = 'Domain verification failed'
+        const errorCode = typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code || '')
+          : ''
 
-    if (error.code === 'ENOTFOUND') {
-      errorMessage = 'Domain does not exist';
-    } else if (error.code === 'ENODATA') {
-      errorMessage = 'No MX records found';
-    } else if (error.code === 'ETIMEOUT') {
-      errorMessage = 'DNS lookup timeout';
-    }
+        if (errorCode === 'ENOTFOUND') {
+          errorMessage = 'Domain does not exist'
+        } else if (errorCode === 'ENODATA') {
+          errorMessage = 'No MX records found'
+        } else if (errorCode === 'ETIMEOUT') {
+          errorMessage = 'DNS lookup timeout'
+        }
 
-    return {
-      domain: domain.replace('@', '').trim().toLowerCase(),
-      isValid: false,
-      hasMxRecords: false,
-      mxRecords: [],
-      error: errorMessage,
-    };
-  }
+        return {
+          domain: cleanDomain,
+          isValid: false,
+          hasMxRecords: false,
+          mxRecords: [],
+          error: errorMessage,
+        }
+      }
+    },
+    backgroundRefresh: {
+      enabled: true,
+      hotThreshold: 12,
+      refreshAheadSeconds: 10 * 60,
+      cooldownSeconds: 3 * 60,
+    },
+  })
 }
 
 /**

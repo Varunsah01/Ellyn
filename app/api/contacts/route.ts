@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getAuthenticatedUser } from '@/lib/auth/helpers';
+import { ContactCreateSchema, formatZodError } from '@/lib/validation/schemas';
 
 // GET /api/contacts - List all contacts
+/**
+ * Handle GET requests for `/api/contacts`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/contacts request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/contacts
+ * fetch('/api/contacts')
+ */
 export async function GET(request: NextRequest) {
   try {
-    // For now, allow unauthenticated access for testing
-    // In production, add authentication:
-    /*
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    */
+    const user = await getAuthenticatedUser();
 
     // Parse query params
     const searchParams = request.nextUrl.searchParams;
@@ -31,8 +29,8 @@ export async function GET(request: NextRequest) {
     // Build query
     let query = supabase
       .from('contacts')
-      .select('*', { count: 'exact' });
-      // .eq('user_id', user.id); // Enable in production
+      .select('*', { count: 'exact' })
+      .eq('user_id', user.id);
 
     // Apply search filter
     if (search) {
@@ -65,6 +63,7 @@ export async function GET(request: NextRequest) {
         const { data: outreachRows, error: outreachError } = await supabase
           .from('outreach')
           .select('contact_id, status, updated_at, created_at')
+          .eq('user_id', user.id)
           .in('contact_id', contactIds)
           .order('updated_at', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false, nullsFirst: false });
@@ -99,6 +98,9 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Get contacts error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch contacts', details: error instanceof Error ? error.message : 'Unknown error' },
@@ -108,40 +110,49 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/contacts - Create new contact
+/**
+ * Handle POST requests for `/api/contacts`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/contacts request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/contacts
+ * fetch('/api/contacts', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
-    // For now, allow unauthenticated access for testing
-    // In production, add authentication
+    const user = await getAuthenticatedUser();
 
-    const body = await request.json();
-
-    // Validate required fields
-    if (!body.firstName || !body.lastName || !body.company) {
+    const parsed = ContactCreateSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Missing required fields: firstName, lastName, company' },
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
         { status: 400 }
       );
     }
+    const body = parsed.data;
 
     // Insert contact
     const { data: contact, error } = await supabase
       .from('contacts')
       .insert({
-        user_id: '00000000-0000-0000-0000-000000000000', // Use actual user_id in production
+        user_id: user.id,
         first_name: body.firstName,
         last_name: body.lastName,
         company: body.company,
-        role: body.role || null,
-        inferred_email: body.inferredEmail || null,
-        email_confidence: body.emailConfidence || null,
-        confirmed_email: body.confirmedEmail || null,
-        company_domain: body.companyDomain || null,
-        company_industry: body.companyIndustry || null,
-        company_size: body.companySize || null,
-        linkedin_url: body.linkedinUrl || null,
+        role: body.role ?? null,
+        inferred_email: body.inferredEmail ?? null,
+        email_confidence: body.emailConfidence ?? null,
+        confirmed_email: body.confirmedEmail ?? null,
+        company_domain: body.companyDomain ?? null,
+        company_industry: body.companyIndustry ?? null,
+        company_size: body.companySize ?? null,
+        linkedin_url: body.linkedinUrl ?? null,
         source: body.source || 'manual',
         status: body.status || 'new',
-        notes: body.notes || null,
+        notes: body.notes ?? null,
         tags: body.tags || [],
       })
       .select()
@@ -156,6 +167,9 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Create contact error:', error);
     return NextResponse.json(
       { error: 'Failed to create contact', details: error instanceof Error ? error.message : 'Unknown error' },

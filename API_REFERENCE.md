@@ -99,3 +99,38 @@ Response:
 - Monthly: 500 operations per identifier
 
 Current limiter is in-memory and should be replaced with durable storage in multi-instance production.
+
+## CSRF Protection
+
+Mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) are CSRF-protected.
+
+### Browser clients (cookie-authenticated)
+
+1. Send an initial `GET` request to any app/API route.
+2. Read the CSRF token from either:
+   - response header: `X-CSRF-Token`
+   - cookie: `csrf_token`
+3. Include the token on every mutating request:
+   - header: `X-CSRF-Token: <token>`
+   - or form field: `_csrf=<token>`
+
+If the token is missing or invalid, the API returns:
+
+```json
+{
+  "success": false,
+  "error": "Invalid CSRF token",
+  "code": "CSRF_INVALID"
+}
+```
+
+Status code: `403`
+
+### External integrations (Bearer token flows)
+
+Requests using `Authorization: Bearer <token>` without browser session cookies are treated as non-cookie clients and are not blocked by CSRF checks. This is intended for server-to-server and extension integrations.
+
+Recommended practice for external integrations:
+- Always send `Authorization: Bearer <token>`
+- Prefer HTTPS only
+- Do not rely on browser cookies for auth

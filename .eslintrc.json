@@ -1,6 +1,20 @@
 {
+  "plugins": [
+    "@typescript-eslint",
+    "check-file"
+  ],
   "extends": [
     "next/core-web-vitals",
     "next/typescript"
-  ]
+  ],
+  "rules": {
+    "check-file/filename-naming-convention": [
+      "error",
+      {
+        "components/**/*.{tsx,jsx}": "PASCAL_CASE",
+        "hooks/**/*.{ts,tsx}": "CAMEL_CASE"
+      }
+    ]
+  }
 }
+

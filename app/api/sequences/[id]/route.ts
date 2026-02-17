@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { getNextStepDate } from "@/lib/sequence-engine"
+import { SequenceUpdateSchema, formatZodError } from "@/lib/validation/schemas"
 
+/**
+ * Handle GET requests for `/api/sequences/[id]`.
+ * @param {NextRequest} _request -  request input.
+ * @param {{ params: { id: string } }} param2 - Param2 input.
+ * @returns {unknown} JSON response for the GET /api/sequences/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/sequences/[id]
+ * fetch('/api/sequences/[id]')
+ */
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -101,6 +113,18 @@ export async function GET(
   }
 }
 
+/**
+ * Handle PATCH requests for `/api/sequences/[id]`.
+ * @param {NextRequest} request - Request input.
+ * @param {{ params: { id: string } }} param2 - Param2 input.
+ * @returns {unknown} JSON response for the PATCH /api/sequences/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // PATCH /api/sequences/[id]
+ * fetch('/api/sequences/[id]', { method: 'PATCH' })
+ */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -110,17 +134,24 @@ export async function PATCH(
       return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
     }
 
-    const body = await request.json()
-    const { status, name, description, goal } = body
+    const parsed = SequenceUpdateSchema.safeParse(await request.json())
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: formatZodError(parsed.error) },
+        { status: 400 }
+      )
+    }
+    const { status, name, description, goal } = parsed.data
+
+    const updatePayload: Record<string, unknown> = {}
+    if (status !== undefined) updatePayload.status = status
+    if (name !== undefined) updatePayload.name = name
+    if (description !== undefined) updatePayload.description = description
+    if (goal !== undefined) updatePayload.goal = goal
 
     const { error } = await supabase
       .from("sequences")
-      .update({
-        status,
-        name,
-        description,
-        goal,
-      })
+      .update(updatePayload)
       .eq("id", params.id)
 
     if (error) {

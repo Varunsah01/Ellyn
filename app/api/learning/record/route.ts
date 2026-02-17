@@ -1,37 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { invalidateEmailPatternCache } from '@/lib/cache/tags'
 import { recordPatternFeedback } from '@/lib/learning-system';
+import { LearningRecordSchema, formatZodError } from '@/lib/validation/schemas';
 
+/**
+ * Handle POST requests for `/api/learning/record`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/learning/record request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/learning/record
+ * fetch('/api/learning/record', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
-    // For now, allow unauthenticated access for testing
-    // In production, add authentication:
-    /*
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    */
-
-    // Parse request
-    const { domain, pattern, worked } = await request.json();
-
-    if (!domain || !pattern || typeof worked !== 'boolean') {
+    const parsed = LearningRecordSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Missing required fields: domain, pattern, worked (boolean)' },
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
         { status: 400 }
       );
     }
+    const { domain, pattern, worked } = parsed.data;
 
     // Record feedback
     await recordPatternFeedback(domain, pattern, worked);
+    try {
+      await invalidateEmailPatternCache(domain)
+    } catch (invalidateError) {
+      console.warn('[Learning API] Pattern cache invalidation failed:', invalidateError)
+    }
 
     return NextResponse.json({
       success: true,

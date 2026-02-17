@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { getNextStepDate } from "@/lib/sequence-engine"
 import { mapSequenceActionToTrackerContactPatch } from "@/lib/tracker-integration"
+import { SequenceExecuteSchema, formatZodError } from "@/lib/validation/schemas"
 
 const TERMINAL_STATUSES = ["paused", "replied", "bounced", "completed"]
 
@@ -30,6 +31,15 @@ async function syncEnrollmentContactStatus(enrollmentId: string, action: string)
   await supabase.from("contacts").update(contactPatch).eq("id", enrollment.contact_id)
 }
 
+/**
+ * Handle GET requests for `/api/sequences/execute`.
+ * @returns {unknown} JSON response for the GET /api/sequences/execute request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/sequences/execute
+ * fetch('/api/sequences/execute')
+ */
 export async function GET() {
   try {
     if (!isSupabaseConfigured) {
@@ -103,22 +113,31 @@ export async function GET() {
   }
 }
 
+/**
+ * Handle POST requests for `/api/sequences/execute`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/sequences/execute request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/sequences/execute
+ * fetch('/api/sequences/execute', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
     if (!isSupabaseConfigured) {
       return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
     }
 
-    const body = await request.json()
-    const { action, enrollmentStepId, enrollmentId } = body
-
-    if (!action) {
-      return NextResponse.json({ error: "Action is required" }, { status: 400 })
+    const parsed = SequenceExecuteSchema.safeParse(await request.json())
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: formatZodError(parsed.error) },
+        { status: 400 }
+      )
     }
-
-    if (["mark_sent", "skip_step"].includes(action) && !enrollmentStepId) {
-      return NextResponse.json({ error: "enrollmentStepId is required" }, { status: 400 })
-    }
+    const { action, enrollmentStepId, enrollmentId } = parsed.data
 
     const stepId = enrollmentStepId
 

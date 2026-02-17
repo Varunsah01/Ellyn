@@ -29,6 +29,13 @@ const PROVIDER_RULES: Array<{ label: string; domains: string[] }> = [
   { label: "Proton", domains: ["proton.me", "protonmail.com"] },
 ]
 
+/**
+ * Classify email provider.
+ * @param {string | null} email - Email input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * classifyEmailProvider('email')
+ */
 export function classifyEmailProvider(email?: string | null) {
   if (!email) return "Unknown"
   const domain = email.split("@")[1]?.toLowerCase() ?? ""

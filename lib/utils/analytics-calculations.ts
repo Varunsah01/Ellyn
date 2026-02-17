@@ -10,6 +10,14 @@ export interface TimeSeriesData {
   value: number;
 }
 
+/**
+ * Calculate metric change.
+ * @param {number} currentValue - Current value input.
+ * @param {number} previousValue - Previous value input.
+ * @returns {MetricData} Computed MetricData.
+ * @example
+ * calculateMetricChange(0, 0)
+ */
 export function calculateMetricChange(
   currentValue: number,
   previousValue: number
@@ -27,23 +35,53 @@ export function calculateMetricChange(
   };
 }
 
+/**
+ * Calculate percentage.
+ * @param {number} part - Part input.
+ * @param {number} total - Total input.
+ * @returns {number} Computed number.
+ * @example
+ * calculatePercentage(0, 0)
+ */
 export function calculatePercentage(part: number, total: number): number {
   if (total === 0) return 0;
   return Math.round((part / total) * 100 * 10) / 10;
 }
 
+/**
+ * Calculate average.
+ * @param {number[]} values - Values input.
+ * @returns {number} Computed number.
+ * @example
+ * calculateAverage(0)
+ */
 export function calculateAverage(values: number[]): number {
   if (values.length === 0) return 0;
   const sum = values.reduce((acc, val) => acc + val, 0);
   return Math.round((sum / values.length) * 10) / 10;
 }
 
+/**
+ * Generate sparkline data.
+ * @param {TimeSeriesData[]} data - Data input.
+ * @returns {number[]} Computed number[].
+ * @example
+ * generateSparklineData([])
+ */
 export function generateSparklineData(
   data: TimeSeriesData[]
 ): number[] {
   return data.map((d) => d.value);
 }
 
+/**
+ * Calculate response time.
+ * @param {Date} sentDate - Sent date input.
+ * @param {Date} replyDate - Reply date input.
+ * @returns {number} Computed number.
+ * @example
+ * calculateResponseTime(new Date(), new Date())
+ */
 export function calculateResponseTime(
   sentDate: Date,
   replyDate: Date
@@ -52,6 +90,13 @@ export function calculateResponseTime(
   return Math.round(diff / (1000 * 60 * 60)); // hours
 }
 
+/**
+ * Categorize response time.
+ * @param {number} hours - Hours input.
+ * @returns {string} Computed string.
+ * @example
+ * categorizeResponseTime(0)
+ */
 export function categorizeResponseTime(hours: number): string {
   if (hours < 1) return "< 1hr";
   if (hours < 4) return "1-4hrs";
@@ -61,6 +106,22 @@ export function categorizeResponseTime(hours: number): string {
   return "> 7 days";
 }
 
+/**
+ * Calculate email health score.
+ * @param {{
+  bounceRate: number;
+  spamRate: number;
+  responseRate: number;
+  openRate: number;
+}} metrics - Metrics input.
+ * @returns {{
+  score: number;
+  grade: string;
+  recommendations: string[];
+}} Computed { score: number; grade: string; recommendations: string[]; }.
+ * @example
+ * calculateEmailHealthScore(0)
+ */
 export function calculateEmailHealthScore(metrics: {
   bounceRate: number;
   spamRate: number;
@@ -113,6 +174,14 @@ export function calculateEmailHealthScore(metrics: {
   return { score, grade, recommendations };
 }
 
+/**
+ * Format number.
+ * @param {number} num - Num input.
+ * @param {number} decimals - Decimals input.
+ * @returns {string} Computed string.
+ * @example
+ * formatNumber(0, 0)
+ */
 export function formatNumber(num: number, decimals: number = 0): string {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: decimals,
@@ -120,10 +189,25 @@ export function formatNumber(num: number, decimals: number = 0): string {
   }).format(num);
 }
 
+/**
+ * Format percentage.
+ * @param {number} num - Num input.
+ * @param {number} decimals - Decimals input.
+ * @returns {string} Computed string.
+ * @example
+ * formatPercentage(0, 0)
+ */
 export function formatPercentage(num: number, decimals: number = 1): string {
   return `${formatNumber(num, decimals)}%`;
 }
 
+/**
+ * Format currency.
+ * @param {number} num - Num input.
+ * @returns {string} Computed string.
+ * @example
+ * formatCurrency(0)
+ */
 export function formatCurrency(num: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -131,11 +215,26 @@ export function formatCurrency(num: number): string {
   }).format(num);
 }
 
+/**
+ * Get days in range.
+ * @param {Date} startDate - Start date input.
+ * @param {Date} endDate - End date input.
+ * @returns {number} Computed number.
+ * @example
+ * getDaysInRange(new Date(), new Date())
+ */
 export function getDaysInRange(startDate: Date, endDate: Date): number {
   const diff = endDate.getTime() - startDate.getTime();
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
+/**
+ * Generate date range.
+ * @param {number} days - Days input.
+ * @returns {{ startDate: Date; endDate: Date }} Computed { startDate: Date; endDate: Date }.
+ * @example
+ * generateDateRange(0)
+ */
 export function generateDateRange(
   days: number
 ): { startDate: Date; endDate: Date } {
@@ -145,6 +244,14 @@ export function generateDateRange(
   return { startDate, endDate };
 }
 
+/**
+ * Get previous period.
+ * @param {Date} startDate - Start date input.
+ * @param {Date} endDate - End date input.
+ * @returns {{ startDate: Date; endDate: Date }} Computed { startDate: Date; endDate: Date }.
+ * @example
+ * getPreviousPeriod(new Date(), new Date())
+ */
 export function getPreviousPeriod(
   startDate: Date,
   endDate: Date

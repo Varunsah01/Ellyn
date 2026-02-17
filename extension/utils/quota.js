@@ -17,7 +17,7 @@ class QuotaManager {
 
   async canPerformLookup() {
     try {
-      const response = await this.request('/api/quota/check', { method: 'POST' });
+      const response = await this.request('/api/v1/quota/check', { method: 'POST' });
 
       if (response.status === 429) {
         const resetDate = response.payload?.resetDate || null;
@@ -74,7 +74,7 @@ class QuotaManager {
     }
 
     try {
-      const response = await this.request('/api/quota/status', { method: 'GET' });
+      const response = await this.request('/api/v1/quota/status', { method: 'GET' });
       if (!response.ok) {
         if (response.status === 401) {
           return {
@@ -239,3 +239,4 @@ if (typeof globalThis !== 'undefined') {
   globalThis.QuotaManager = QuotaManager;
   globalThis.quotaManager = quotaManager;
 }
+

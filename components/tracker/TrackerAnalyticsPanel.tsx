@@ -60,6 +60,13 @@ function MetricCard({
   );
 }
 
+/**
+ * Render the TrackerAnalyticsPanel component.
+ * @param {TrackerAnalyticsPanelProps} props - Component props.
+ * @returns {unknown} JSX output for TrackerAnalyticsPanel.
+ * @example
+ * <TrackerAnalyticsPanel />
+ */
 export function TrackerAnalyticsPanel({ analytics }: TrackerAnalyticsPanelProps) {
   const maxTrendRate = Math.max(1, ...analytics.replyTrend.map((item) => item.replyRate));
   const trendValues = analytics.replyTrend.map((item) => item.replyRate);

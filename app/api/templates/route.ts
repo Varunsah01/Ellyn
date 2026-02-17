@@ -1,28 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getAuthenticatedUser } from '@/lib/auth/helpers';
+import { TemplateCreateSchema, formatZodError } from '@/lib/validation/schemas';
 
 // GET /api/templates - Fetch all templates (default + custom)
-export async function GET(request: NextRequest) {
+/**
+ * Handle GET requests for `/api/templates`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/templates request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/templates
+ * fetch('/api/templates')
+ */
+export async function GET(_request: NextRequest) {
   try {
-    // For now, allow unauthenticated access for testing
-    // In production, add authentication:
-    /*
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    */
+    const user = await getAuthenticatedUser();
 
     // Fetch templates, ordering by is_default (defaults first) then created_at
     const { data, error } = await supabase
       .from('email_templates')
       .select('*')
+      .eq('user_id', user.id)
       .order('is_default', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -39,6 +39,9 @@ export async function GET(request: NextRequest) {
       templates: data || [],
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Error in GET /api/templates:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
@@ -48,24 +51,28 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/templates - Create a new custom template
+/**
+ * Handle POST requests for `/api/templates`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/templates request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/templates
+ * fetch('/api/templates', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
-    // For now, allow unauthenticated access for testing
-    // In production, add authentication and user_id
-    /*
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const user = await getAuthenticatedUser();
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const parsed = TemplateCreateSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
+        { status: 400 }
+      );
     }
-    */
-
-    const body = await request.json();
     const {
       name,
       subject,
@@ -74,23 +81,7 @@ export async function POST(request: NextRequest) {
       tags,
       icon,
       use_count: useCount,
-    } = body as {
-      name?: string;
-      subject?: string;
-      body?: string;
-      category?: string;
-      tags?: string[];
-      icon?: string;
-      use_count?: number;
-    };
-
-    // Validate required fields
-    if (!name || !subject || !templateBody) {
-      return NextResponse.json(
-        { error: 'Missing required fields: name, subject, and body are required' },
-        { status: 400 }
-      );
-    }
+    } = parsed.data;
 
     // Prepare template data
     const templateData: Record<string, unknown> = {
@@ -98,7 +89,7 @@ export async function POST(request: NextRequest) {
       subject,
       body: templateBody,
       is_default: false,
-      // user_id: user.id, // Add this in production
+      user_id: user.id,
     };
 
     if (typeof category === 'string' && category.trim()) {
@@ -134,6 +125,7 @@ export async function POST(request: NextRequest) {
         subject,
         body: templateBody,
         is_default: false,
+        user_id: user.id,
       };
 
       const fallbackInsert = await supabase
@@ -160,6 +152,9 @@ export async function POST(request: NextRequest) {
       message: 'Template created successfully',
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Error in POST /api/templates:', error);
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },

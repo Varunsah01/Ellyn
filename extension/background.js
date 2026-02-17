@@ -829,7 +829,7 @@ async function resolveDomainEnhanced(companyName, companyPageUrl, authToken = ''
     headers.Authorization = `Bearer ${authToken}`;
   }
 
-  const response = await fetch(`${CONFIG.API_BASE_URL}/api/resolve-domain-v2`, {
+  const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/resolve-domain-v2`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -855,7 +855,7 @@ async function resolveDomainEnhanced(companyName, companyPageUrl, authToken = ''
   }
 
   if (!payload?.success || !payload?.result) {
-    throw new Error('Invalid response from /api/resolve-domain-v2');
+    throw new Error('Invalid response from /api/v1/resolve-domain-v2');
   }
 
   console.log('[Domain] Resolved:', payload.result);
@@ -1290,7 +1290,7 @@ function guessDomainFromCompanyName(companyName) {
 
 async function runLegacyGenerateEmailsPipeline(input, authToken) {
   const legacyResponse = await callBackendPost(
-    '/api/generate-emails',
+    '/api/v1/generate-emails',
     {
       firstName: input.firstName,
       lastName: input.lastName,
@@ -1320,7 +1320,7 @@ async function runLegacyGenerateEmailsPipeline(input, authToken) {
     .filter(Boolean);
 
   if (candidates.length === 0) {
-    throw new Error('Legacy /api/generate-emails did not return any email candidates.');
+    throw new Error('Legacy /api/v1/generate-emails did not return any email candidates.');
   }
 
   candidates.sort((a, b) => b.confidence - a.confidence);
@@ -1441,12 +1441,12 @@ async function resolveDomain(companyName, authToken, companyPageUrl = '') {
     }
   } catch (error) {
     if (!isMethodNotAllowedError(error) && Number(error?.status) !== 404) {
-      console.warn('[Extension] /api/resolve-domain-v2 failed. Falling back to /api/resolve-domain.', error);
+      console.warn('[Extension] /api/v1/resolve-domain-v2 failed. Falling back to /api/v1/resolve-domain.', error);
     }
   }
 
   return callBackendPost(
-    '/api/resolve-domain',
+    '/api/v1/resolve-domain',
     { companyName },
     authToken,
     CONFIG.STAGE_TIMEOUT_MS.resolveDomain
@@ -1458,7 +1458,7 @@ async function predictPatterns(input, authToken) {
   if (input.firstName && input.domain) {
     try {
       const predicted = await callBackendPost(
-        '/api/predict-email',
+        '/api/v1/predict-email',
         {
           firstName: input.firstName,
           lastName: input.lastName || '',
@@ -1492,13 +1492,13 @@ async function predictPatterns(input, authToken) {
       }
     } catch (error) {
       if (!isMethodNotAllowedError(error) && Number(error?.status) !== 404) {
-        console.warn('[Extension] /api/predict-email failed. Falling back to /api/predict-patterns.', error);
+        console.warn('[Extension] /api/v1/predict-email failed. Falling back to /api/v1/predict-patterns.', error);
       }
     }
   }
 
   return callBackendPost(
-    '/api/predict-patterns',
+    '/api/v1/predict-patterns',
     {
       domain: input.domain,
       company: input.company,
@@ -1511,7 +1511,7 @@ async function predictPatterns(input, authToken) {
 
 async function verifyEmailCandidate(email, authToken) {
   return callBackendPost(
-    '/api/verify-email',
+    '/api/v1/verify-email',
     { email },
     authToken,
     CONFIG.STAGE_TIMEOUT_MS.verifyEmail
@@ -1843,7 +1843,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       domainResult = await resolveDomain(input.company, authToken, companyPageUrl);
     } catch (error) {
       if (isMethodNotAllowedError(error)) {
-        console.warn('[Extension] /api/resolve-domain returned 405. Falling back to /api/generate-emails.', error);
+        console.warn('[Extension] /api/v1/resolve-domain returned 405. Falling back to /api/v1/generate-emails.', error);
 
         try {
           stage = 'legacy_generate_emails';
@@ -1882,7 +1882,7 @@ async function handleFindEmail(data, sender, sendResponse) {
           return;
         } catch (legacyError) {
           console.warn(
-            '[Extension] Legacy /api/generate-emails fallback failed. Using local heuristic domain fallback.',
+            '[Extension] Legacy /api/v1/generate-emails fallback failed. Using local heuristic domain fallback.',
             legacyError
           );
         }
@@ -2165,3 +2165,4 @@ async function handleFindEmail(data, sender, sendResponse) {
 // ============================================================================
 
 console.log('[Extension] Email Finder service worker initialized');
+

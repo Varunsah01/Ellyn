@@ -1,20 +1,20 @@
 "use client";
 
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { StatCard } from "@/components/dashboard/stat-card";
-import { ActivityFeed } from "@/components/dashboard/activity-feed";
-import { QuickStats } from "@/components/dashboard/quick-stats";
-import { Button } from "@/components/ui/button";
-import { AnimatedCard } from "@/components/ui/animated-card";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { StatCard } from "@/components/dashboard/StatCard";
+import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
+import { QuickStats } from "@/components/dashboard/QuickStats";
+import { Button } from "@/components/ui/Button";
+import { AnimatedCard } from "@/components/ui/AnimatedCard";
+import { Badge } from "@/components/ui/Badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Progress } from "@/components/ui/Progress";
 import { Users, Mail, Zap, Plus, BarChart3, RefreshCw, CheckCircle2, Circle } from "lucide-react";
 import Link from "next/link";
 import { useDashboardStats, useRecentActivity } from "@/lib/hooks/useAnalytics";
 import { useContacts } from "@/lib/hooks/useContacts";
 import { useSequenceStats } from "@/lib/hooks/useSequences";
-import { SmartQuickActions } from "@/components/contextual-actions";
+import { SmartQuickActions } from "@/components/ContextualActions";
 
 export default function DashboardPage() {
   // Fetch real data

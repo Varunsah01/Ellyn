@@ -1,14 +1,14 @@
 "use client";
 
 import { Download, Eraser, FilePenLine, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ui/Select";
 import type { TrackerContactStatus } from "@/lib/types/tracker";
 
 interface TrackerBulkActionsProps {
@@ -22,6 +22,13 @@ interface TrackerBulkActionsProps {
   onBulkAddNote: () => void;
 }
 
+/**
+ * Render the TrackerBulkActions component.
+ * @param {TrackerBulkActionsProps} props - Component props.
+ * @returns {unknown} JSX output for TrackerBulkActions.
+ * @example
+ * <TrackerBulkActions />
+ */
 export function TrackerBulkActions({
   selectedCount,
   totalVisibleCount,

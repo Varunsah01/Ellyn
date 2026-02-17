@@ -14,6 +14,14 @@ export interface AbstractValidationResult {
   confidenceBoost: number; // How much to boost confidence
 }
 
+/**
+ * Validate email abstract.
+ * @param {string} email - Email input.
+ * @returns {Promise<AbstractValidationResult | null>} Computed Promise<AbstractValidationResult | null>.
+ * @throws {Error} If the operation fails.
+ * @example
+ * validateEmailAbstract('email')
+ */
 export async function validateEmailAbstract(email: string): Promise<AbstractValidationResult | null> {
   const API_KEY = process.env.ABSTRACT_EMAIL_VALIDATION_API_KEY;
 
@@ -67,6 +75,15 @@ export async function validateEmailAbstract(email: string): Promise<AbstractVali
   }
 }
 
+/**
+ * Batch validate emails.
+ * @param {string[]} emails - Emails input.
+ * @param {number} maxConcurrent - Max concurrent input.
+ * @returns {Promise<Map<string, AbstractValidationResult>>} Computed Promise<Map<string, AbstractValidationResult>>.
+ * @throws {Error} If the operation fails.
+ * @example
+ * batchValidateEmails('emails', 0)
+ */
 export async function batchValidateEmails(
   emails: string[],
   maxConcurrent: number = 3
@@ -83,7 +100,7 @@ export async function batchValidateEmails(
 
     batch.forEach((email, index) => {
       const result = validations[index];
-      if (result.status === 'fulfilled' && result.value) {
+      if (result && result.status === 'fulfilled' && result.value) {
         results.set(email, result.value);
       }
     });

@@ -1,27 +1,41 @@
 "use client";
 
-import { useState } from "react";
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useMemo, useState } from "react";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { Textarea } from "@/components/ui/Textarea";
+import { Switch } from "@/components/ui/Switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { User, Mail, Zap, Bell, Shield, Key, Link as LinkIcon, Save } from "lucide-react";
+} from "@/components/ui/Select";
+import { User, Mail, Zap, Bell, Shield, Key, Link as LinkIcon, Lock, Save } from "lucide-react";
 import { syncOnboardingState } from "@/lib/onboarding";
+import { validatePasswordStrength } from "@/lib/validation/password";
+import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
+import { apiFetch } from "@/lib/api-client";
 
 export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isRestartingTour, setIsRestartingTour] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordUpdateError, setPasswordUpdateError] = useState("");
+  const [passwordUpdateSuccess, setPasswordUpdateSuccess] = useState("");
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+
+  const passwordStrength = useMemo(
+    () => validatePasswordStrength(newPassword),
+    [newPassword],
+  );
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -38,6 +52,62 @@ export default function SettingsPage() {
     });
     setIsRestartingTour(false);
     window.location.href = "/dashboard";
+  };
+
+  const handleChangePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPasswordUpdateError("");
+    setPasswordUpdateSuccess("");
+
+    if (!currentPassword) {
+      setPasswordUpdateError("Current password is required.");
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordUpdateError("New password and confirmation do not match.");
+      return;
+    }
+
+    if (!passwordStrength.isValid) {
+      setPasswordUpdateError("Password does not meet strength requirements.");
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+
+    try {
+      const response = await apiFetch("/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+          confirmPassword: confirmNewPassword,
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        const errorMessage =
+          payload?.error || payload?.data?.error || "Failed to update password.";
+        setPasswordUpdateError(errorMessage);
+        return;
+      }
+
+      setPasswordUpdateSuccess(
+        payload?.message || payload?.data?.message || "Password updated successfully.",
+      );
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+    } catch (error) {
+      console.error("Change password error:", error);
+      setPasswordUpdateError("Failed to update password.");
+    } finally {
+      setIsUpdatingPassword(false);
+    }
   };
 
   return (
@@ -116,8 +186,77 @@ export default function SettingsPage() {
           <TabsContent value="privacy">
             <Card>
               <CardHeader><CardTitle>Data & Privacy</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 <div><h3 className="font-medium mb-2">Export Data</h3><p className="text-sm text-muted-foreground mb-3">Download all your data</p><Button variant="outline">Export All Data</Button></div>
+
+                <div className="border-t pt-6">
+                  <h3 className="font-medium mb-2 flex items-center gap-2">
+                    <Lock className="h-4 w-4" />
+                    Change Password
+                  </h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Use a strong password to keep your account secure.
+                  </p>
+
+                  <form onSubmit={handleChangePassword} className="space-y-4 max-w-xl">
+                    <div>
+                      <Label htmlFor="currentPassword">Current Password</Label>
+                      <Input
+                        id="currentPassword"
+                        type="password"
+                        className="mt-2"
+                        value={currentPassword}
+                        onChange={(event) => setCurrentPassword(event.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="newPassword">New Password</Label>
+                      <Input
+                        id="newPassword"
+                        type="password"
+                        className="mt-2"
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <PasswordStrengthIndicator result={passwordStrength} />
+
+                    <div>
+                      <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
+                      <Input
+                        id="confirmNewPassword"
+                        type="password"
+                        className="mt-2"
+                        value={confirmNewPassword}
+                        onChange={(event) => setConfirmNewPassword(event.target.value)}
+                        required
+                      />
+                    </div>
+
+                    {passwordUpdateError && (
+                      <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {passwordUpdateError}
+                      </p>
+                    )}
+
+                    {passwordUpdateSuccess && (
+                      <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                        {passwordUpdateSuccess}
+                      </p>
+                    )}
+
+                    <Button
+                      type="submit"
+                      disabled={isUpdatingPassword || !passwordStrength.isValid}
+                    >
+                      {isUpdatingPassword ? "Updating Password..." : "Update Password"}
+                    </Button>
+                  </form>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

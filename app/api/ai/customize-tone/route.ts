@@ -3,11 +3,7 @@
 import { checkAiRateLimit, getRateLimitIdentifier } from '@/lib/ai-rate-limit'
 import { getGeminiClient } from '@/lib/gemini'
 import { buildPrompt, getPromptConfig } from '@/lib/template-prompts'
-
-interface CustomizeToneRequest {
-  draft: string
-  targetTone: 'professional' | 'casual' | 'friendly' | 'formal' | 'enthusiastic'
-}
+import { CustomizeToneSchema, formatZodError } from '@/lib/validation/schemas'
 
 interface CustomizeToneResponse {
   success: boolean
@@ -19,8 +15,20 @@ interface CustomizeToneResponse {
   }
   cost: number
   error?: string
+  details?: Array<{ path: string; message: string; code: string }>
 }
 
+/**
+ * Handle POST requests for `/api/ai/customize-tone`.
+ * @param {NextRequest} request - Request input.
+ * @returns {Promise<NextResponse<CustomizeToneResponse>>} JSON response for the POST /api/ai/customize-tone request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/ai/customize-tone
+ * fetch('/api/ai/customize-tone', { method: 'POST' })
+ */
 export async function POST(request: NextRequest): Promise<NextResponse<CustomizeToneResponse>> {
   const startedAt = Date.now()
 
@@ -42,32 +50,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<Customize
       )
     }
 
-    const body = (await request.json()) as Partial<CustomizeToneRequest>
-    const draft = body.draft?.trim() || ''
-    const targetTone = body.targetTone?.trim().toLowerCase() || ''
-
-    if (!draft) {
+    const parsed = CustomizeToneSchema.safeParse(await request.json())
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Draft is required.',
+          error: 'Validation failed.',
+          details: formatZodError(parsed.error),
           cost: 0,
         },
         { status: 400 }
       )
     }
-
-    const allowedTones = new Set(['professional', 'casual', 'friendly', 'formal', 'enthusiastic'])
-    if (!allowedTones.has(targetTone)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid targetTone.',
-          cost: 0,
-        },
-        { status: 400 }
-      )
-    }
+    const { draft, targetTone } = parsed.data
 
     const promptConfig = getPromptConfig('changeTone')
     const prompt = buildPrompt('changeTone', {
@@ -119,6 +114,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<Customize
   }
 }
 
+/**
+ * Handle GET requests for `/api/ai/customize-tone`.
+ * @returns {unknown} JSON response for the GET /api/ai/customize-tone request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/ai/customize-tone
+ * fetch('/api/ai/customize-tone')
+ */
 export async function GET() {
   return NextResponse.json(
     {

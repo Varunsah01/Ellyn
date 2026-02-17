@@ -1,6 +1,6 @@
 "use client";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 
 interface TrackerShortcutsDialogProps {
   open: boolean;
@@ -16,6 +16,13 @@ const SHORTCUTS = [
   { keys: "Esc", description: "Close open popovers/modals" },
 ];
 
+/**
+ * Render the TrackerShortcutsDialog component.
+ * @param {TrackerShortcutsDialogProps} props - Component props.
+ * @returns {unknown} JSX output for TrackerShortcutsDialog.
+ * @example
+ * <TrackerShortcutsDialog />
+ */
 export function TrackerShortcutsDialog({ open, onOpenChange }: TrackerShortcutsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

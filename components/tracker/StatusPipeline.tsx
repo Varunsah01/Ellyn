@@ -104,6 +104,13 @@ function buildGlow(color: string): string | undefined {
   return `0 0 0 3px rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.2), 0 0 14px rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.35)`;
 }
 
+/**
+ * Render the StatusPipeline component.
+ * @param {StatusPipelineProps} props - Component props.
+ * @returns {unknown} JSX output for StatusPipeline.
+ * @example
+ * <StatusPipeline />
+ */
 export function StatusPipeline({
   currentStatus,
   contactId,

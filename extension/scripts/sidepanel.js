@@ -974,14 +974,14 @@ async function submitFeedback(worked) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    let response = await fetchWithTimeout(`${API_BASE_URL}/api/email-feedback`, {
+    let response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/email-feedback`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
     });
 
     if (!response.ok && (response.status === 404 || response.status === 405)) {
-      response = await fetchWithTimeout(`${API_BASE_URL}/api/pattern-feedback`, {
+      response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/pattern-feedback`, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
@@ -1362,3 +1362,4 @@ window.addEventListener("beforeunload", () => {
 document.addEventListener("DOMContentLoaded", () => {
   void init();
 });
+

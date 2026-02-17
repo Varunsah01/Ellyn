@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { mapSequenceActionToTrackerContactPatch } from '@/lib/tracker-integration';
+import { DraftUpsertSchema, formatZodError } from '@/lib/validation/schemas';
 
 async function syncTrackerContactForDraft(contactId: string, draftStatus: string | undefined) {
   if (draftStatus !== 'sent') return;
@@ -25,6 +26,16 @@ async function syncTrackerContactForDraft(contactId: string, draftStatus: string
 }
 
 // GET /api/drafts - Fetch all drafts
+/**
+ * Handle GET requests for `/api/drafts`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the GET /api/drafts request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/drafts
+ * fetch('/api/drafts')
+ */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -70,18 +81,27 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/drafts - Create or update a draft
+/**
+ * Handle POST requests for `/api/drafts`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/drafts request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/drafts
+ * fetch('/api/drafts', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { id, contactId, subject, body: draftBody, status, templateId } = body;
-
-    // Validate required fields
-    if (!contactId || !subject || !draftBody) {
+    const parsed = DraftUpsertSchema.safeParse(await request.json());
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Missing required fields: contactId, subject, and body are required' },
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
         { status: 400 }
       );
     }
+    const { id, contactId, subject, body: draftBody, status, templateId } = parsed.data;
 
     // Prepare draft data
     const draftData: any = {

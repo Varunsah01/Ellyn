@@ -1,13 +1,13 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/ui/Button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/components/ui/DropdownMenu";
 import {
   ExternalLink,
   MessageCircleReply,
@@ -28,6 +28,13 @@ interface ActionButtonsProps {
   onDelete: () => void;
 }
 
+/**
+ * Render the FollowUpButton component.
+ * @param {Pick<ActionButtonsProps, "onFollowUp">} props - Component props.
+ * @returns {unknown} JSX output for FollowUpButton.
+ * @example
+ * <FollowUpButton />
+ */
 export function FollowUpButton({ onFollowUp }: Pick<ActionButtonsProps, "onFollowUp">) {
   return (
     <Button
@@ -42,6 +49,13 @@ export function FollowUpButton({ onFollowUp }: Pick<ActionButtonsProps, "onFollo
   );
 }
 
+/**
+ * Render the EditContactButton component.
+ * @param {Pick<ActionButtonsProps, "onEdit">} props - Component props.
+ * @returns {unknown} JSX output for EditContactButton.
+ * @example
+ * <EditContactButton />
+ */
 export function EditContactButton({ onEdit }: Pick<ActionButtonsProps, "onEdit">) {
   return (
     <Button
@@ -57,6 +71,16 @@ export function EditContactButton({ onEdit }: Pick<ActionButtonsProps, "onEdit">
   );
 }
 
+/**
+ * Render the MoreActionsButton component.
+ * @param {Pick<
+  ActionButtonsProps,
+  "onViewLinkedIn" | "onMarkReplied" | "onMarkNotInterested" | "onAddNote" | "onDelete"
+>} props - Component props.
+ * @returns {unknown} JSX output for MoreActionsButton.
+ * @example
+ * <MoreActionsButton />
+ */
 export function MoreActionsButton({
   onViewLinkedIn,
   onMarkReplied,
@@ -107,6 +131,13 @@ export function MoreActionsButton({
   );
 }
 
+/**
+ * Render the ActionButtons component.
+ * @param {ActionButtonsProps} props - Component props.
+ * @returns {unknown} JSX output for ActionButtons.
+ * @example
+ * <ActionButtons />
+ */
 export function ActionButtons(props: ActionButtonsProps) {
   return (
     <div className="flex items-center justify-end gap-1">

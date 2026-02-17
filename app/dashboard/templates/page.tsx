@@ -1,25 +1,25 @@
-﻿"use client"
+"use client"
 
 import { useMemo, useState } from 'react'
 
-import { DashboardShell } from '@/components/dashboard/dashboard-shell'
-import { PageHeader } from '@/components/dashboard/page-header'
-import { TemplateEditor } from '@/components/template-editor'
-import { TemplateLibrary } from '@/components/template-library'
-import { useToast } from '@/hooks/use-toast'
+import { DashboardShell } from '@/components/dashboard/DashboardShell'
+import { PageHeader } from '@/components/dashboard/PageHeader'
+import { TemplateEditor } from '@/components/TemplateEditor'
+import { TemplateLibrary } from '@/components/TemplateLibrary'
+import { useToast } from '@/hooks/useToast'
 import { EmailTemplate, useSequences } from '@/lib/hooks/useSequences'
 import { TEMPLATE_PRESETS, type TemplateCategory } from '@/lib/template-presets'
 import type { EditableTemplate, TemplateLibraryItem } from '@/lib/template-types'
 
 const CATEGORY_ICON_MAP: Record<TemplateCategory, string> = {
-  recruiter: '👔',
-  referral: '🤝',
-  advice: '💬',
-  'follow-up': '📧',
-  networking: '🎓',
-  'thank-you': '🌟',
-  startup: '🚀',
-  custom: '✨',
+  recruiter: '??',
+  referral: '??',
+  advice: '??',
+  'follow-up': '??',
+  networking: '??',
+  'thank-you': '??',
+  startup: '??',
+  custom: '?',
 }
 
 const CATEGORY_KEYWORDS: Array<{ category: TemplateCategory; keywords: string[] }> = [
@@ -38,7 +38,7 @@ const EMPTY_EDITOR_TEMPLATE: EditableTemplate = {
   body: '',
   category: 'custom',
   tags: [],
-  icon: '📝',
+  icon: '??',
 }
 
 export default function TemplatesPage() {
@@ -119,7 +119,7 @@ export default function TemplatesPage() {
     }
 
     try {
-      const response = await fetch(`/api/templates/${template.id}`, {
+      const response = await fetch(`/api/v1/templates/${template.id}`, {
         method: 'DELETE',
       })
 
@@ -157,7 +157,7 @@ export default function TemplatesPage() {
     try {
       const isExistingTemplate = Boolean(template.id && !template.id.startsWith('preset:'))
       const method = isExistingTemplate ? 'PATCH' : 'POST'
-      const url = isExistingTemplate ? `/api/templates/${template.id}` : '/api/templates'
+      const url = isExistingTemplate ? `/api/v1/templates/${template.id}` : '/api/v1/templates'
 
       const payload = {
         name: template.name,
@@ -314,3 +314,4 @@ function inferCategory(template: EmailTemplate): TemplateCategory {
 
   return template.is_default ? 'recruiter' : 'custom'
 }
+

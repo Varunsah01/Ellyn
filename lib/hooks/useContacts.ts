@@ -40,6 +40,13 @@ export interface UseContactsOptions {
   refreshInterval?: number;
 }
 
+/**
+ * Custom hook for contacts.
+ * @param {UseContactsOptions} options - Options input.
+ * @returns {UseContactsResult} Hook state and actions for contacts.
+ * @example
+ * const state = useContacts()
+ */
 export function useContacts(options: UseContactsOptions = {}): UseContactsResult {
   const {
     page = 1,
@@ -69,7 +76,7 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
       if (search) params.append('search', search);
       if (status) params.append('status', status);
 
-      const response = await fetch(`/api/contacts?${params.toString()}`);
+      const response = await fetch(`/api/v1/contacts?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: Failed to fetch contacts`);
@@ -127,6 +134,12 @@ export interface ContactStats {
   no_response: number;
 }
 
+/**
+ * Custom hook for contact stats.
+ * @returns {unknown} Hook state and actions for contact stats.
+ * @example
+ * const state = useContactStats()
+ */
 export function useContactStats() {
   const [stats, setStats] = useState<ContactStats>({
     total: 0,
@@ -144,7 +157,7 @@ export function useContactStats() {
       setError(null);
 
       // Fetch all contacts to calculate stats
-      const response = await fetch('/api/contacts?limit=1000');
+      const response = await fetch('/api/v1/contacts?limit=1000');
 
       if (!response.ok) {
         throw new Error('Failed to fetch contact stats');
@@ -178,3 +191,4 @@ export function useContactStats() {
 
   return { stats, loading, error, refresh: fetchStats };
 }
+

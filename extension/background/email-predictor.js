@@ -2,7 +2,7 @@
 /**
  * Lightweight AI prediction helper for extension background usage.
  * This module is optional and can be used by the main service worker
- * to request person-level ranked email candidates from /api/predict-email.
+ * to request person-level ranked email candidates from /api/v1/predict-email.
  */
 
 const EMAIL_PREDICTOR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -44,7 +44,7 @@ async function predictEmail(contactData, options = {}) {
   }
 
   try {
-    const response = await fetch(`${apiBaseUrl}/api/predict-email`, {
+    const response = await fetch(`${apiBaseUrl}/api/v1/predict-email`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -165,3 +165,4 @@ if (typeof self !== 'undefined') {
   self.predictEmail = predictEmail;
   self.generateHeuristicPatterns = generateHeuristicPatterns;
 }
+

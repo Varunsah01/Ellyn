@@ -1,20 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { getAuthenticatedUser } from "@/lib/auth/helpers";
+import {
+  ContactUpdateSchema,
+  formatZodError,
+  type ContactUpdateInput,
+} from "@/lib/validation/schemas";
 
 interface RouteContext {
   params: { id: string };
 }
 
 // GET /api/contacts/[id] - Get single contact
+/**
+ * Handle GET requests for `/api/contacts/[id]`.
+ * @param {NextRequest} _request -  request input.
+ * @param {RouteContext} param2 - Param2 input.
+ * @returns {unknown} JSON response for the GET /api/contacts/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/contacts/[id]
+ * fetch('/api/contacts/[id]')
+ */
 export async function GET(_request: NextRequest, { params }: RouteContext) {
   try {
-    // For now, allow unauthenticated access for testing
-    // In production, add authentication and user_id check
+    const user = await getAuthenticatedUser();
     const { data: contact, error } = await supabase
       .from("contacts")
       .select("*")
       .eq("id", params.id)
-      // .eq("user_id", user.id) // Enable in production
+      .eq("user_id", user.id)
       .single();
 
     if (error) throw error;
@@ -24,12 +40,15 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
       contact,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.error("Get contact error:", error);
     return NextResponse.json({ error: "Contact not found" }, { status: 404 });
   }
 }
 
-function buildUpdatePayload(body: Record<string, unknown>) {
+function buildUpdatePayload(body: ContactUpdateInput) {
   const updateData: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
@@ -53,17 +72,25 @@ function buildUpdatePayload(body: Record<string, unknown>) {
   return updateData;
 }
 
-async function updateContact(request: NextRequest, id: string) {
+async function updateContact(request: NextRequest, id: string, userId: string) {
   try {
-    // For now, allow unauthenticated access for testing
-    const body = (await request.json()) as Record<string, unknown>;
-    const updateData = buildUpdatePayload(body);
+    const parsed = ContactUpdateSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: "Validation failed",
+          details: formatZodError(parsed.error),
+        },
+        { status: 400 }
+      );
+    }
+    const updateData = buildUpdatePayload(parsed.data);
 
     const { data: contact, error } = await supabase
       .from("contacts")
       .update(updateData)
       .eq("id", id)
-      // .eq("user_id", user.id) // Enable in production
+      .eq("user_id", userId)
       .select()
       .single();
 
@@ -87,21 +114,89 @@ async function updateContact(request: NextRequest, id: string) {
 }
 
 // PUT /api/contacts/[id] - Full update (supported for backward compatibility)
+/**
+ * Handle PUT requests for `/api/contacts/[id]`.
+ * @param {NextRequest} request - Request input.
+ * @param {RouteContext} param2 - Param2 input.
+ * @returns {unknown} JSON response for the PUT /api/contacts/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // PUT /api/contacts/[id]
+ * fetch('/api/contacts/[id]', { method: 'PUT' })
+ */
 export async function PUT(request: NextRequest, { params }: RouteContext) {
-  return updateContact(request, params.id);
+  try {
+    const user = await getAuthenticatedUser();
+    return updateContact(request, params.id, user.id);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.error("Update contact error:", error);
+    return NextResponse.json(
+      {
+        error: "Failed to update contact",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
 }
 
 // PATCH /api/contacts/[id] - Partial update
+/**
+ * Handle PATCH requests for `/api/contacts/[id]`.
+ * @param {NextRequest} request - Request input.
+ * @param {RouteContext} param2 - Param2 input.
+ * @returns {unknown} JSON response for the PATCH /api/contacts/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // PATCH /api/contacts/[id]
+ * fetch('/api/contacts/[id]', { method: 'PATCH' })
+ */
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
-  return updateContact(request, params.id);
+  try {
+    const user = await getAuthenticatedUser();
+    return updateContact(request, params.id, user.id);
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.error("Update contact error:", error);
+    return NextResponse.json(
+      {
+        error: "Failed to update contact",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
 }
 
 // DELETE /api/contacts/[id] - Delete contact
+/**
+ * Handle DELETE requests for `/api/contacts/[id]`.
+ * @param {NextRequest} _request -  request input.
+ * @param {RouteContext} param2 - Param2 input.
+ * @returns {unknown} JSON response for the DELETE /api/contacts/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // DELETE /api/contacts/[id]
+ * fetch('/api/contacts/[id]', { method: 'DELETE' })
+ */
 export async function DELETE(_request: NextRequest, { params }: RouteContext) {
   try {
-    // For now, allow unauthenticated access for testing
-    const { error } = await supabase.from("contacts").delete().eq("id", params.id);
-    // .eq('user_id', user.id); // Enable in production
+    const user = await getAuthenticatedUser();
+    const { error } = await supabase
+      .from("contacts")
+      .delete()
+      .eq("id", params.id)
+      .eq("user_id", user.id);
 
     if (error) throw error;
 
@@ -110,6 +205,9 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
       message: "Contact deleted successfully",
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     console.error("Delete contact error:", error);
     return NextResponse.json(
       {

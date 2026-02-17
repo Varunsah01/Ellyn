@@ -39,6 +39,12 @@ export interface AnalyticsData {
   }>;
 }
 
+/**
+ * Custom hook for dashboard stats.
+ * @returns {unknown} Hook state and actions for dashboard stats.
+ * @example
+ * const state = useDashboardStats()
+ */
 export function useDashboardStats() {
   const [stats, setStats] = useState<DashboardStats>({
     totalContacts: 0,
@@ -58,9 +64,9 @@ export function useDashboardStats() {
 
       // Fetch all data
       const [contactsRes, templatesRes, draftsRes] = await Promise.all([
-        fetch('/api/contacts?limit=1000'),
-        fetch('/api/templates'),
-        fetch('/api/drafts'),
+        fetch('/api/v1/contacts?limit=1000'),
+        fetch('/api/v1/templates'),
+        fetch('/api/v1/drafts'),
       ]);
 
       if (!contactsRes.ok || !templatesRes.ok || !draftsRes.ok) {
@@ -121,6 +127,13 @@ export function useDashboardStats() {
   return { stats, loading, error, refresh: fetchStats };
 }
 
+/**
+ * Custom hook for recent activity.
+ * @param {number} limit - Limit input.
+ * @returns {unknown} Hook state and actions for recent activity.
+ * @example
+ * const state = useRecentActivity()
+ */
 export function useRecentActivity(limit: number = 10) {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,9 +146,9 @@ export function useRecentActivity(limit: number = 10) {
 
       // Fetch recent contacts and drafts
       const [contactsRes, draftsRes, templatesRes] = await Promise.all([
-        fetch(`/api/contacts?limit=${limit}`),
-        fetch('/api/drafts'),
-        fetch('/api/templates'),
+        fetch(`/api/v1/contacts?limit=${limit}`),
+        fetch('/api/v1/drafts'),
+        fetch('/api/v1/templates'),
       ]);
 
       if (!contactsRes.ok || !draftsRes.ok || !templatesRes.ok) {
@@ -215,6 +228,12 @@ export function useRecentActivity(limit: number = 10) {
   return { activities, loading, error, refresh: fetchActivities };
 }
 
+/**
+ * Custom hook for analytics.
+ * @returns {unknown} Hook state and actions for analytics.
+ * @example
+ * const state = useAnalytics()
+ */
 export function useAnalytics() {
   const [analytics, setAnalytics] = useState<AnalyticsData>({
     contactsByStatus: {
@@ -235,8 +254,8 @@ export function useAnalytics() {
       setError(null);
 
       const [contactsRes, draftsRes] = await Promise.all([
-        fetch('/api/contacts?limit=1000'),
-        fetch('/api/drafts'),
+        fetch('/api/v1/contacts?limit=1000'),
+        fetch('/api/v1/drafts'),
       ]);
 
       if (!contactsRes.ok || !draftsRes.ok) {
@@ -264,7 +283,7 @@ export function useAnalytics() {
       for (let i = 6; i >= 0; i--) {
         const date = new Date();
         date.setDate(date.getDate() - i);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = date.toISOString().split('T')[0] ?? '';
 
         const sentCount = drafts.filter(
           (d) =>
@@ -317,3 +336,4 @@ export function useAnalytics() {
 
   return { analytics, loading, error, refresh: fetchAnalytics };
 }
+

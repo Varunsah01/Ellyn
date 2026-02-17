@@ -3,18 +3,7 @@
 import { checkAiRateLimit, getRateLimitIdentifier } from '@/lib/ai-rate-limit'
 import { getGeminiClient } from '@/lib/gemini'
 import { buildPrompt, getPromptConfig } from '@/lib/template-prompts'
-
-interface GenerateTemplateRequest {
-  templateType: 'recruiter' | 'referral' | 'advice' | 'follow-up' | 'thank-you' | 'custom'
-  instructions: string
-  context: {
-    userName: string
-    userSchool?: string
-    userMajor?: string
-  }
-  targetRole?: string
-  targetCompany?: string
-}
+import { GenerateTemplateAiSchema, formatZodError } from '@/lib/validation/schemas'
 
 interface GenerateTemplateResponse {
   success: boolean
@@ -29,8 +18,20 @@ interface GenerateTemplateResponse {
   }
   cost: number
   error?: string
+  details?: Array<{ path: string; message: string; code: string }>
 }
 
+/**
+ * Handle POST requests for `/api/ai/generate-template`.
+ * @param {NextRequest} request - Request input.
+ * @returns {Promise<NextResponse<GenerateTemplateResponse>>} JSON response for the POST /api/ai/generate-template request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/ai/generate-template
+ * fetch('/api/ai/generate-template', { method: 'POST' })
+ */
 export async function POST(request: NextRequest): Promise<NextResponse<GenerateTemplateResponse>> {
   const startedAt = Date.now()
 
@@ -52,43 +53,21 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateT
       )
     }
 
-    const body = (await request.json()) as Partial<GenerateTemplateRequest>
-
-    if (!body.templateType || typeof body.templateType !== 'string') {
+    const parsed = GenerateTemplateAiSchema.safeParse(await request.json())
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          error: 'templateType is required.',
+          error: 'Validation failed.',
+          details: formatZodError(parsed.error),
           cost: 0,
         },
         { status: 400 }
       )
     }
+    const body = parsed.data
 
-    if (!body.context?.userName?.trim()) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'context.userName is required.',
-          cost: 0,
-        },
-        { status: 400 }
-      )
-    }
-
-    const allowedTemplateTypes = new Set(['recruiter', 'referral', 'advice', 'follow-up', 'thank-you', 'custom'])
-    if (!allowedTemplateTypes.has(body.templateType)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid templateType.',
-          cost: 0,
-        },
-        { status: 400 }
-      )
-    }
-
-    const instructions = (body.instructions || 'Write a concise, high-response outreach email.').trim().slice(0, 700)
+    const instructions = body.instructions || 'Write a concise, high-response outreach email.'
 
     const promptConfig = getPromptConfig('generateFromScratch')
     const prompt = buildPrompt('generateFromScratch', {
@@ -141,6 +120,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateT
   }
 }
 
+/**
+ * Handle GET requests for `/api/ai/generate-template`.
+ * @returns {unknown} JSON response for the GET /api/ai/generate-template request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/ai/generate-template
+ * fetch('/api/ai/generate-template')
+ */
 export async function GET() {
   return NextResponse.json(
     {

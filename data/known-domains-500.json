@@ -1,0 +1,3146 @@
+[
+  {
+    "company_name": "Google",
+    "domain": "google.com",
+    "category": "tech",
+    "employees": 180000,
+    "confidence": 1.0,
+    "aliases": ["Alphabet", "Alphabet Inc", "Google LLC", "Google Inc", "Googleplex"]
+  },
+  {
+    "company_name": "Microsoft",
+    "domain": "microsoft.com",
+    "category": "tech",
+    "employees": 220000,
+    "confidence": 1.0,
+    "aliases": ["Microsoft Corp", "Microsoft Corporation", "MSFT"]
+  },
+  {
+    "company_name": "Apple",
+    "domain": "apple.com",
+    "category": "tech",
+    "employees": 165000,
+    "confidence": 1.0,
+    "aliases": ["Apple Inc", "Apple Computer", "AAPL"]
+  },
+  {
+    "company_name": "Amazon",
+    "domain": "amazon.com",
+    "category": "tech",
+    "employees": 1500000,
+    "confidence": 1.0,
+    "aliases": ["Amazon.com", "Amazon Inc", "Amazon Web Services", "AWS"]
+  },
+  {
+    "company_name": "Meta",
+    "domain": "meta.com",
+    "category": "tech",
+    "employees": 86000,
+    "confidence": 1.0,
+    "aliases": ["Facebook", "Facebook Inc", "Meta Platforms", "Meta Platforms Inc", "Instagram", "WhatsApp"]
+  },
+  {
+    "company_name": "Netflix",
+    "domain": "netflix.com",
+    "category": "tech",
+    "employees": 13000,
+    "confidence": 1.0,
+    "aliases": ["Netflix Inc", "NFLX"]
+  },
+  {
+    "company_name": "Tesla",
+    "domain": "tesla.com",
+    "category": "automotive",
+    "employees": 127855,
+    "confidence": 1.0,
+    "aliases": ["Tesla Inc", "Tesla Motors", "TSLA"]
+  },
+  {
+    "company_name": "Nvidia",
+    "domain": "nvidia.com",
+    "category": "tech",
+    "employees": 29600,
+    "confidence": 1.0,
+    "aliases": ["NVIDIA", "NVIDIA Corporation", "NVDA"]
+  },
+  {
+    "company_name": "Adobe",
+    "domain": "adobe.com",
+    "category": "tech",
+    "employees": 29000,
+    "confidence": 1.0,
+    "aliases": ["Adobe Inc", "Adobe Systems", "ADBE"]
+  },
+  {
+    "company_name": "Salesforce",
+    "domain": "salesforce.com",
+    "category": "tech",
+    "employees": 79000,
+    "confidence": 1.0,
+    "aliases": ["Salesforce Inc", "Salesforce.com", "CRM", "SFDC"]
+  },
+  {
+    "company_name": "Oracle",
+    "domain": "oracle.com",
+    "category": "tech",
+    "employees": 164000,
+    "confidence": 1.0,
+    "aliases": ["Oracle Corporation", "Oracle Corp", "ORCL"]
+  },
+  {
+    "company_name": "IBM",
+    "domain": "ibm.com",
+    "category": "tech",
+    "employees": 282200,
+    "confidence": 1.0,
+    "aliases": ["International Business Machines", "IBM Corp", "Big Blue"]
+  },
+  {
+    "company_name": "Intel",
+    "domain": "intel.com",
+    "category": "tech",
+    "employees": 131900,
+    "confidence": 1.0,
+    "aliases": ["Intel Corporation", "Intel Corp", "INTC"]
+  },
+  {
+    "company_name": "Cisco",
+    "domain": "cisco.com",
+    "category": "tech",
+    "employees": 83000,
+    "confidence": 1.0,
+    "aliases": ["Cisco Systems", "Cisco Systems Inc", "CSCO"]
+  },
+  {
+    "company_name": "Dell",
+    "domain": "dell.com",
+    "category": "tech",
+    "employees": 120000,
+    "confidence": 1.0,
+    "aliases": ["Dell Technologies", "Dell Inc", "Dell EMC", "DELL"]
+  },
+  {
+    "company_name": "HP",
+    "domain": "hp.com",
+    "category": "tech",
+    "employees": 61000,
+    "confidence": 1.0,
+    "aliases": ["Hewlett-Packard", "HP Inc", "Hewlett Packard"]
+  },
+  {
+    "company_name": "Hewlett Packard Enterprise",
+    "domain": "hpe.com",
+    "category": "tech",
+    "employees": 61000,
+    "confidence": 1.0,
+    "aliases": ["HPE", "HP Enterprise"]
+  },
+  {
+    "company_name": "SAP",
+    "domain": "sap.com",
+    "category": "tech",
+    "employees": 111961,
+    "confidence": 1.0,
+    "aliases": ["SAP SE", "SAP AG"]
+  },
+  {
+    "company_name": "Qualcomm",
+    "domain": "qualcomm.com",
+    "category": "tech",
+    "employees": 51000,
+    "confidence": 1.0,
+    "aliases": ["QCOM", "Qualcomm Inc"]
+  },
+  {
+    "company_name": "Broadcom",
+    "domain": "broadcom.com",
+    "category": "tech",
+    "employees": 20000,
+    "confidence": 1.0,
+    "aliases": ["Broadcom Inc", "AVGO"]
+  },
+  {
+    "company_name": "Texas Instruments",
+    "domain": "ti.com",
+    "category": "tech",
+    "employees": 34000,
+    "confidence": 1.0,
+    "aliases": ["TI", "TXN", "Texas Instruments Inc"]
+  },
+  {
+    "company_name": "VMware",
+    "domain": "vmware.com",
+    "category": "tech",
+    "employees": 37000,
+    "confidence": 1.0,
+    "aliases": ["VMware Inc", "VMWare"]
+  },
+  {
+    "company_name": "ServiceNow",
+    "domain": "servicenow.com",
+    "category": "tech",
+    "employees": 22000,
+    "confidence": 1.0,
+    "aliases": ["ServiceNow Inc", "NOW"]
+  },
+  {
+    "company_name": "Workday",
+    "domain": "workday.com",
+    "category": "tech",
+    "employees": 18800,
+    "confidence": 1.0,
+    "aliases": ["Workday Inc", "WDAY"]
+  },
+  {
+    "company_name": "Snowflake",
+    "domain": "snowflake.com",
+    "category": "tech",
+    "employees": 7000,
+    "confidence": 1.0,
+    "aliases": ["Snowflake Inc", "SNOW"]
+  },
+  {
+    "company_name": "Palantir",
+    "domain": "palantir.com",
+    "category": "tech",
+    "employees": 3900,
+    "confidence": 1.0,
+    "aliases": ["Palantir Technologies", "Palantir Technologies Inc", "PLTR"]
+  },
+  {
+    "company_name": "Databricks",
+    "domain": "databricks.com",
+    "category": "tech",
+    "employees": 6000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Twilio",
+    "domain": "twilio.com",
+    "category": "tech",
+    "employees": 6000,
+    "confidence": 1.0,
+    "aliases": ["Twilio Inc", "TWLO"]
+  },
+  {
+    "company_name": "Cloudflare",
+    "domain": "cloudflare.com",
+    "category": "tech",
+    "employees": 3800,
+    "confidence": 1.0,
+    "aliases": ["Cloudflare Inc", "NET"]
+  },
+  {
+    "company_name": "HashiCorp",
+    "domain": "hashicorp.com",
+    "category": "tech",
+    "employees": 2500,
+    "confidence": 1.0,
+    "aliases": ["HashiCorp Inc"]
+  },
+  {
+    "company_name": "Accenture",
+    "domain": "accenture.com",
+    "category": "consulting",
+    "employees": 738000,
+    "confidence": 1.0,
+    "aliases": ["Accenture PLC", "Accenture plc", "ACN"]
+  },
+  {
+    "company_name": "Deloitte",
+    "domain": "deloitte.com",
+    "category": "consulting",
+    "employees": 457000,
+    "confidence": 1.0,
+    "aliases": ["Deloitte Touche Tohmatsu", "DTT", "Deloitte & Touche"]
+  },
+  {
+    "company_name": "PwC",
+    "domain": "pwc.com",
+    "category": "consulting",
+    "employees": 364000,
+    "confidence": 1.0,
+    "aliases": ["PricewaterhouseCoopers", "Price Waterhouse", "PricewaterhouseCoopers LLP"]
+  },
+  {
+    "company_name": "EY",
+    "domain": "ey.com",
+    "category": "consulting",
+    "employees": 395000,
+    "confidence": 1.0,
+    "aliases": ["Ernst & Young", "Ernst and Young", "Ernst & Young LLP"]
+  },
+  {
+    "company_name": "KPMG",
+    "domain": "kpmg.com",
+    "category": "consulting",
+    "employees": 265000,
+    "confidence": 1.0,
+    "aliases": ["KPMG LLP", "KPMG International"]
+  },
+  {
+    "company_name": "McKinsey",
+    "domain": "mckinsey.com",
+    "category": "consulting",
+    "employees": 45000,
+    "confidence": 1.0,
+    "aliases": ["McKinsey & Company", "McKinsey and Company", "McKinsey & Co"]
+  },
+  {
+    "company_name": "BCG",
+    "domain": "bcg.com",
+    "category": "consulting",
+    "employees": 30000,
+    "confidence": 1.0,
+    "aliases": ["Boston Consulting Group", "The Boston Consulting Group"]
+  },
+  {
+    "company_name": "Bain",
+    "domain": "bain.com",
+    "category": "consulting",
+    "employees": 12000,
+    "confidence": 1.0,
+    "aliases": ["Bain & Company", "Bain and Company", "Bain & Co"]
+  },
+  {
+    "company_name": "Capgemini",
+    "domain": "capgemini.com",
+    "category": "consulting",
+    "employees": 360000,
+    "confidence": 1.0,
+    "aliases": ["Capgemini SE", "Cap Gemini"]
+  },
+  {
+    "company_name": "Cognizant",
+    "domain": "cognizant.com",
+    "category": "consulting",
+    "employees": 355300,
+    "confidence": 1.0,
+    "aliases": ["Cognizant Technology Solutions", "CTSH"]
+  },
+  {
+    "company_name": "Infosys",
+    "domain": "infosys.com",
+    "category": "tech",
+    "employees": 343234,
+    "confidence": 1.0,
+    "aliases": ["Infosys Limited", "Infosys BPO", "INFY"]
+  },
+  {
+    "company_name": "Wipro",
+    "domain": "wipro.com",
+    "category": "tech",
+    "employees": 258685,
+    "confidence": 1.0,
+    "aliases": ["Wipro Limited", "Wipro Technologies", "WIT"]
+  },
+  {
+    "company_name": "Tata Consultancy Services",
+    "domain": "tcs.com",
+    "category": "consulting",
+    "employees": 614795,
+    "confidence": 1.0,
+    "aliases": ["TCS", "Tata Consulting", "TCS Limited", "Tata CS"]
+  },
+  {
+    "company_name": "HCL Technologies",
+    "domain": "hcltech.com",
+    "category": "tech",
+    "employees": 225944,
+    "confidence": 1.0,
+    "aliases": ["HCL", "HCLTech", "HCL Tech", "Hindustan Computers Limited"]
+  },
+  {
+    "company_name": "Tech Mahindra",
+    "domain": "techmahindra.com",
+    "category": "tech",
+    "employees": 161000,
+    "confidence": 1.0,
+    "aliases": ["Tech Mahindra Limited", "TechM"]
+  },
+  {
+    "company_name": "Mphasis",
+    "domain": "mphasis.com",
+    "category": "tech",
+    "employees": 32000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Hexaware",
+    "domain": "hexaware.com",
+    "category": "tech",
+    "employees": 29000,
+    "confidence": 1.0,
+    "aliases": ["Hexaware Technologies"]
+  },
+  {
+    "company_name": "Persistent Systems",
+    "domain": "persistent.com",
+    "category": "tech",
+    "employees": 22000,
+    "confidence": 1.0,
+    "aliases": ["Persistent", "PSYS"]
+  },
+  {
+    "company_name": "Goldman Sachs",
+    "domain": "gs.com",
+    "category": "finance",
+    "employees": 49000,
+    "confidence": 1.0,
+    "aliases": ["Goldman", "GS", "Goldman Sachs Group", "Goldman Sachs & Co"]
+  },
+  {
+    "company_name": "Morgan Stanley",
+    "domain": "morganstanley.com",
+    "category": "finance",
+    "employees": 82427,
+    "confidence": 1.0,
+    "aliases": ["MS", "Morgan Stanley & Co"]
+  },
+  {
+    "company_name": "JPMorgan",
+    "domain": "jpmorgan.com",
+    "category": "finance",
+    "employees": 293723,
+    "confidence": 1.0,
+    "aliases": ["JP Morgan", "JPMorgan Chase", "JP Morgan Chase", "Chase", "JPM"]
+  },
+  {
+    "company_name": "Citigroup",
+    "domain": "citi.com",
+    "category": "finance",
+    "employees": 240000,
+    "confidence": 1.0,
+    "aliases": ["Citi", "Citibank", "Citicorp", "C"]
+  },
+  {
+    "company_name": "Bank of America",
+    "domain": "bankofamerica.com",
+    "category": "finance",
+    "employees": 217000,
+    "confidence": 1.0,
+    "aliases": ["BofA", "BoA", "BAC", "Bank of America Corp"]
+  },
+  {
+    "company_name": "Wells Fargo",
+    "domain": "wellsfargo.com",
+    "category": "finance",
+    "employees": 235000,
+    "confidence": 1.0,
+    "aliases": ["Wells Fargo Bank", "WFC"]
+  },
+  {
+    "company_name": "BlackRock",
+    "domain": "blackrock.com",
+    "category": "finance",
+    "employees": 21000,
+    "confidence": 1.0,
+    "aliases": ["BlackRock Inc", "BLK"]
+  },
+  {
+    "company_name": "Vanguard",
+    "domain": "vanguard.com",
+    "category": "finance",
+    "employees": 20000,
+    "confidence": 1.0,
+    "aliases": ["The Vanguard Group", "Vanguard Group"]
+  },
+  {
+    "company_name": "Fidelity",
+    "domain": "fidelity.com",
+    "category": "finance",
+    "employees": 67000,
+    "confidence": 1.0,
+    "aliases": ["Fidelity Investments", "Fidelity Management & Research", "FMR"]
+  },
+  {
+    "company_name": "Charles Schwab",
+    "domain": "schwab.com",
+    "category": "finance",
+    "employees": 35500,
+    "confidence": 1.0,
+    "aliases": ["Schwab", "The Charles Schwab Corporation", "SCHW"]
+  },
+  {
+    "company_name": "American Express",
+    "domain": "americanexpress.com",
+    "category": "finance",
+    "employees": 77000,
+    "confidence": 1.0,
+    "aliases": ["AmEx", "Amex", "AXP"]
+  },
+  {
+    "company_name": "Visa",
+    "domain": "visa.com",
+    "category": "finance",
+    "employees": 26500,
+    "confidence": 1.0,
+    "aliases": ["Visa Inc", "V"]
+  },
+  {
+    "company_name": "Mastercard",
+    "domain": "mastercard.com",
+    "category": "finance",
+    "employees": 33000,
+    "confidence": 1.0,
+    "aliases": ["Mastercard Inc", "MasterCard", "MA"]
+  },
+  {
+    "company_name": "PayPal",
+    "domain": "paypal.com",
+    "category": "finance",
+    "employees": 27200,
+    "confidence": 1.0,
+    "aliases": ["PayPal Holdings", "PYPL"]
+  },
+  {
+    "company_name": "Block",
+    "domain": "block.xyz",
+    "category": "finance",
+    "employees": 12000,
+    "confidence": 1.0,
+    "aliases": ["Square", "Square Inc", "Cash App", "SQ"]
+  },
+  {
+    "company_name": "Stripe",
+    "domain": "stripe.com",
+    "category": "finance",
+    "employees": 8000,
+    "confidence": 1.0,
+    "aliases": ["Stripe Inc"]
+  },
+  {
+    "company_name": "Robinhood",
+    "domain": "robinhood.com",
+    "category": "finance",
+    "employees": 2500,
+    "confidence": 1.0,
+    "aliases": ["Robinhood Markets", "HOOD"]
+  },
+  {
+    "company_name": "Coinbase",
+    "domain": "coinbase.com",
+    "category": "finance",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": ["Coinbase Global", "COIN"]
+  },
+  {
+    "company_name": "Deutsche Bank",
+    "domain": "db.com",
+    "category": "finance",
+    "employees": 90130,
+    "confidence": 1.0,
+    "aliases": ["DB", "Deutsche Bank AG"]
+  },
+  {
+    "company_name": "Barclays",
+    "domain": "barclays.com",
+    "category": "finance",
+    "employees": 80000,
+    "confidence": 1.0,
+    "aliases": ["Barclays Bank", "Barclays PLC", "BARC"]
+  },
+  {
+    "company_name": "HSBC",
+    "domain": "hsbc.com",
+    "category": "finance",
+    "employees": 220000,
+    "confidence": 1.0,
+    "aliases": ["HSBC Holdings", "Hongkong and Shanghai Banking Corporation"]
+  },
+  {
+    "company_name": "UBS",
+    "domain": "ubs.com",
+    "category": "finance",
+    "employees": 74000,
+    "confidence": 1.0,
+    "aliases": ["UBS Group", "UBS AG"]
+  },
+  {
+    "company_name": "Credit Suisse",
+    "domain": "credit-suisse.com",
+    "category": "finance",
+    "employees": 50000,
+    "confidence": 1.0,
+    "aliases": ["Credit Suisse Group", "CS"]
+  },
+  {
+    "company_name": "BNP Paribas",
+    "domain": "bnpparibas.com",
+    "category": "finance",
+    "employees": 190000,
+    "confidence": 1.0,
+    "aliases": ["BNP", "BNP Paribas SA"]
+  },
+  {
+    "company_name": "Uber",
+    "domain": "uber.com",
+    "category": "tech",
+    "employees": 32000,
+    "confidence": 1.0,
+    "aliases": ["Uber Technologies", "UBER"]
+  },
+  {
+    "company_name": "Lyft",
+    "domain": "lyft.com",
+    "category": "tech",
+    "employees": 4000,
+    "confidence": 1.0,
+    "aliases": ["Lyft Inc", "LYFT"]
+  },
+  {
+    "company_name": "Airbnb",
+    "domain": "airbnb.com",
+    "category": "tech",
+    "employees": 6800,
+    "confidence": 1.0,
+    "aliases": ["Airbnb Inc", "ABNB"]
+  },
+  {
+    "company_name": "Spotify",
+    "domain": "spotify.com",
+    "category": "tech",
+    "employees": 9900,
+    "confidence": 1.0,
+    "aliases": ["Spotify Technology", "SPOT"]
+  },
+  {
+    "company_name": "Zoom",
+    "domain": "zoom.us",
+    "category": "tech",
+    "employees": 8400,
+    "confidence": 1.0,
+    "aliases": ["Zoom Video Communications", "ZM"]
+  },
+  {
+    "company_name": "Slack",
+    "domain": "slack.com",
+    "category": "tech",
+    "employees": 2500,
+    "confidence": 1.0,
+    "aliases": ["Slack Technologies", "Slack Inc"]
+  },
+  {
+    "company_name": "Shopify",
+    "domain": "shopify.com",
+    "category": "tech",
+    "employees": 10000,
+    "confidence": 1.0,
+    "aliases": ["Shopify Inc", "SHOP"]
+  },
+  {
+    "company_name": "Dropbox",
+    "domain": "dropbox.com",
+    "category": "tech",
+    "employees": 2800,
+    "confidence": 1.0,
+    "aliases": ["Dropbox Inc", "DBX"]
+  },
+  {
+    "company_name": "Atlassian",
+    "domain": "atlassian.com",
+    "category": "tech",
+    "employees": 12000,
+    "confidence": 1.0,
+    "aliases": ["Atlassian Corporation", "TEAM"]
+  },
+  {
+    "company_name": "Notion",
+    "domain": "notion.so",
+    "category": "tech",
+    "employees": 700,
+    "confidence": 1.0,
+    "aliases": ["Notion Labs", "Notion Inc"]
+  },
+  {
+    "company_name": "Figma",
+    "domain": "figma.com",
+    "category": "tech",
+    "employees": 1200,
+    "confidence": 1.0,
+    "aliases": ["Figma Inc"]
+  },
+  {
+    "company_name": "Canva",
+    "domain": "canva.com",
+    "category": "tech",
+    "employees": 3500,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Airtable",
+    "domain": "airtable.com",
+    "category": "tech",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Monday.com",
+    "domain": "monday.com",
+    "category": "tech",
+    "employees": 1900,
+    "confidence": 1.0,
+    "aliases": ["Monday", "MNDY"]
+  },
+  {
+    "company_name": "Asana",
+    "domain": "asana.com",
+    "category": "tech",
+    "employees": 1600,
+    "confidence": 1.0,
+    "aliases": ["Asana Inc", "ASAN"]
+  },
+  {
+    "company_name": "HubSpot",
+    "domain": "hubspot.com",
+    "category": "tech",
+    "employees": 7400,
+    "confidence": 1.0,
+    "aliases": ["HubSpot Inc", "HUBS"]
+  },
+  {
+    "company_name": "Zendesk",
+    "domain": "zendesk.com",
+    "category": "tech",
+    "employees": 6000,
+    "confidence": 1.0,
+    "aliases": ["Zendesk Inc", "ZEN"]
+  },
+  {
+    "company_name": "Intercom",
+    "domain": "intercom.com",
+    "category": "tech",
+    "employees": 800,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Freshworks",
+    "domain": "freshworks.com",
+    "category": "tech",
+    "employees": 5500,
+    "confidence": 1.0,
+    "aliases": ["Freshworks Inc", "FRSH"]
+  },
+  {
+    "company_name": "Datadog",
+    "domain": "datadoghq.com",
+    "category": "tech",
+    "employees": 5200,
+    "confidence": 1.0,
+    "aliases": ["Datadog Inc", "DDOG"]
+  },
+  {
+    "company_name": "New Relic",
+    "domain": "newrelic.com",
+    "category": "tech",
+    "employees": 2200,
+    "confidence": 1.0,
+    "aliases": ["New Relic Inc", "NEWR"]
+  },
+  {
+    "company_name": "PagerDuty",
+    "domain": "pagerduty.com",
+    "category": "tech",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": ["PagerDuty Inc", "PD"]
+  },
+  {
+    "company_name": "Splunk",
+    "domain": "splunk.com",
+    "category": "tech",
+    "employees": 8000,
+    "confidence": 1.0,
+    "aliases": ["Splunk Inc", "SPLK"]
+  },
+  {
+    "company_name": "Elastic",
+    "domain": "elastic.co",
+    "category": "tech",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": ["Elastic NV", "Elasticsearch", "ESTC"]
+  },
+  {
+    "company_name": "MongoDB",
+    "domain": "mongodb.com",
+    "category": "tech",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["MongoDB Inc", "MDB"]
+  },
+  {
+    "company_name": "Redis",
+    "domain": "redis.com",
+    "category": "tech",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": ["Redis Labs", "Redis Inc"]
+  },
+  {
+    "company_name": "Confluent",
+    "domain": "confluent.io",
+    "category": "tech",
+    "employees": 3500,
+    "confidence": 1.0,
+    "aliases": ["Confluent Inc", "CFLT"]
+  },
+  {
+    "company_name": "dbt Labs",
+    "domain": "getdbt.com",
+    "category": "tech",
+    "employees": 700,
+    "confidence": 1.0,
+    "aliases": ["dbt", "Fishtown Analytics"]
+  },
+  {
+    "company_name": "Fivetran",
+    "domain": "fivetran.com",
+    "category": "tech",
+    "employees": 1400,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Airbyte",
+    "domain": "airbyte.com",
+    "category": "tech",
+    "employees": 400,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Amplitude",
+    "domain": "amplitude.com",
+    "category": "tech",
+    "employees": 800,
+    "confidence": 1.0,
+    "aliases": ["Amplitude Inc", "AMPL"]
+  },
+  {
+    "company_name": "Mixpanel",
+    "domain": "mixpanel.com",
+    "category": "tech",
+    "employees": 600,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Segment",
+    "domain": "segment.com",
+    "category": "tech",
+    "employees": 600,
+    "confidence": 1.0,
+    "aliases": ["Segment.io", "Twilio Segment"]
+  },
+  {
+    "company_name": "Brex",
+    "domain": "brex.com",
+    "category": "finance",
+    "employees": 1100,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Ramp",
+    "domain": "ramp.com",
+    "category": "finance",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Plaid",
+    "domain": "plaid.com",
+    "category": "finance",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": ["Plaid Inc"]
+  },
+  {
+    "company_name": "Affirm",
+    "domain": "affirm.com",
+    "category": "finance",
+    "employees": 2400,
+    "confidence": 1.0,
+    "aliases": ["Affirm Holdings", "AFRM"]
+  },
+  {
+    "company_name": "Chime",
+    "domain": "chime.com",
+    "category": "finance",
+    "employees": 1400,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Rippling",
+    "domain": "rippling.com",
+    "category": "tech",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Gusto",
+    "domain": "gusto.com",
+    "category": "tech",
+    "employees": 2500,
+    "confidence": 1.0,
+    "aliases": ["Gusto Inc", "ZenPayroll"]
+  },
+  {
+    "company_name": "Lattice",
+    "domain": "lattice.com",
+    "category": "tech",
+    "employees": 500,
+    "confidence": 1.0,
+    "aliases": ["Lattice Inc"]
+  },
+  {
+    "company_name": "Greenhouse",
+    "domain": "greenhouse.io",
+    "category": "tech",
+    "employees": 700,
+    "confidence": 1.0,
+    "aliases": ["Greenhouse Software"]
+  },
+  {
+    "company_name": "Lever",
+    "domain": "lever.co",
+    "category": "tech",
+    "employees": 400,
+    "confidence": 1.0,
+    "aliases": ["Lever Inc"]
+  },
+  {
+    "company_name": "Workable",
+    "domain": "workable.com",
+    "category": "tech",
+    "employees": 500,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Linear",
+    "domain": "linear.app",
+    "category": "tech",
+    "employees": 80,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Vercel",
+    "domain": "vercel.com",
+    "category": "tech",
+    "employees": 500,
+    "confidence": 1.0,
+    "aliases": ["Vercel Inc", "ZEIT"]
+  },
+  {
+    "company_name": "Netlify",
+    "domain": "netlify.com",
+    "category": "tech",
+    "employees": 450,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Supabase",
+    "domain": "supabase.com",
+    "category": "tech",
+    "employees": 150,
+    "confidence": 1.0,
+    "aliases": ["Supabase Inc"]
+  },
+  {
+    "company_name": "PlanetScale",
+    "domain": "planetscale.com",
+    "category": "tech",
+    "employees": 200,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Railway",
+    "domain": "railway.app",
+    "category": "tech",
+    "employees": 50,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Retool",
+    "domain": "retool.com",
+    "category": "tech",
+    "employees": 400,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Scale AI",
+    "domain": "scale.com",
+    "category": "tech",
+    "employees": 700,
+    "confidence": 1.0,
+    "aliases": ["Scale", "Alexandr Wang"]
+  },
+  {
+    "company_name": "Cohere",
+    "domain": "cohere.com",
+    "category": "tech",
+    "employees": 400,
+    "confidence": 1.0,
+    "aliases": ["Cohere AI"]
+  },
+  {
+    "company_name": "Anthropic",
+    "domain": "anthropic.com",
+    "category": "tech",
+    "employees": 700,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "OpenAI",
+    "domain": "openai.com",
+    "category": "tech",
+    "employees": 1700,
+    "confidence": 1.0,
+    "aliases": ["Open AI"]
+  },
+  {
+    "company_name": "Mistral AI",
+    "domain": "mistral.ai",
+    "category": "tech",
+    "employees": 100,
+    "confidence": 1.0,
+    "aliases": ["Mistral"]
+  },
+  {
+    "company_name": "Hugging Face",
+    "domain": "huggingface.co",
+    "category": "tech",
+    "employees": 250,
+    "confidence": 1.0,
+    "aliases": ["HuggingFace", "Hugging Face Inc"]
+  },
+  {
+    "company_name": "Weights & Biases",
+    "domain": "wandb.ai",
+    "category": "tech",
+    "employees": 250,
+    "confidence": 1.0,
+    "aliases": ["wandb", "W&B", "Weights and Biases"]
+  },
+  {
+    "company_name": "GitHub",
+    "domain": "github.com",
+    "category": "tech",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": ["GitHub Inc"]
+  },
+  {
+    "company_name": "GitLab",
+    "domain": "gitlab.com",
+    "category": "tech",
+    "employees": 2400,
+    "confidence": 1.0,
+    "aliases": ["GitLab Inc", "GTLB"]
+  },
+  {
+    "company_name": "JetBrains",
+    "domain": "jetbrains.com",
+    "category": "tech",
+    "employees": 1500,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Postman",
+    "domain": "postman.com",
+    "category": "tech",
+    "employees": 700,
+    "confidence": 1.0,
+    "aliases": ["Postman Inc"]
+  },
+  {
+    "company_name": "Sentry",
+    "domain": "sentry.io",
+    "category": "tech",
+    "employees": 600,
+    "confidence": 1.0,
+    "aliases": ["Sentry Inc", "Functional Software"]
+  },
+  {
+    "company_name": "LaunchDarkly",
+    "domain": "launchdarkly.com",
+    "category": "tech",
+    "employees": 500,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "CircleCI",
+    "domain": "circleci.com",
+    "category": "tech",
+    "employees": 500,
+    "confidence": 1.0,
+    "aliases": ["CircleCI Inc"]
+  },
+  {
+    "company_name": "Harness",
+    "domain": "harness.io",
+    "category": "tech",
+    "employees": 700,
+    "confidence": 1.0,
+    "aliases": ["Harness Inc"]
+  },
+  {
+    "company_name": "Temporal",
+    "domain": "temporal.io",
+    "category": "tech",
+    "employees": 200,
+    "confidence": 1.0,
+    "aliases": ["Temporal Technologies"]
+  },
+  {
+    "company_name": "Grafana Labs",
+    "domain": "grafana.com",
+    "category": "tech",
+    "employees": 900,
+    "confidence": 1.0,
+    "aliases": ["Grafana", "Raintank"]
+  },
+  {
+    "company_name": "InfluxData",
+    "domain": "influxdata.com",
+    "category": "tech",
+    "employees": 300,
+    "confidence": 1.0,
+    "aliases": ["InfluxDB", "Influx"]
+  },
+  {
+    "company_name": "Clickhouse",
+    "domain": "clickhouse.com",
+    "category": "tech",
+    "employees": 400,
+    "confidence": 1.0,
+    "aliases": ["ClickHouse Inc"]
+  },
+  {
+    "company_name": "Neon",
+    "domain": "neon.tech",
+    "category": "tech",
+    "employees": 100,
+    "confidence": 1.0,
+    "aliases": ["Neon Inc", "Neon Database"]
+  },
+  {
+    "company_name": "Xero",
+    "domain": "xero.com",
+    "category": "tech",
+    "employees": 4500,
+    "confidence": 1.0,
+    "aliases": ["Xero Limited", "XRO"]
+  },
+  {
+    "company_name": "Intuit",
+    "domain": "intuit.com",
+    "category": "tech",
+    "employees": 18200,
+    "confidence": 1.0,
+    "aliases": ["Intuit Inc", "INTU", "TurboTax", "QuickBooks"]
+  },
+  {
+    "company_name": "Docusign",
+    "domain": "docusign.com",
+    "category": "tech",
+    "employees": 7300,
+    "confidence": 1.0,
+    "aliases": ["DocuSign", "DocuSign Inc", "DOCU"]
+  },
+  {
+    "company_name": "Box",
+    "domain": "box.com",
+    "category": "tech",
+    "employees": 2400,
+    "confidence": 1.0,
+    "aliases": ["Box Inc", "BOX"]
+  },
+  {
+    "company_name": "Okta",
+    "domain": "okta.com",
+    "category": "tech",
+    "employees": 6600,
+    "confidence": 1.0,
+    "aliases": ["Okta Inc", "OKTA"]
+  },
+  {
+    "company_name": "CrowdStrike",
+    "domain": "crowdstrike.com",
+    "category": "tech",
+    "employees": 7920,
+    "confidence": 1.0,
+    "aliases": ["CrowdStrike Holdings", "CRWD"]
+  },
+  {
+    "company_name": "Palo Alto Networks",
+    "domain": "paloaltonetworks.com",
+    "category": "tech",
+    "employees": 14000,
+    "confidence": 1.0,
+    "aliases": ["PANW", "Palo Alto"]
+  },
+  {
+    "company_name": "Zscaler",
+    "domain": "zscaler.com",
+    "category": "tech",
+    "employees": 7500,
+    "confidence": 1.0,
+    "aliases": ["Zscaler Inc", "ZS"]
+  },
+  {
+    "company_name": "Fortinet",
+    "domain": "fortinet.com",
+    "category": "tech",
+    "employees": 13000,
+    "confidence": 1.0,
+    "aliases": ["Fortinet Inc", "FTNT"]
+  },
+  {
+    "company_name": "Proofpoint",
+    "domain": "proofpoint.com",
+    "category": "tech",
+    "employees": 4000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Mimecast",
+    "domain": "mimecast.com",
+    "category": "tech",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Walmart",
+    "domain": "walmart.com",
+    "category": "retail",
+    "employees": 2300000,
+    "confidence": 1.0,
+    "aliases": ["Walmart Inc", "Wal-Mart", "WMT"]
+  },
+  {
+    "company_name": "Target",
+    "domain": "target.com",
+    "category": "retail",
+    "employees": 440000,
+    "confidence": 1.0,
+    "aliases": ["Target Corporation", "TGT"]
+  },
+  {
+    "company_name": "Costco",
+    "domain": "costco.com",
+    "category": "retail",
+    "employees": 316000,
+    "confidence": 1.0,
+    "aliases": ["Costco Wholesale", "COST"]
+  },
+  {
+    "company_name": "Home Depot",
+    "domain": "homedepot.com",
+    "category": "retail",
+    "employees": 500000,
+    "confidence": 1.0,
+    "aliases": ["The Home Depot", "HD"]
+  },
+  {
+    "company_name": "Lowe's",
+    "domain": "lowes.com",
+    "category": "retail",
+    "employees": 285000,
+    "confidence": 1.0,
+    "aliases": ["Lowes", "Lowe's Companies", "LOW"]
+  },
+  {
+    "company_name": "Best Buy",
+    "domain": "bestbuy.com",
+    "category": "retail",
+    "employees": 105000,
+    "confidence": 1.0,
+    "aliases": ["Best Buy Co", "BBY"]
+  },
+  {
+    "company_name": "eBay",
+    "domain": "ebay.com",
+    "category": "retail",
+    "employees": 11600,
+    "confidence": 1.0,
+    "aliases": ["eBay Inc", "EBAY"]
+  },
+  {
+    "company_name": "Etsy",
+    "domain": "etsy.com",
+    "category": "retail",
+    "employees": 2600,
+    "confidence": 1.0,
+    "aliases": ["Etsy Inc", "ETSY"]
+  },
+  {
+    "company_name": "Wayfair",
+    "domain": "wayfair.com",
+    "category": "retail",
+    "employees": 16400,
+    "confidence": 1.0,
+    "aliases": ["Wayfair Inc", "W"]
+  },
+  {
+    "company_name": "DoorDash",
+    "domain": "doordash.com",
+    "category": "tech",
+    "employees": 16000,
+    "confidence": 1.0,
+    "aliases": ["DoorDash Inc", "DASH"]
+  },
+  {
+    "company_name": "Instacart",
+    "domain": "instacart.com",
+    "category": "tech",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": ["Maplebear Inc", "CART"]
+  },
+  {
+    "company_name": "Grubhub",
+    "domain": "grubhub.com",
+    "category": "tech",
+    "employees": 2500,
+    "confidence": 1.0,
+    "aliases": ["GrubHub Inc"]
+  },
+  {
+    "company_name": "Johnson & Johnson",
+    "domain": "jnj.com",
+    "category": "healthcare",
+    "employees": 152700,
+    "confidence": 1.0,
+    "aliases": ["J&J", "JNJ", "Johnson and Johnson"]
+  },
+  {
+    "company_name": "Pfizer",
+    "domain": "pfizer.com",
+    "category": "healthcare",
+    "employees": 83000,
+    "confidence": 1.0,
+    "aliases": ["Pfizer Inc", "PFE"]
+  },
+  {
+    "company_name": "Moderna",
+    "domain": "modernatx.com",
+    "category": "healthcare",
+    "employees": 5400,
+    "confidence": 1.0,
+    "aliases": ["Moderna Inc", "MRNA"]
+  },
+  {
+    "company_name": "AstraZeneca",
+    "domain": "astrazeneca.com",
+    "category": "healthcare",
+    "employees": 83100,
+    "confidence": 1.0,
+    "aliases": ["AZN", "AstraZeneca PLC"]
+  },
+  {
+    "company_name": "Roche",
+    "domain": "roche.com",
+    "category": "healthcare",
+    "employees": 101465,
+    "confidence": 1.0,
+    "aliases": ["F. Hoffmann-La Roche", "Roche Holding", "ROG"]
+  },
+  {
+    "company_name": "Novartis",
+    "domain": "novartis.com",
+    "category": "healthcare",
+    "employees": 108000,
+    "confidence": 1.0,
+    "aliases": ["Novartis AG", "NVS"]
+  },
+  {
+    "company_name": "Merck",
+    "domain": "merck.com",
+    "category": "healthcare",
+    "employees": 68000,
+    "confidence": 1.0,
+    "aliases": ["Merck & Co", "MRK"]
+  },
+  {
+    "company_name": "Bristol Myers Squibb",
+    "domain": "bms.com",
+    "category": "healthcare",
+    "employees": 34300,
+    "confidence": 1.0,
+    "aliases": ["BMS", "Bristol-Myers Squibb", "BMY"]
+  },
+  {
+    "company_name": "Abbott Laboratories",
+    "domain": "abbott.com",
+    "category": "healthcare",
+    "employees": 113000,
+    "confidence": 1.0,
+    "aliases": ["Abbott", "ABT"]
+  },
+  {
+    "company_name": "Medtronic",
+    "domain": "medtronic.com",
+    "category": "healthcare",
+    "employees": 95000,
+    "confidence": 1.0,
+    "aliases": ["Medtronic PLC", "MDT"]
+  },
+  {
+    "company_name": "UnitedHealth Group",
+    "domain": "unitedhealthgroup.com",
+    "category": "healthcare",
+    "employees": 400000,
+    "confidence": 1.0,
+    "aliases": ["UnitedHealth", "United Health", "UNH"]
+  },
+  {
+    "company_name": "CVS Health",
+    "domain": "cvshealth.com",
+    "category": "healthcare",
+    "employees": 300000,
+    "confidence": 1.0,
+    "aliases": ["CVS", "CVS Pharmacy", "CVS Health Corporation", "CV"]
+  },
+  {
+    "company_name": "Anthem",
+    "domain": "anthem.com",
+    "category": "healthcare",
+    "employees": 98000,
+    "confidence": 1.0,
+    "aliases": ["Elevance Health", "WLP"]
+  },
+  {
+    "company_name": "Humana",
+    "domain": "humana.com",
+    "category": "healthcare",
+    "employees": 67800,
+    "confidence": 1.0,
+    "aliases": ["Humana Inc", "HUM"]
+  },
+  {
+    "company_name": "Epic Systems",
+    "domain": "epic.com",
+    "category": "healthcare",
+    "employees": 13000,
+    "confidence": 1.0,
+    "aliases": ["Epic", "Epic Systems Corporation"]
+  },
+  {
+    "company_name": "Toyota",
+    "domain": "toyota.com",
+    "category": "automotive",
+    "employees": 372817,
+    "confidence": 1.0,
+    "aliases": ["Toyota Motor", "Toyota Motor Corporation", "TM"]
+  },
+  {
+    "company_name": "Volkswagen",
+    "domain": "volkswagen.com",
+    "category": "automotive",
+    "employees": 668000,
+    "confidence": 1.0,
+    "aliases": ["VW", "Volkswagen AG", "Volkswagen Group"]
+  },
+  {
+    "company_name": "BMW",
+    "domain": "bmw.com",
+    "category": "automotive",
+    "employees": 149475,
+    "confidence": 1.0,
+    "aliases": ["Bayerische Motoren Werke", "BMW Group"]
+  },
+  {
+    "company_name": "Mercedes-Benz",
+    "domain": "mercedes-benz.com",
+    "category": "automotive",
+    "employees": 177000,
+    "confidence": 1.0,
+    "aliases": ["Mercedes", "Daimler", "Mercedes Benz", "MBG"]
+  },
+  {
+    "company_name": "Ford",
+    "domain": "ford.com",
+    "category": "automotive",
+    "employees": 177000,
+    "confidence": 1.0,
+    "aliases": ["Ford Motor", "Ford Motor Company", "F"]
+  },
+  {
+    "company_name": "General Motors",
+    "domain": "gm.com",
+    "category": "automotive",
+    "employees": 167000,
+    "confidence": 1.0,
+    "aliases": ["GM", "GM Corporation"]
+  },
+  {
+    "company_name": "Stellantis",
+    "domain": "stellantis.com",
+    "category": "automotive",
+    "employees": 300000,
+    "confidence": 1.0,
+    "aliases": ["Fiat Chrysler", "FCA", "Chrysler", "Jeep parent"]
+  },
+  {
+    "company_name": "Rivian",
+    "domain": "rivian.com",
+    "category": "automotive",
+    "employees": 15000,
+    "confidence": 1.0,
+    "aliases": ["Rivian Automotive", "RIVN"]
+  },
+  {
+    "company_name": "Lucid Motors",
+    "domain": "lucidmotors.com",
+    "category": "automotive",
+    "employees": 8000,
+    "confidence": 1.0,
+    "aliases": ["Lucid", "Lucid Group", "LCID"]
+  },
+  {
+    "company_name": "Waymo",
+    "domain": "waymo.com",
+    "category": "automotive",
+    "employees": 2500,
+    "confidence": 1.0,
+    "aliases": ["Waymo LLC", "Google Self-Driving Car"]
+  },
+  {
+    "company_name": "AT&T",
+    "domain": "att.com",
+    "category": "telecom",
+    "employees": 202900,
+    "confidence": 1.0,
+    "aliases": ["AT&T Inc", "T", "American Telephone and Telegraph"]
+  },
+  {
+    "company_name": "Verizon",
+    "domain": "verizon.com",
+    "category": "telecom",
+    "employees": 118400,
+    "confidence": 1.0,
+    "aliases": ["Verizon Communications", "VZ"]
+  },
+  {
+    "company_name": "T-Mobile",
+    "domain": "t-mobile.com",
+    "category": "telecom",
+    "employees": 75000,
+    "confidence": 1.0,
+    "aliases": ["TMobile", "T Mobile", "TMUS"]
+  },
+  {
+    "company_name": "Comcast",
+    "domain": "comcast.com",
+    "category": "telecom",
+    "employees": 186000,
+    "confidence": 1.0,
+    "aliases": ["Comcast Corporation", "CMCSA", "Xfinity"]
+  },
+  {
+    "company_name": "Charter Communications",
+    "domain": "charter.com",
+    "category": "telecom",
+    "employees": 101000,
+    "confidence": 1.0,
+    "aliases": ["Charter", "Spectrum", "CHTR"]
+  },
+  {
+    "company_name": "Vodafone",
+    "domain": "vodafone.com",
+    "category": "telecom",
+    "employees": 95000,
+    "confidence": 1.0,
+    "aliases": ["Vodafone Group", "VOD"]
+  },
+  {
+    "company_name": "Deutsche Telekom",
+    "domain": "telekom.com",
+    "category": "telecom",
+    "employees": 216000,
+    "confidence": 1.0,
+    "aliases": ["DT", "T-Systems", "DTEGY"]
+  },
+  {
+    "company_name": "Airtel",
+    "domain": "airtel.in",
+    "category": "telecom",
+    "employees": 19000,
+    "confidence": 1.0,
+    "aliases": ["Bharti Airtel", "Bharti Airtel Limited"]
+  },
+  {
+    "company_name": "Jio",
+    "domain": "jio.com",
+    "category": "telecom",
+    "employees": 30000,
+    "confidence": 1.0,
+    "aliases": ["Reliance Jio", "Reliance Jio Infocomm", "Jio Platforms"]
+  },
+  {
+    "company_name": "Disney",
+    "domain": "disney.com",
+    "category": "media",
+    "employees": 220000,
+    "confidence": 1.0,
+    "aliases": ["Walt Disney", "The Walt Disney Company", "DIS"]
+  },
+  {
+    "company_name": "Warner Bros",
+    "domain": "wbd.com",
+    "category": "media",
+    "employees": 36000,
+    "confidence": 1.0,
+    "aliases": ["Warner Brothers", "Warner Bros Discovery", "WBD", "HBO"]
+  },
+  {
+    "company_name": "Paramount",
+    "domain": "paramount.com",
+    "category": "media",
+    "employees": 22000,
+    "confidence": 1.0,
+    "aliases": ["Paramount Global", "PARA", "CBS", "Viacom"]
+  },
+  {
+    "company_name": "NBCUniversal",
+    "domain": "nbcuniversal.com",
+    "category": "media",
+    "employees": 35000,
+    "confidence": 1.0,
+    "aliases": ["NBC", "NBC Universal", "Peacock"]
+  },
+  {
+    "company_name": "Fox Corporation",
+    "domain": "fox.com",
+    "category": "media",
+    "employees": 10000,
+    "confidence": 1.0,
+    "aliases": ["Fox", "FOXA", "Fox Corp"]
+  },
+  {
+    "company_name": "News Corp",
+    "domain": "newscorp.com",
+    "category": "media",
+    "employees": 26000,
+    "confidence": 1.0,
+    "aliases": ["News Corporation", "NWS", "Wall Street Journal"]
+  },
+  {
+    "company_name": "New York Times",
+    "domain": "nytimes.com",
+    "category": "media",
+    "employees": 5800,
+    "confidence": 1.0,
+    "aliases": ["NYT", "The New York Times", "NYT Co"]
+  },
+  {
+    "company_name": "Bloomberg",
+    "domain": "bloomberg.net",
+    "category": "media",
+    "employees": 20000,
+    "confidence": 1.0,
+    "aliases": ["Bloomberg LP", "Bloomberg L.P."]
+  },
+  {
+    "company_name": "Reuters",
+    "domain": "thomsonreuters.com",
+    "category": "media",
+    "employees": 26500,
+    "confidence": 1.0,
+    "aliases": ["Thomson Reuters", "TRI"]
+  },
+  {
+    "company_name": "Sony",
+    "domain": "sony.com",
+    "category": "tech",
+    "employees": 109700,
+    "confidence": 1.0,
+    "aliases": ["Sony Corporation", "SONY"]
+  },
+  {
+    "company_name": "Samsung",
+    "domain": "samsung.com",
+    "category": "tech",
+    "employees": 270000,
+    "confidence": 1.0,
+    "aliases": ["Samsung Electronics", "Samsung Group"]
+  },
+  {
+    "company_name": "LG",
+    "domain": "lg.com",
+    "category": "tech",
+    "employees": 75000,
+    "confidence": 1.0,
+    "aliases": ["LG Electronics", "LG Corp", "Lucky-Goldstar"]
+  },
+  {
+    "company_name": "Huawei",
+    "domain": "huawei.com",
+    "category": "tech",
+    "employees": 207000,
+    "confidence": 1.0,
+    "aliases": ["Huawei Technologies"]
+  },
+  {
+    "company_name": "Lenovo",
+    "domain": "lenovo.com",
+    "category": "tech",
+    "employees": 77000,
+    "confidence": 1.0,
+    "aliases": ["Lenovo Group"]
+  },
+  {
+    "company_name": "Xiaomi",
+    "domain": "mi.com",
+    "category": "tech",
+    "employees": 35000,
+    "confidence": 1.0,
+    "aliases": ["Xiaomi Corporation", "1810"]
+  },
+  {
+    "company_name": "Alibaba",
+    "domain": "alibaba.com",
+    "category": "tech",
+    "employees": 235216,
+    "confidence": 1.0,
+    "aliases": ["Alibaba Group", "BABA", "Taobao", "Tmall", "Alipay"]
+  },
+  {
+    "company_name": "Tencent",
+    "domain": "tencent.com",
+    "category": "tech",
+    "employees": 107000,
+    "confidence": 1.0,
+    "aliases": ["Tencent Holdings", "700", "WeChat"]
+  },
+  {
+    "company_name": "Baidu",
+    "domain": "baidu.com",
+    "category": "tech",
+    "employees": 40000,
+    "confidence": 1.0,
+    "aliases": ["Baidu Inc", "BIDU"]
+  },
+  {
+    "company_name": "ByteDance",
+    "domain": "bytedance.com",
+    "category": "tech",
+    "employees": 110000,
+    "confidence": 1.0,
+    "aliases": ["TikTok", "ByteDance Ltd", "Douyin"]
+  },
+  {
+    "company_name": "Flipkart",
+    "domain": "flipkart.com",
+    "category": "retail",
+    "employees": 50000,
+    "confidence": 1.0,
+    "aliases": ["Flipkart Internet", "Flipkart India"]
+  },
+  {
+    "company_name": "Paytm",
+    "domain": "paytm.com",
+    "category": "finance",
+    "employees": 10000,
+    "confidence": 1.0,
+    "aliases": ["One97 Communications", "Paytm India"]
+  },
+  {
+    "company_name": "Ola",
+    "domain": "olacabs.com",
+    "category": "tech",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["Ola Cabs", "ANI Technologies"]
+  },
+  {
+    "company_name": "Zomato",
+    "domain": "zomato.com",
+    "category": "tech",
+    "employees": 6000,
+    "confidence": 1.0,
+    "aliases": ["Zomato Limited"]
+  },
+  {
+    "company_name": "Swiggy",
+    "domain": "swiggy.com",
+    "category": "tech",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["Bundl Technologies"]
+  },
+  {
+    "company_name": "Meesho",
+    "domain": "meesho.com",
+    "category": "retail",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": ["Fashnear Technologies"]
+  },
+  {
+    "company_name": "PhonePe",
+    "domain": "phonepe.com",
+    "category": "finance",
+    "employees": 4000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "CRED",
+    "domain": "cred.club",
+    "category": "finance",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": ["Dreamplug Technologies"]
+  },
+  {
+    "company_name": "Razorpay",
+    "domain": "razorpay.com",
+    "category": "finance",
+    "employees": 2800,
+    "confidence": 1.0,
+    "aliases": ["Razorpay Software"]
+  },
+  {
+    "company_name": "Zerodha",
+    "domain": "zerodha.com",
+    "category": "finance",
+    "employees": 1500,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Groww",
+    "domain": "groww.in",
+    "category": "finance",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": ["Nextbillion Technology"]
+  },
+  {
+    "company_name": "Freshdesk",
+    "domain": "freshdesk.com",
+    "category": "tech",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["Freshworks Freshdesk"]
+  },
+  {
+    "company_name": "BrowserStack",
+    "domain": "browserstack.com",
+    "category": "tech",
+    "employees": 1200,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Postman (India)",
+    "domain": "postman.com",
+    "category": "tech",
+    "employees": 700,
+    "confidence": 1.0,
+    "aliases": ["Postdot Technologies"]
+  },
+  {
+    "company_name": "Unacademy",
+    "domain": "unacademy.com",
+    "category": "tech",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Byju's",
+    "domain": "byjus.com",
+    "category": "tech",
+    "employees": 50000,
+    "confidence": 1.0,
+    "aliases": ["Byju", "Think and Learn", "BYJU'S"]
+  },
+  {
+    "company_name": "Nykaa",
+    "domain": "nykaa.com",
+    "category": "retail",
+    "employees": 4000,
+    "confidence": 1.0,
+    "aliases": ["FSN E-Commerce Ventures"]
+  },
+  {
+    "company_name": "Urban Company",
+    "domain": "urbancompany.com",
+    "category": "tech",
+    "employees": 2500,
+    "confidence": 1.0,
+    "aliases": ["UrbanClap"]
+  },
+  {
+    "company_name": "Lenskart",
+    "domain": "lenskart.com",
+    "category": "retail",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "ShareChat",
+    "domain": "sharechat.com",
+    "category": "tech",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": ["Mohalla Tech"]
+  },
+  {
+    "company_name": "Exxon Mobil",
+    "domain": "exxonmobil.com",
+    "category": "energy",
+    "employees": 62000,
+    "confidence": 1.0,
+    "aliases": ["ExxonMobil", "Exxon", "Mobil", "XOM"]
+  },
+  {
+    "company_name": "Chevron",
+    "domain": "chevron.com",
+    "category": "energy",
+    "employees": 43800,
+    "confidence": 1.0,
+    "aliases": ["Chevron Corporation", "CVX"]
+  },
+  {
+    "company_name": "Shell",
+    "domain": "shell.com",
+    "category": "energy",
+    "employees": 93000,
+    "confidence": 1.0,
+    "aliases": ["Shell plc", "Royal Dutch Shell", "SHEL"]
+  },
+  {
+    "company_name": "BP",
+    "domain": "bp.com",
+    "category": "energy",
+    "employees": 67600,
+    "confidence": 1.0,
+    "aliases": ["British Petroleum", "BP plc"]
+  },
+  {
+    "company_name": "TotalEnergies",
+    "domain": "totalenergies.com",
+    "category": "energy",
+    "employees": 105000,
+    "confidence": 1.0,
+    "aliases": ["Total", "Total SA", "TTE"]
+  },
+  {
+    "company_name": "NextEra Energy",
+    "domain": "nexteraenergy.com",
+    "category": "energy",
+    "employees": 16000,
+    "confidence": 1.0,
+    "aliases": ["NextEra", "NEE", "FPL Group"]
+  },
+  {
+    "company_name": "Boeing",
+    "domain": "boeing.com",
+    "category": "aerospace",
+    "employees": 156000,
+    "confidence": 1.0,
+    "aliases": ["The Boeing Company", "BA"]
+  },
+  {
+    "company_name": "Lockheed Martin",
+    "domain": "lockheedmartin.com",
+    "category": "aerospace",
+    "employees": 116000,
+    "confidence": 1.0,
+    "aliases": ["Lockheed", "LMT"]
+  },
+  {
+    "company_name": "Raytheon",
+    "domain": "rtx.com",
+    "category": "aerospace",
+    "employees": 185000,
+    "confidence": 1.0,
+    "aliases": ["RTX", "Raytheon Technologies", "Collins Aerospace", "Pratt & Whitney"]
+  },
+  {
+    "company_name": "Northrop Grumman",
+    "domain": "northropgrumman.com",
+    "category": "aerospace",
+    "employees": 95000,
+    "confidence": 1.0,
+    "aliases": ["Northrop", "NOC"]
+  },
+  {
+    "company_name": "General Dynamics",
+    "domain": "gd.com",
+    "category": "aerospace",
+    "employees": 106500,
+    "confidence": 1.0,
+    "aliases": ["GD", "General Dynamics Corporation"]
+  },
+  {
+    "company_name": "SpaceX",
+    "domain": "spacex.com",
+    "category": "aerospace",
+    "employees": 13000,
+    "confidence": 1.0,
+    "aliases": ["Space Exploration Technologies", "Starlink"]
+  },
+  {
+    "company_name": "Blue Origin",
+    "domain": "blueorigin.com",
+    "category": "aerospace",
+    "employees": 10000,
+    "confidence": 1.0,
+    "aliases": ["Blue Origin LLC"]
+  },
+  {
+    "company_name": "Caterpillar",
+    "domain": "cat.com",
+    "category": "manufacturing",
+    "employees": 109600,
+    "confidence": 1.0,
+    "aliases": ["Caterpillar Inc", "CAT"]
+  },
+  {
+    "company_name": "Honeywell",
+    "domain": "honeywell.com",
+    "category": "manufacturing",
+    "employees": 96000,
+    "confidence": 1.0,
+    "aliases": ["Honeywell International", "HON"]
+  },
+  {
+    "company_name": "General Electric",
+    "domain": "ge.com",
+    "category": "manufacturing",
+    "employees": 125000,
+    "confidence": 1.0,
+    "aliases": ["GE", "GE Aerospace", "GE Vernova", "GE HealthCare"]
+  },
+  {
+    "company_name": "3M",
+    "domain": "3m.com",
+    "category": "manufacturing",
+    "employees": 80000,
+    "confidence": 1.0,
+    "aliases": ["Minnesota Mining and Manufacturing", "MMM"]
+  },
+  {
+    "company_name": "Siemens",
+    "domain": "siemens.com",
+    "category": "manufacturing",
+    "employees": 311000,
+    "confidence": 1.0,
+    "aliases": ["Siemens AG", "SIE"]
+  },
+  {
+    "company_name": "ABB",
+    "domain": "abb.com",
+    "category": "manufacturing",
+    "employees": 105000,
+    "confidence": 1.0,
+    "aliases": ["ABB Ltd", "ABBN"]
+  },
+  {
+    "company_name": "Rolls-Royce",
+    "domain": "rolls-royce.com",
+    "category": "manufacturing",
+    "employees": 42000,
+    "confidence": 1.0,
+    "aliases": ["Rolls Royce", "Rolls-Royce Holdings", "RR"]
+  },
+  {
+    "company_name": "Procter & Gamble",
+    "domain": "pg.com",
+    "category": "consumer",
+    "employees": 107000,
+    "confidence": 1.0,
+    "aliases": ["P&G", "PG", "Procter and Gamble"]
+  },
+  {
+    "company_name": "Unilever",
+    "domain": "unilever.com",
+    "category": "consumer",
+    "employees": 149000,
+    "confidence": 1.0,
+    "aliases": ["Unilever PLC", "UL"]
+  },
+  {
+    "company_name": "Nestlé",
+    "domain": "nestle.com",
+    "category": "consumer",
+    "employees": 275000,
+    "confidence": 1.0,
+    "aliases": ["Nestle", "Nestle SA", "NSRGY"]
+  },
+  {
+    "company_name": "Coca-Cola",
+    "domain": "coca-cola.com",
+    "category": "consumer",
+    "employees": 86200,
+    "confidence": 1.0,
+    "aliases": ["Coca Cola", "The Coca-Cola Company", "KO"]
+  },
+  {
+    "company_name": "PepsiCo",
+    "domain": "pepsico.com",
+    "category": "consumer",
+    "employees": 318000,
+    "confidence": 1.0,
+    "aliases": ["Pepsi", "PEP"]
+  },
+  {
+    "company_name": "Nike",
+    "domain": "nike.com",
+    "category": "consumer",
+    "employees": 79000,
+    "confidence": 1.0,
+    "aliases": ["Nike Inc", "NKE"]
+  },
+  {
+    "company_name": "Adidas",
+    "domain": "adidas.com",
+    "category": "consumer",
+    "employees": 59000,
+    "confidence": 1.0,
+    "aliases": ["Adidas AG", "ADS"]
+  },
+  {
+    "company_name": "LVMH",
+    "domain": "lvmh.com",
+    "category": "consumer",
+    "employees": 196000,
+    "confidence": 1.0,
+    "aliases": ["Louis Vuitton", "Moët Hennessy", "Moet Hennessy"]
+  },
+  {
+    "company_name": "Airbus",
+    "domain": "airbus.com",
+    "category": "aerospace",
+    "employees": 135000,
+    "confidence": 1.0,
+    "aliases": ["Airbus SE", "AIR"]
+  },
+  {
+    "company_name": "Stripe Atlas",
+    "domain": "stripe.com",
+    "category": "finance",
+    "employees": 8000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Twitch",
+    "domain": "twitch.tv",
+    "category": "media",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["Twitch Interactive"]
+  },
+  {
+    "company_name": "Reddit",
+    "domain": "reddit.com",
+    "category": "media",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": ["Reddit Inc", "RDDT"]
+  },
+  {
+    "company_name": "Pinterest",
+    "domain": "pinterest.com",
+    "category": "media",
+    "employees": 3300,
+    "confidence": 1.0,
+    "aliases": ["Pinterest Inc", "PINS"]
+  },
+  {
+    "company_name": "Snapchat",
+    "domain": "snap.com",
+    "category": "media",
+    "employees": 5600,
+    "confidence": 1.0,
+    "aliases": ["Snap", "Snap Inc", "SNAP"]
+  },
+  {
+    "company_name": "LinkedIn",
+    "domain": "linkedin.com",
+    "category": "tech",
+    "employees": 20000,
+    "confidence": 1.0,
+    "aliases": ["LinkedIn Corporation"]
+  },
+  {
+    "company_name": "Twitter",
+    "domain": "x.com",
+    "category": "media",
+    "employees": 1500,
+    "confidence": 1.0,
+    "aliases": ["X", "X Corp", "X.com"]
+  },
+  {
+    "company_name": "Discord",
+    "domain": "discord.com",
+    "category": "tech",
+    "employees": 600,
+    "confidence": 1.0,
+    "aliases": ["Discord Inc"]
+  },
+  {
+    "company_name": "Roblox",
+    "domain": "roblox.com",
+    "category": "tech",
+    "employees": 2900,
+    "confidence": 1.0,
+    "aliases": ["Roblox Corporation", "RBLX"]
+  },
+  {
+    "company_name": "Unity Technologies",
+    "domain": "unity.com",
+    "category": "tech",
+    "employees": 7000,
+    "confidence": 1.0,
+    "aliases": ["Unity", "U"]
+  },
+  {
+    "company_name": "Epic Games",
+    "domain": "epicgames.com",
+    "category": "tech",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["Epic", "Fortnite"]
+  },
+  {
+    "company_name": "Electronic Arts",
+    "domain": "ea.com",
+    "category": "tech",
+    "employees": 9800,
+    "confidence": 1.0,
+    "aliases": ["EA", "EA Games"]
+  },
+  {
+    "company_name": "Activision Blizzard",
+    "domain": "activisionblizzard.com",
+    "category": "tech",
+    "employees": 17000,
+    "confidence": 1.0,
+    "aliases": ["Activision", "Blizzard", "ATVI", "Call of Duty"]
+  },
+  {
+    "company_name": "Riot Games",
+    "domain": "riotgames.com",
+    "category": "tech",
+    "employees": 4500,
+    "confidence": 1.0,
+    "aliases": ["Riot", "League of Legends"]
+  },
+  {
+    "company_name": "Ubisoft",
+    "domain": "ubisoft.com",
+    "category": "tech",
+    "employees": 21000,
+    "confidence": 1.0,
+    "aliases": ["Ubisoft Entertainment", "UBI"]
+  },
+  {
+    "company_name": "Valve",
+    "domain": "valvesoftware.com",
+    "category": "tech",
+    "employees": 360,
+    "confidence": 1.0,
+    "aliases": ["Valve Corporation", "Steam"]
+  },
+  {
+    "company_name": "PTC Inc",
+    "domain": "ptc.com",
+    "category": "tech",
+    "employees": 7000,
+    "confidence": 1.0,
+    "aliases": ["PTC", "Parametric Technology"]
+  },
+  {
+    "company_name": "Autodesk",
+    "domain": "autodesk.com",
+    "category": "tech",
+    "employees": 14000,
+    "confidence": 1.0,
+    "aliases": ["Autodesk Inc", "ADSK", "AutoCAD"]
+  },
+  {
+    "company_name": "Ansys",
+    "domain": "ansys.com",
+    "category": "tech",
+    "employees": 6200,
+    "confidence": 1.0,
+    "aliases": ["ANSYS Inc", "ANSS"]
+  },
+  {
+    "company_name": "Zenvia",
+    "domain": "zenvia.com",
+    "category": "tech",
+    "employees": 600,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Nuvei",
+    "domain": "nuvei.com",
+    "category": "finance",
+    "employees": 1800,
+    "confidence": 1.0,
+    "aliases": ["Nuvei Corporation", "NVEI"]
+  },
+  {
+    "company_name": "Adyen",
+    "domain": "adyen.com",
+    "category": "finance",
+    "employees": 4000,
+    "confidence": 1.0,
+    "aliases": ["Adyen NV", "ADYEN"]
+  },
+  {
+    "company_name": "Checkout.com",
+    "domain": "checkout.com",
+    "category": "finance",
+    "employees": 1800,
+    "confidence": 1.0,
+    "aliases": ["Checkout", "CKO"]
+  },
+  {
+    "company_name": "Klarna",
+    "domain": "klarna.com",
+    "category": "finance",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["Klarna Bank"]
+  },
+  {
+    "company_name": "Revolut",
+    "domain": "revolut.com",
+    "category": "finance",
+    "employees": 8000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Monzo",
+    "domain": "monzo.com",
+    "category": "finance",
+    "employees": 2500,
+    "confidence": 1.0,
+    "aliases": ["Monzo Bank"]
+  },
+  {
+    "company_name": "Nubank",
+    "domain": "nubank.com.br",
+    "category": "finance",
+    "employees": 8000,
+    "confidence": 1.0,
+    "aliases": ["Nu Holdings", "NU"]
+  },
+  {
+    "company_name": "N26",
+    "domain": "n26.com",
+    "category": "finance",
+    "employees": 1500,
+    "confidence": 1.0,
+    "aliases": ["Number26"]
+  },
+  {
+    "company_name": "Starling Bank",
+    "domain": "starlingbank.com",
+    "category": "finance",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": ["Starling"]
+  },
+  {
+    "company_name": "Wise",
+    "domain": "wise.com",
+    "category": "finance",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["TransferWise", "WISE"]
+  },
+  {
+    "company_name": "eToro",
+    "domain": "etoro.com",
+    "category": "finance",
+    "employees": 1500,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Wealthsimple",
+    "domain": "wealthsimple.com",
+    "category": "finance",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Acquia",
+    "domain": "acquia.com",
+    "category": "tech",
+    "employees": 1200,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Contentful",
+    "domain": "contentful.com",
+    "category": "tech",
+    "employees": 800,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Sanity",
+    "domain": "sanity.io",
+    "category": "tech",
+    "employees": 200,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Contentstack",
+    "domain": "contentstack.com",
+    "category": "tech",
+    "employees": 500,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Stytch",
+    "domain": "stytch.com",
+    "category": "tech",
+    "employees": 100,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Auth0",
+    "domain": "auth0.com",
+    "category": "tech",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": ["Auth0 Inc"]
+  },
+  {
+    "company_name": "Clerk",
+    "domain": "clerk.com",
+    "category": "tech",
+    "employees": 100,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "1Password",
+    "domain": "1password.com",
+    "category": "tech",
+    "employees": 600,
+    "confidence": 1.0,
+    "aliases": ["AgileBits", "1Password Inc"]
+  },
+  {
+    "company_name": "LastPass",
+    "domain": "lastpass.com",
+    "category": "tech",
+    "employees": 400,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Bitwarden",
+    "domain": "bitwarden.com",
+    "category": "tech",
+    "employees": 150,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Sendgrid",
+    "domain": "sendgrid.com",
+    "category": "tech",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": ["SendGrid", "Twilio SendGrid"]
+  },
+  {
+    "company_name": "Mailchimp",
+    "domain": "mailchimp.com",
+    "category": "tech",
+    "employees": 1600,
+    "confidence": 1.0,
+    "aliases": ["The Rocket Science Group"]
+  },
+  {
+    "company_name": "Klaviyo",
+    "domain": "klaviyo.com",
+    "category": "tech",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": ["Klaviyo Inc", "KVYO"]
+  },
+  {
+    "company_name": "ActiveCampaign",
+    "domain": "activecampaign.com",
+    "category": "tech",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Constantcontact",
+    "domain": "constantcontact.com",
+    "category": "tech",
+    "employees": 800,
+    "confidence": 1.0,
+    "aliases": ["Constant Contact", "CC"]
+  },
+  {
+    "company_name": "Typeform",
+    "domain": "typeform.com",
+    "category": "tech",
+    "employees": 600,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "SurveyMonkey",
+    "domain": "surveymonkey.com",
+    "category": "tech",
+    "employees": 1400,
+    "confidence": 1.0,
+    "aliases": ["Momentive", "MNTV"]
+  },
+  {
+    "company_name": "Zapier",
+    "domain": "zapier.com",
+    "category": "tech",
+    "employees": 800,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Make",
+    "domain": "make.com",
+    "category": "tech",
+    "employees": 300,
+    "confidence": 1.0,
+    "aliases": ["Integromat", "Celonis"]
+  },
+  {
+    "company_name": "n8n",
+    "domain": "n8n.io",
+    "category": "tech",
+    "employees": 200,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Pipedream",
+    "domain": "pipedream.com",
+    "category": "tech",
+    "employees": 50,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Tally",
+    "domain": "tally.so",
+    "category": "tech",
+    "employees": 20,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Cal.com",
+    "domain": "cal.com",
+    "category": "tech",
+    "employees": 30,
+    "confidence": 1.0,
+    "aliases": ["Calendso"]
+  },
+  {
+    "company_name": "Calendly",
+    "domain": "calendly.com",
+    "category": "tech",
+    "employees": 700,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Loom",
+    "domain": "loom.com",
+    "category": "tech",
+    "employees": 500,
+    "confidence": 1.0,
+    "aliases": ["Loom Inc"]
+  },
+  {
+    "company_name": "Miro",
+    "domain": "miro.com",
+    "category": "tech",
+    "employees": 1600,
+    "confidence": 1.0,
+    "aliases": ["RealtimeBoard"]
+  },
+  {
+    "company_name": "Lucidchart",
+    "domain": "lucidchart.com",
+    "category": "tech",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": ["Lucid Software"]
+  },
+  {
+    "company_name": "Whimsical",
+    "domain": "whimsical.com",
+    "category": "tech",
+    "employees": 50,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Jira",
+    "domain": "atlassian.com",
+    "category": "tech",
+    "employees": 12000,
+    "confidence": 1.0,
+    "aliases": ["Atlassian Jira"]
+  },
+  {
+    "company_name": "Basecamp",
+    "domain": "basecamp.com",
+    "category": "tech",
+    "employees": 80,
+    "confidence": 1.0,
+    "aliases": ["37signals"]
+  },
+  {
+    "company_name": "ClickUp",
+    "domain": "clickup.com",
+    "category": "tech",
+    "employees": 900,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Todoist",
+    "domain": "todoist.com",
+    "category": "tech",
+    "employees": 100,
+    "confidence": 1.0,
+    "aliases": ["Doist"]
+  },
+  {
+    "company_name": "Evernote",
+    "domain": "evernote.com",
+    "category": "tech",
+    "employees": 300,
+    "confidence": 1.0,
+    "aliases": ["Evernote Corporation"]
+  },
+  {
+    "company_name": "Bear",
+    "domain": "bear.app",
+    "category": "tech",
+    "employees": 20,
+    "confidence": 1.0,
+    "aliases": ["Shiny Frog"]
+  },
+  {
+    "company_name": "Obsidian",
+    "domain": "obsidian.md",
+    "category": "tech",
+    "employees": 10,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Roam Research",
+    "domain": "roamresearch.com",
+    "category": "tech",
+    "employees": 10,
+    "confidence": 1.0,
+    "aliases": ["Roam"]
+  },
+  {
+    "company_name": "Coda",
+    "domain": "coda.io",
+    "category": "tech",
+    "employees": 200,
+    "confidence": 1.0,
+    "aliases": ["Coda HQ"]
+  },
+  {
+    "company_name": "Craft",
+    "domain": "craft.do",
+    "category": "tech",
+    "employees": 50,
+    "confidence": 1.0,
+    "aliases": ["Craft Docs"]
+  },
+  {
+    "company_name": "AngelList",
+    "domain": "angellist.com",
+    "category": "finance",
+    "employees": 400,
+    "confidence": 1.0,
+    "aliases": ["AngelList Venture", "Wellfound"]
+  },
+  {
+    "company_name": "Sequoia Capital",
+    "domain": "sequoiacap.com",
+    "category": "finance",
+    "employees": 200,
+    "confidence": 1.0,
+    "aliases": ["Sequoia", "Sequoia Capital Operations"]
+  },
+  {
+    "company_name": "Andreessen Horowitz",
+    "domain": "a16z.com",
+    "category": "finance",
+    "employees": 300,
+    "confidence": 1.0,
+    "aliases": ["a16z", "A16Z"]
+  },
+  {
+    "company_name": "Y Combinator",
+    "domain": "ycombinator.com",
+    "category": "finance",
+    "employees": 100,
+    "confidence": 1.0,
+    "aliases": ["YC", "YCombinator"]
+  },
+  {
+    "company_name": "Accel",
+    "domain": "accel.com",
+    "category": "finance",
+    "employees": 150,
+    "confidence": 1.0,
+    "aliases": ["Accel Partners"]
+  },
+  {
+    "company_name": "Benchmark",
+    "domain": "benchmark.com",
+    "category": "finance",
+    "employees": 50,
+    "confidence": 1.0,
+    "aliases": ["Benchmark Capital"]
+  },
+  {
+    "company_name": "Bessemer Venture Partners",
+    "domain": "bvp.com",
+    "category": "finance",
+    "employees": 100,
+    "confidence": 1.0,
+    "aliases": ["BVP", "Bessemer"]
+  },
+  {
+    "company_name": "General Catalyst",
+    "domain": "generalcatalyst.com",
+    "category": "finance",
+    "employees": 100,
+    "confidence": 1.0,
+    "aliases": ["GC", "General Catalyst Partners"]
+  },
+  {
+    "company_name": "SoftBank",
+    "domain": "softbank.com",
+    "category": "finance",
+    "employees": 50000,
+    "confidence": 1.0,
+    "aliases": ["SoftBank Group", "9984"]
+  },
+  {
+    "company_name": "Tiger Global",
+    "domain": "tigerglobal.com",
+    "category": "finance",
+    "employees": 200,
+    "confidence": 1.0,
+    "aliases": ["Tiger Global Management"]
+  },
+  {
+    "company_name": "Thoma Bravo",
+    "domain": "thomabravo.com",
+    "category": "finance",
+    "employees": 150,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Vista Equity Partners",
+    "domain": "vistaequitypartners.com",
+    "category": "finance",
+    "employees": 500,
+    "confidence": 1.0,
+    "aliases": ["Vista Equity", "Vista"]
+  },
+  {
+    "company_name": "KKR",
+    "domain": "kkr.com",
+    "category": "finance",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": ["Kohlberg Kravis Roberts", "KKR & Co"]
+  },
+  {
+    "company_name": "Blackstone",
+    "domain": "blackstone.com",
+    "category": "finance",
+    "employees": 12600,
+    "confidence": 1.0,
+    "aliases": ["The Blackstone Group", "BX"]
+  },
+  {
+    "company_name": "Apollo Global Management",
+    "domain": "apollo.com",
+    "category": "finance",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["Apollo", "APO"]
+  },
+  {
+    "company_name": "Carlyle Group",
+    "domain": "carlyle.com",
+    "category": "finance",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": ["The Carlyle Group", "CG"]
+  },
+  {
+    "company_name": "Bridgewater Associates",
+    "domain": "bwater.com",
+    "category": "finance",
+    "employees": 1700,
+    "confidence": 1.0,
+    "aliases": ["Bridgewater"]
+  },
+  {
+    "company_name": "Renaissance Technologies",
+    "domain": "rentec.com",
+    "category": "finance",
+    "employees": 400,
+    "confidence": 1.0,
+    "aliases": ["RenTec", "Renaissance", "Medallion Fund"]
+  },
+  {
+    "company_name": "Two Sigma",
+    "domain": "twosigma.com",
+    "category": "finance",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": ["Two Sigma Investments"]
+  },
+  {
+    "company_name": "Citadel",
+    "domain": "citadel.com",
+    "category": "finance",
+    "employees": 3500,
+    "confidence": 1.0,
+    "aliases": ["Citadel LLC", "Citadel Securities"]
+  },
+  {
+    "company_name": "Jane Street",
+    "domain": "janestreet.com",
+    "category": "finance",
+    "employees": 2800,
+    "confidence": 1.0,
+    "aliases": ["Jane Street Capital"]
+  },
+  {
+    "company_name": "Hudson River Trading",
+    "domain": "hudson-trading.com",
+    "category": "finance",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": ["HRT", "Hudson River Trading LLC"]
+  },
+  {
+    "company_name": "Jump Trading",
+    "domain": "jumptrading.com",
+    "category": "finance",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "DRW",
+    "domain": "drw.com",
+    "category": "finance",
+    "employees": 1500,
+    "confidence": 1.0,
+    "aliases": ["DRW Holdings"]
+  },
+  {
+    "company_name": "Virtu Financial",
+    "domain": "virtu.com",
+    "category": "finance",
+    "employees": 600,
+    "confidence": 1.0,
+    "aliases": ["Virtu", "VIRT"]
+  },
+  {
+    "company_name": "DTCC",
+    "domain": "dtcc.com",
+    "category": "finance",
+    "employees": 4500,
+    "confidence": 1.0,
+    "aliases": ["Depository Trust & Clearing Corporation"]
+  },
+  {
+    "company_name": "SWIFT",
+    "domain": "swift.com",
+    "category": "finance",
+    "employees": 3800,
+    "confidence": 1.0,
+    "aliases": ["Society for Worldwide Interbank Financial Telecommunication"]
+  },
+  {
+    "company_name": "State Street",
+    "domain": "statestreet.com",
+    "category": "finance",
+    "employees": 47000,
+    "confidence": 1.0,
+    "aliases": ["State Street Corporation", "STT"]
+  },
+  {
+    "company_name": "BNY Mellon",
+    "domain": "bnymellon.com",
+    "category": "finance",
+    "employees": 52800,
+    "confidence": 1.0,
+    "aliases": ["Bank of New York Mellon", "BK"]
+  },
+  {
+    "company_name": "Northern Trust",
+    "domain": "northerntrust.com",
+    "category": "finance",
+    "employees": 22500,
+    "confidence": 1.0,
+    "aliases": ["NTRS"]
+  },
+  {
+    "company_name": "Invesco",
+    "domain": "invesco.com",
+    "category": "finance",
+    "employees": 8500,
+    "confidence": 1.0,
+    "aliases": ["IVZ"]
+  },
+  {
+    "company_name": "T. Rowe Price",
+    "domain": "troweprice.com",
+    "category": "finance",
+    "employees": 7700,
+    "confidence": 1.0,
+    "aliases": ["TROW", "T Rowe Price"]
+  },
+  {
+    "company_name": "Franklin Templeton",
+    "domain": "franklintempleton.com",
+    "category": "finance",
+    "employees": 13000,
+    "confidence": 1.0,
+    "aliases": ["Franklin Resources", "BEN"]
+  },
+  {
+    "company_name": "Netsuite",
+    "domain": "netsuite.com",
+    "category": "tech",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["NetSuite Inc", "Oracle NetSuite"]
+  },
+  {
+    "company_name": "Veeva Systems",
+    "domain": "veeva.com",
+    "category": "tech",
+    "employees": 7000,
+    "confidence": 1.0,
+    "aliases": ["Veeva", "VEEV"]
+  },
+  {
+    "company_name": "Informatica",
+    "domain": "informatica.com",
+    "category": "tech",
+    "employees": 5000,
+    "confidence": 1.0,
+    "aliases": ["Informatica Inc", "INFA"]
+  },
+  {
+    "company_name": "Talend",
+    "domain": "talend.com",
+    "category": "tech",
+    "employees": 1500,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "MuleSoft",
+    "domain": "mulesoft.com",
+    "category": "tech",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": ["Mulesoft Inc"]
+  },
+  {
+    "company_name": "Boomi",
+    "domain": "boomi.com",
+    "category": "tech",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": ["Dell Boomi"]
+  },
+  {
+    "company_name": "Celonis",
+    "domain": "celonis.com",
+    "category": "tech",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "UiPath",
+    "domain": "uipath.com",
+    "category": "tech",
+    "employees": 4000,
+    "confidence": 1.0,
+    "aliases": ["UiPath Inc", "PATH"]
+  },
+  {
+    "company_name": "Automation Anywhere",
+    "domain": "automationanywhere.com",
+    "category": "tech",
+    "employees": 4000,
+    "confidence": 1.0,
+    "aliases": ["Automation Anywhere Inc"]
+  },
+  {
+    "company_name": "Blue Prism",
+    "domain": "blueprism.com",
+    "category": "tech",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Pegasystems",
+    "domain": "pega.com",
+    "category": "tech",
+    "employees": 6000,
+    "confidence": 1.0,
+    "aliases": ["Pega", "PEGA"]
+  },
+  {
+    "company_name": "Appian",
+    "domain": "appian.com",
+    "category": "tech",
+    "employees": 1800,
+    "confidence": 1.0,
+    "aliases": ["Appian Corporation", "APPN"]
+  },
+  {
+    "company_name": "OutSystems",
+    "domain": "outsystems.com",
+    "category": "tech",
+    "employees": 2000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Mendix",
+    "domain": "mendix.com",
+    "category": "tech",
+    "employees": 1000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Temenos",
+    "domain": "temenos.com",
+    "category": "finance",
+    "employees": 7500,
+    "confidence": 1.0,
+    "aliases": ["TEMN"]
+  },
+  {
+    "company_name": "FIS",
+    "domain": "fisglobal.com",
+    "category": "finance",
+    "employees": 65000,
+    "confidence": 1.0,
+    "aliases": ["Fidelity National Information Services", "FIS Global"]
+  },
+  {
+    "company_name": "Fiserv",
+    "domain": "fiserv.com",
+    "category": "finance",
+    "employees": 40000,
+    "confidence": 1.0,
+    "aliases": ["FISV", "First Data"]
+  },
+  {
+    "company_name": "NCR",
+    "domain": "ncr.com",
+    "category": "tech",
+    "employees": 35000,
+    "confidence": 1.0,
+    "aliases": ["NCR Corporation", "NCR Voyix"]
+  },
+  {
+    "company_name": "Verifone",
+    "domain": "verifone.com",
+    "category": "tech",
+    "employees": 6000,
+    "confidence": 1.0,
+    "aliases": []
+  },
+  {
+    "company_name": "Toast",
+    "domain": "toasttab.com",
+    "category": "tech",
+    "employees": 6000,
+    "confidence": 1.0,
+    "aliases": ["Toast Inc", "TOST"]
+  },
+  {
+    "company_name": "Lightspeed",
+    "domain": "lightspeedhq.com",
+    "category": "tech",
+    "employees": 3000,
+    "confidence": 1.0,
+    "aliases": ["Lightspeed Commerce", "LSPD"]
+  },
+  {
+    "company_name": "Square (Payments)",
+    "domain": "squareup.com",
+    "category": "finance",
+    "employees": 12000,
+    "confidence": 1.0,
+    "aliases": ["Square Payments", "squareup"]
+  }
+]

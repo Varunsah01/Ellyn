@@ -82,6 +82,13 @@ const PRO_PRICING_BY_REGION = {
   },
 } as const;
 
+/**
+ * Normalize pricing region.
+ * @param {unknown} region - Region input.
+ * @returns {PricingRegion} Computed PricingRegion.
+ * @example
+ * normalizePricingRegion({})
+ */
 export function normalizePricingRegion(region: unknown): PricingRegion {
   if (region === PRICING_REGION.IN) {
     return PRICING_REGION.IN;
@@ -90,6 +97,13 @@ export function normalizePricingRegion(region: unknown): PricingRegion {
   return DEFAULT_PRICING_REGION;
 }
 
+/**
+ * Resolve pricing region from country.
+ * @param {string | null} countryCode - Country code input.
+ * @returns {PricingRegion} Computed PricingRegion.
+ * @example
+ * resolvePricingRegionFromCountry('countryCode')
+ */
 export function resolvePricingRegionFromCountry(
   countryCode?: string | null,
 ): PricingRegion {
@@ -101,10 +115,25 @@ export function resolvePricingRegionFromCountry(
   return DEFAULT_PRICING_REGION;
 }
 
+/**
+ * Get free display price.
+ * @param {PricingRegion} region - Region input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * getFreeDisplayPrice({})
+ */
 export function getFreeDisplayPrice(region: PricingRegion) {
   return FREE_PRICING_BY_REGION[region];
 }
 
+/**
+ * Get pro display price.
+ * @param {PricingRegion} region - Region input.
+ * @param {BillingCycle} billingCycle - Billing cycle input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * getProDisplayPrice({}, {})
+ */
 export function getProDisplayPrice(
   region: PricingRegion,
   billingCycle: BillingCycle,
@@ -112,10 +141,24 @@ export function getProDisplayPrice(
   return PRO_PRICING_BY_REGION[region][billingCycle];
 }
 
+/**
+ * Get yearly savings label.
+ * @param {PricingRegion} region - Region input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * getYearlySavingsLabel({})
+ */
 export function getYearlySavingsLabel(region: PricingRegion) {
   return PRO_PRICING_BY_REGION[region].yearly.savingsLabel;
 }
 
+/**
+ * Get pricing region display label.
+ * @param {PricingRegion} region - Region input.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * getPricingRegionDisplayLabel({})
+ */
 export function getPricingRegionDisplayLabel(region: PricingRegion) {
   if (region === PRICING_REGION.IN) {
     return "India";

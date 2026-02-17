@@ -8,6 +8,12 @@ function requirePublicEnv(name: string): string {
   return value
 }
 
+/**
+ * Create client.
+ * @returns {unknown} Computed unknown.
+ * @example
+ * createClient()
+ */
 export function createClient() {
   return createBrowserClient(
     requirePublicEnv('NEXT_PUBLIC_SUPABASE_URL'),

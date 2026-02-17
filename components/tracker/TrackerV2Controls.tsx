@@ -2,11 +2,11 @@
 
 import { useMemo } from "react";
 import { Filter, LayoutGrid, ListFilter, Rows3, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Label } from "@/components/ui/Label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/Popover";
 import {
   Sheet,
   SheetContent,
@@ -14,14 +14,14 @@ import {
   SheetHeader,
   SheetTrigger,
   SheetTitle,
-} from "@/components/ui/sheet";
+} from "@/components/ui/Sheet";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/ui/Select";
 import {
   TRACKER_DATE_PRESET_LABELS,
   TRACKER_SORT_PRESET_LABELS,
@@ -255,6 +255,13 @@ function FilterPanel({ filters, onFiltersChange, companyOptions, onClearAllFilte
   );
 }
 
+/**
+ * Render the TrackerV2Controls component.
+ * @param {TrackerV2ControlsProps} props - Component props.
+ * @returns {unknown} JSX output for TrackerV2Controls.
+ * @example
+ * <TrackerV2Controls />
+ */
 export function TrackerV2Controls({
   sortPreset,
   onSortPresetChange,

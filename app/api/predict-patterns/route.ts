@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 
 import { getAuthenticatedUser, getUserQuota } from '@/lib/auth/helpers'
+import {
+  captureApiException,
+  captureSlowApiRoute,
+  withApiRouteSpan,
+} from '@/lib/monitoring/sentry'
+import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
-
-type PredictPatternsRequest = {
-  domain: string
-  company: string
-  role?: string
-  industry?: string
-}
+import { PredictPatternsSchema, formatZodError } from '@/lib/validation/schemas'
 
 type EstimatedCompanySize = 'startup' | 'medium' | 'enterprise'
 
@@ -74,125 +74,158 @@ Return ONLY valid JSON with this exact structure:
 "reasoning": "Brief explanation"
 }`
 
+/**
+ * Handle POST requests for `/api/predict-patterns`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/predict-patterns request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/predict-patterns
+ * fetch('/api/predict-patterns', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now()
   let userId = ''
   const warnings: string[] = []
 
-  try {
-    const user = await getAuthenticatedUser()
-    userId = user.id
+  return withApiRouteSpan(
+    'POST /api/predict-patterns',
+    async () => {
+      try {
+        const user = await getAuthenticatedUser()
+        userId = user.id
 
-    const body = (await request.json()) as Partial<PredictPatternsRequest>
-    const domain = normalizeDomain(body.domain || '')
-    const company = normalizeCompanyName(body.company || '')
-    const role = normalizeOptionalField(body.role)
-    const industry = normalizeOptionalField(body.industry)
+        const parsed = PredictPatternsSchema.safeParse(await request.json())
+        if (!parsed.success) {
+          return NextResponse.json(
+            { success: false, error: 'Validation failed', details: formatZodError(parsed.error) },
+            { status: 400 }
+          )
+        }
+        const body = parsed.data
+        const domain = normalizeDomain(body.domain || '')
+        const company = normalizeCompanyName(body.company || '')
+        const role = normalizeOptionalField(body.role)
+        const industry = normalizeOptionalField(body.industry)
 
-    if (!domain || !isLikelyDomain(domain)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid domain. Provide a valid company domain.' },
-        { status: 400 }
-      )
-    }
+        const quota = await getQuotaSnapshot(userId)
 
-    if (!company || company.length < 2) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid company. Provide a valid company name.' },
-        { status: 400 }
-      )
-    }
+        const estimatedSize = estimateCompanySize(domain, company)
 
-    const quota = await getQuotaSnapshot(userId)
+        let result: PatternPredictionResult | null = null
+        let usage: AnthropicUsage | null = null
+        let source: 'llm' | 'heuristic-fallback' = 'llm'
 
-    const estimatedSize = estimateCompanySize(domain, company)
+        try {
+          const anthropicResponse = await predictWithClaude({
+            domain,
+            company,
+            role,
+            industry,
+            estimatedSize,
+            userId,
+          })
 
-    let result: PatternPredictionResult | null = null
-    let usage: AnthropicUsage | null = null
-    let source: 'llm' | 'heuristic-fallback' = 'llm'
+          result = anthropicResponse.result
+          usage = anthropicResponse.usage
+        } catch (error) {
+          source = 'heuristic-fallback'
 
-    try {
-      const anthropicResponse = await predictWithClaude({
-        domain,
-        company,
-        role,
-        industry,
-        estimatedSize,
-        userId,
-      })
+          const safeError = sanitizeErrorForLog(error)
+          const isAnthropicRateLimit = isRateLimitError(error)
 
-      result = anthropicResponse.result
-      usage = anthropicResponse.usage
-    } catch (error) {
-      source = 'heuristic-fallback'
-
-      const safeError = sanitizeErrorForLog(error)
-      const isAnthropicRateLimit = isRateLimitError(error)
-
-      if (isAnthropicRateLimit) {
-        warnings.push('Anthropic rate limit encountered; returned heuristic fallback.')
-      } else {
-        warnings.push('LLM prediction failed; returned heuristic fallback.')
-      }
-
-      console.error('[predict-patterns] Claude prediction failed:', safeError)
-      result = heuristicFallbackPatterns({ estimatedSize, role, domain, company, industry })
-    }
-
-    const totalCostUsd = calculateCostUsd(usage)
-
-    await trackCost({
-      userId,
-      domain,
-      company,
-      role,
-      industry,
-      estimatedSize,
-      usage,
-      costUsd: totalCostUsd,
-      source,
-    })
-
-    return NextResponse.json({
-      success: true,
-      domain,
-      company,
-      estimatedSize,
-      source,
-      patterns: result.patterns,
-      reasoning: result.reasoning,
-      quota: {
-        used: quota.used,
-        limit: quota.limit,
-        remaining: quota.remaining,
-        resetDate: quota.resetDate,
-        source: quota.source,
-      },
-      usage: usage
-        ? {
-            inputTokens: usage.input_tokens ?? 0,
-            outputTokens: usage.output_tokens ?? 0,
-            cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
-            cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+          if (isAnthropicRateLimit) {
+            warnings.push('Anthropic rate limit encountered; returned heuristic fallback.')
+          } else {
+            warnings.push('LLM prediction failed; returned heuristic fallback.')
           }
-        : null,
-      costUsd: totalCostUsd,
-      warnings,
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
 
-    if (message === 'Unauthorized') {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+          console.error('[predict-patterns] Claude prediction failed:', safeError)
+          result = heuristicFallbackPatterns({ estimatedSize, role, domain, company, industry })
+        }
+
+        const totalCostUsd = calculateCostUsd(usage)
+
+        await trackCost({
+          userId,
+          domain,
+          company,
+          role,
+          industry,
+          estimatedSize,
+          usage,
+          costUsd: totalCostUsd,
+          source,
+        })
+
+        captureSlowApiRoute('/api/predict-patterns', Date.now() - startedAt, {
+          method: 'POST',
+          thresholdMs: 2000,
+        })
+
+        return NextResponse.json({
+          success: true,
+          domain,
+          company,
+          estimatedSize,
+          source,
+          patterns: result.patterns,
+          reasoning: result.reasoning,
+          quota: {
+            used: quota.used,
+            limit: quota.limit,
+            remaining: quota.remaining,
+            resetDate: quota.resetDate,
+            source: quota.source,
+          },
+          usage: usage
+            ? {
+                inputTokens: usage.input_tokens ?? 0,
+                outputTokens: usage.output_tokens ?? 0,
+                cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
+                cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+              }
+            : null,
+          costUsd: totalCostUsd,
+          warnings,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+
+        if (message === 'Unauthorized') {
+          return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+        }
+
+        captureApiException(error, {
+          route: '/api/predict-patterns',
+          method: 'POST',
+          userId,
+        })
+        console.error('[predict-patterns] Internal error:', sanitizeErrorForLog(error))
+        return NextResponse.json(
+          { success: false, error: 'Failed to predict email patterns' },
+          { status: 500 }
+        )
+      }
+    },
+    {
+      'api.route': '/api/predict-patterns',
+      'api.method': 'POST',
     }
-
-    console.error('[predict-patterns] Internal error:', sanitizeErrorForLog(error))
-    return NextResponse.json(
-      { success: false, error: 'Failed to predict email patterns' },
-      { status: 500 }
-    )
-  }
+  )
 }
 
+/**
+ * Handle GET requests for `/api/predict-patterns`.
+ * @returns {unknown} JSON response for the GET /api/predict-patterns request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/predict-patterns
+ * fetch('/api/predict-patterns')
+ */
 export async function GET() {
   return NextResponse.json(
     { success: false, error: 'Method not allowed. Use POST.' },
@@ -222,39 +255,72 @@ Role: ${params.role || 'unknown'}
 Industry: ${params.industry || 'unknown'}
 Predict the top 3 email patterns for this company.`
 
-  const response = await anthropic.messages.create({
-    model: ANTHROPIC_MODEL,
-    max_tokens: MAX_TOKENS,
-    temperature: 0.1,
-    system: [
+  const startedAt = Date.now()
+  try {
+    const response = await timeOperation(
+      'anthropic.predict-patterns.messages.create',
+      async () => await anthropic.messages.create({
+        model: ANTHROPIC_MODEL,
+        max_tokens: MAX_TOKENS,
+        temperature: 0.1,
+        system: [
+          {
+            type: 'text',
+            text: SYSTEM_PROMPT,
+            cache_control: { type: 'ephemeral', ttl: '1h' },
+          },
+        ],
+        messages: [
+          {
+            role: 'user',
+            content: userPrompt,
+          },
+        ],
+        metadata: {
+          user_id: params.userId,
+        },
+      }),
       {
-        type: 'text',
-        text: SYSTEM_PROMPT,
-        cache_control: { type: 'ephemeral', ttl: '1h' },
-      },
-    ],
-    messages: [
-      {
-        role: 'user',
-        content: userPrompt,
-      },
-    ],
-    metadata: {
-      user_id: params.userId,
-    },
-  })
+        slowThresholdMs: 500,
+        context: {
+          route: '/api/predict-patterns',
+          domain: params.domain,
+        },
+      }
+    )
 
-  const rawText = extractTextContent(response.content)
-  const parsed = parsePredictionJson(rawText)
+    const rawText = extractTextContent(response.content)
+    const parsed = parsePredictionJson(rawText)
 
-  const usage: AnthropicUsage = {
-    input_tokens: response.usage?.input_tokens ?? 0,
-    output_tokens: response.usage?.output_tokens ?? 0,
-    cache_creation_input_tokens: response.usage?.cache_creation_input_tokens ?? 0,
-    cache_read_input_tokens: response.usage?.cache_read_input_tokens ?? 0,
+    const usage: AnthropicUsage = {
+      input_tokens: response.usage?.input_tokens ?? 0,
+      output_tokens: response.usage?.output_tokens ?? 0,
+      cache_creation_input_tokens: response.usage?.cache_creation_input_tokens ?? 0,
+      cache_read_input_tokens: response.usage?.cache_read_input_tokens ?? 0,
+    }
+
+    recordExternalApiUsage({
+      service: 'anthropic',
+      operation: 'messages.create:predict-patterns',
+      costUsd: calculateCostUsd(usage),
+      durationMs: Date.now() - startedAt,
+      statusCode: 200,
+      success: true,
+    })
+
+    return { result: parsed, usage }
+  } catch (error) {
+    const statusCode = Number((error as { status?: number })?.status)
+    recordExternalApiUsage({
+      service: 'anthropic',
+      operation: 'messages.create:predict-patterns',
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: Number.isFinite(statusCode) ? statusCode : 500,
+      success: false,
+    })
+    throw error
   }
-
-  return { result: parsed, usage }
 }
 
 async function getQuotaSnapshot(userId: string): Promise<QuotaSnapshot> {
@@ -633,9 +699,19 @@ function normalizeDomain(domain: string): string {
   let normalized = domain.trim().toLowerCase()
   normalized = normalized.replace(/^https?:\/\//, '')
   normalized = normalized.replace(/^www\./, '')
-  normalized = normalized.split('/')[0]
-  normalized = normalized.split('?')[0]
-  normalized = normalized.split('#')[0]
+
+  const withoutPath = normalized.split('/')[0]
+  if (!withoutPath) return ''
+  normalized = withoutPath
+
+  const withoutQuery = normalized.split('?')[0]
+  if (!withoutQuery) return ''
+  normalized = withoutQuery
+
+  const withoutFragment = normalized.split('#')[0]
+  if (!withoutFragment) return ''
+  normalized = withoutFragment
+
   return normalized
 }
 
@@ -647,10 +723,6 @@ function normalizeOptionalField(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const normalized = value.trim().replace(/\s+/g, ' ')
   return normalized.length > 0 ? normalized : null
-}
-
-function isLikelyDomain(domain: string): boolean {
-  return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(domain)
 }
 
 function toSafeInt(value: unknown, fallback: number): number {

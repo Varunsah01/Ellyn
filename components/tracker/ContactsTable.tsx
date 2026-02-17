@@ -4,7 +4,7 @@ import { Fragment, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { BellRing } from "lucide-react";
 import type { TrackerContact } from "@/lib/types/tracker";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/Checkbox";
 import {
   Table,
   TableBody,
@@ -12,7 +12,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@/components/ui/Table";
 import {
   EditContactButton,
   FollowUpButton,
@@ -104,6 +104,13 @@ function hasReminder(contact: TrackerContact): boolean {
   return !Number.isNaN(date.getTime());
 }
 
+/**
+ * Render the ContactsTable component.
+ * @param {ContactsTableProps} props - Component props.
+ * @returns {unknown} JSX output for ContactsTable.
+ * @example
+ * <ContactsTable />
+ */
 export function ContactsTable({
   contacts,
   onUpdateContact,

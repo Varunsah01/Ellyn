@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { withApiRouteSpan } from '@/lib/monitoring/sentry'
+import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-
-type VerifyEmailRequestBody = {
-  email: string
-}
+import { VerifyEmailSchema, formatZodError } from '@/lib/validation/schemas'
 
 type VerifyEmailResponse = {
   email: string
@@ -59,99 +58,134 @@ const RATE_LIMIT_MAX = 50
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 const RATE_LIMIT_ENDPOINT = 'verify-email'
 
+/**
+ * Handle POST requests for `/api/verify-email`.
+ * @param {NextRequest} request - Request input.
+ * @returns {unknown} JSON response for the POST /api/verify-email request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/verify-email
+ * fetch('/api/verify-email', { method: 'POST' })
+ */
 export async function POST(request: NextRequest) {
   let email = ''
 
-  try {
-    const user = await getAuthenticatedUser()
-    const body = await parseJsonBody(request)
-    email = normalizeEmail(body.email)
-
-    if (!isLikelyEmail(email)) {
-      return NextResponse.json(
-        { error: 'Invalid email. Provide a valid email address.' },
-        { status: 400 }
-      )
-    }
-
-    const rateLimit = await checkAndIncrementRateLimit(user.id)
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        {
-          error: 'Rate limit exceeded. Max 50 verifications per hour.',
-          retryAfter: rateLimit.retryAfterSeconds,
-        },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': String(rateLimit.retryAfterSeconds),
-          },
+  return withApiRouteSpan(
+    'POST /api/verify-email',
+    async () => {
+      try {
+        const user = await getAuthenticatedUser()
+        let rawBody: unknown
+        try {
+          rawBody = await request.json()
+        } catch {
+          return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
         }
-      )
+
+        const parsed = VerifyEmailSchema.safeParse(rawBody)
+        if (!parsed.success) {
+          return NextResponse.json(
+            { error: 'Validation failed', details: formatZodError(parsed.error) },
+            { status: 400 }
+          )
+        }
+        email = parsed.data.email
+
+        const rateLimit = await checkAndIncrementRateLimit(user.id)
+        if (!rateLimit.allowed) {
+          return NextResponse.json(
+            {
+              error: 'Rate limit exceeded. Max 50 verifications per hour.',
+              retryAfter: rateLimit.retryAfterSeconds,
+            },
+            {
+              status: 429,
+              headers: {
+                'Retry-After': String(rateLimit.retryAfterSeconds),
+              },
+            }
+          )
+        }
+
+        const apiKey = process.env.ABSTRACT_API_KEY?.trim()
+        const fallback = buildFallbackResponse(email)
+
+        if (!apiKey) {
+          console.error('[verify-email] ABSTRACT_API_KEY is not configured')
+          return NextResponse.json({
+            ...fallback,
+            warning: 'Email verification service is not configured. Returned partial data.',
+            rateLimit: {
+              remaining: rateLimit.remaining,
+              limit: RATE_LIMIT_MAX,
+              source: rateLimit.source,
+            },
+          })
+        }
+
+        const abstractResult = await requestAbstractVerification(email, apiKey)
+        const mappedResult = abstractResult.data
+          ? mapAbstractResponseToOutput(email, abstractResult.data)
+          : fallback
+
+        await trackVerificationCost({
+          userId: user.id,
+          email,
+          costUsd: abstractResult.billed ? VERIFY_EMAIL_COST_USD : 0,
+          abstractStatus: abstractResult.statusCode,
+          deliverability: abstractResult.data?.deliverability ?? null,
+          source: abstractResult.data ? 'abstract' : 'fallback',
+          warning: abstractResult.warning,
+        })
+
+        return NextResponse.json({
+          ...mappedResult,
+          rateLimit: {
+            remaining: rateLimit.remaining,
+            limit: RATE_LIMIT_MAX,
+            source: rateLimit.source,
+          },
+          ...(abstractResult.warning ? { warning: abstractResult.warning } : {}),
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        if (message === 'Unauthorized') {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+        if (error instanceof SyntaxError || message === 'Invalid JSON body') {
+          return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+        }
+
+        console.error('[verify-email] Internal error:', sanitizeErrorForLog(error))
+
+        if (email) {
+          return NextResponse.json({
+            ...buildFallbackResponse(email),
+            warning: 'Verification failed. Returned partial data.',
+          })
+        }
+
+        return NextResponse.json({ error: 'Failed to verify email' }, { status: 500 })
+      }
+    },
+    {
+      'api.route': '/api/verify-email',
+      'api.method': 'POST',
     }
-
-    const apiKey = process.env.ABSTRACT_API_KEY?.trim()
-    const fallback = buildFallbackResponse(email)
-
-    if (!apiKey) {
-      console.error('[verify-email] ABSTRACT_API_KEY is not configured')
-      return NextResponse.json({
-        ...fallback,
-        warning: 'Email verification service is not configured. Returned partial data.',
-        rateLimit: {
-          remaining: rateLimit.remaining,
-          limit: RATE_LIMIT_MAX,
-          source: rateLimit.source,
-        },
-      })
-    }
-
-    const abstractResult = await requestAbstractVerification(email, apiKey)
-    const mappedResult = abstractResult.data
-      ? mapAbstractResponseToOutput(email, abstractResult.data)
-      : fallback
-
-    await trackVerificationCost({
-      userId: user.id,
-      email,
-      costUsd: abstractResult.billed ? VERIFY_EMAIL_COST_USD : 0,
-      abstractStatus: abstractResult.statusCode,
-      deliverability: abstractResult.data?.deliverability ?? null,
-      source: abstractResult.data ? 'abstract' : 'fallback',
-      warning: abstractResult.warning,
-    })
-
-    return NextResponse.json({
-      ...mappedResult,
-      rateLimit: {
-        remaining: rateLimit.remaining,
-        limit: RATE_LIMIT_MAX,
-        source: rateLimit.source,
-      },
-      ...(abstractResult.warning ? { warning: abstractResult.warning } : {}),
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    if (message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-    if (message === 'Invalid JSON body') {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
-    }
-
-    console.error('[verify-email] Internal error:', sanitizeErrorForLog(error))
-
-    if (email) {
-      return NextResponse.json({
-        ...buildFallbackResponse(email),
-        warning: 'Verification failed. Returned partial data.',
-      })
-    }
-
-    return NextResponse.json({ error: 'Failed to verify email' }, { status: 500 })
-  }
+  )
 }
 
+/**
+ * Handle GET requests for `/api/verify-email`.
+ * @returns {unknown} JSON response for the GET /api/verify-email request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/verify-email
+ * fetch('/api/verify-email')
+ */
 export async function GET() {
   return NextResponse.json(
     { error: 'Method not allowed. Use POST.' },
@@ -159,36 +193,43 @@ export async function GET() {
   )
 }
 
-async function parseJsonBody(request: NextRequest): Promise<VerifyEmailRequestBody> {
-  try {
-    const body = (await request.json()) as Partial<VerifyEmailRequestBody>
-    return {
-      email: typeof body.email === 'string' ? body.email : '',
-    }
-  } catch {
-    throw new Error('Invalid JSON body')
-  }
-}
-
 async function requestAbstractVerification(
   email: string,
   apiKey: string
 ): Promise<AbstractVerificationOutcome> {
+  const startedAt = Date.now()
   const url = `${ABSTRACT_API_URL}?${new URLSearchParams({
     api_key: apiKey,
     email,
   }).toString()}`
 
   try {
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(ABSTRACT_TIMEOUT_MS),
-      cache: 'no-store',
-    })
+    const response = await timeOperation(
+      'abstract.verify-email.fetch',
+      async () => await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(ABSTRACT_TIMEOUT_MS),
+        cache: 'no-store',
+      }),
+      {
+        slowThresholdMs: 500,
+        context: {
+          route: '/api/verify-email',
+        },
+      }
+    )
 
     if (response.ok) {
       const data = (await response.json()) as AbstractApiResponse
+      recordExternalApiUsage({
+        service: 'abstract',
+        operation: 'email-verification',
+        costUsd: VERIFY_EMAIL_COST_USD,
+        durationMs: Date.now() - startedAt,
+        statusCode: response.status,
+        success: true,
+      })
       return {
         data,
         warning: null,
@@ -210,6 +251,15 @@ async function requestAbstractVerification(
       body: errorPayload,
     })
 
+    recordExternalApiUsage({
+      service: 'abstract',
+      operation: 'email-verification',
+      costUsd: VERIFY_EMAIL_COST_USD,
+      durationMs: Date.now() - startedAt,
+      statusCode: response.status,
+      success: false,
+    })
+
     return {
       data: null,
       warning,
@@ -222,6 +272,16 @@ async function requestAbstractVerification(
       : 'Verification request failed. Returned partial data.'
 
     console.error('[verify-email] Abstract API request failed:', sanitizeErrorForLog(error))
+
+    const statusCode = Number((error as { status?: number })?.status)
+    recordExternalApiUsage({
+      service: 'abstract',
+      operation: 'email-verification',
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: Number.isFinite(statusCode) ? statusCode : 500,
+      success: false,
+    })
 
     return {
       data: null,
@@ -619,10 +679,6 @@ function parseSmtpScore(data: AbstractApiResponse): number {
 
   const smtpValid = toBoolean(data.is_smtp_valid?.value, false)
   return smtpValid ? 1 : 0
-}
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase()
 }
 
 function isLikelyEmail(email: string): boolean {

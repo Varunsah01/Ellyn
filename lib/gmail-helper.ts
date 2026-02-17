@@ -241,6 +241,13 @@ export function decryptCredential(encrypted: string): string {
 }
 
 // Backward-compatible token helpers used by API routes
+/**
+ * Encrypt token.
+ * @param {string | null | undefined} value - Value input.
+ * @returns {string} Computed string.
+ * @example
+ * encryptToken('value')
+ */
 export function encryptToken(value: string | null | undefined): string {
   if (!value) {
     return "";
@@ -248,6 +255,13 @@ export function encryptToken(value: string | null | undefined): string {
   return encryptCredential(value);
 }
 
+/**
+ * Decrypt token.
+ * @param {string | null | undefined} encrypted - Encrypted input.
+ * @returns {string} Computed string.
+ * @example
+ * decryptToken('encrypted')
+ */
 export function decryptToken(encrypted: string | null | undefined): string {
   if (!encrypted) {
     return "";

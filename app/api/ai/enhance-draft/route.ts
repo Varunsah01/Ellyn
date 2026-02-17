@@ -3,17 +3,7 @@
 import { checkAiRateLimit, getRateLimitIdentifier } from '@/lib/ai-rate-limit'
 import { getGeminiClient } from '@/lib/gemini'
 import { buildPrompt, getPromptConfig, mapEnhanceAction } from '@/lib/template-prompts'
-
-interface EnhanceDraftRequest {
-  draft: string
-  action: 'enhance' | 'shorten' | 'lengthen' | 'fix-grammar'
-  additionalContext?: {
-    tone?: string
-    company?: string
-    userName?: string
-    userSchool?: string
-  }
-}
+import { EnhanceDraftSchema, formatZodError } from '@/lib/validation/schemas'
 
 interface EnhanceDraftResponse {
   success: boolean
@@ -27,8 +17,20 @@ interface EnhanceDraftResponse {
   }
   cost: number
   error?: string
+  details?: Array<{ path: string; message: string; code: string }>
 }
 
+/**
+ * Handle POST requests for `/api/ai/enhance-draft`.
+ * @param {NextRequest} request - Request input.
+ * @returns {Promise<NextResponse<EnhanceDraftResponse>>} JSON response for the POST /api/ai/enhance-draft request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/ai/enhance-draft
+ * fetch('/api/ai/enhance-draft', { method: 'POST' })
+ */
 export async function POST(request: NextRequest): Promise<NextResponse<EnhanceDraftResponse>> {
   const startedAt = Date.now()
 
@@ -52,15 +54,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<EnhanceDr
       )
     }
 
-    const body = (await request.json()) as Partial<EnhanceDraftRequest>
-    const draft = body.draft?.trim() || ''
-    const action = body.action || 'enhance'
-
-    if (!draft) {
+    const parsed = EnhanceDraftSchema.safeParse(await request.json())
+    if (!parsed.success) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Draft is required.',
+          error: 'Validation failed.',
+          details: formatZodError(parsed.error),
           originalLength: 0,
           newLength: 0,
           cost: 0,
@@ -68,19 +68,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<EnhanceDr
         { status: 400 }
       )
     }
-
-    if (!['enhance', 'shorten', 'lengthen', 'fix-grammar'].includes(action)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid action.',
-          originalLength: countWords(draft),
-          newLength: countWords(draft),
-          cost: 0,
-        },
-        { status: 400 }
-      )
-    }
+    const body = parsed.data
+    const draft = body.draft
+    const action = body.action
 
     const promptAction = mapEnhanceAction(action)
     const promptConfig = getPromptConfig(promptAction)
@@ -138,6 +128,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<EnhanceDr
   }
 }
 
+/**
+ * Handle GET requests for `/api/ai/enhance-draft`.
+ * @returns {unknown} JSON response for the GET /api/ai/enhance-draft request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/ai/enhance-draft
+ * fetch('/api/ai/enhance-draft')
+ */
 export async function GET() {
   return NextResponse.json(
     {

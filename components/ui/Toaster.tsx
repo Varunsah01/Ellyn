@@ -1,0 +1,40 @@
+"use client"
+
+import { useToast } from "@/hooks/useToast"
+
+import {
+  Toast,
+  ToastClose,
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+} from "@/components/ui/Toast"
+
+/**
+ * Render the Toaster component.
+ * @returns {unknown} JSX output for Toaster.
+ * @example
+ * <Toaster />
+ */
+export function Toaster() {
+  const { toasts } = useToast()
+
+  return (
+    <ToastProvider>
+      {toasts.map(({ id, title, description, action, ...props }) => (
+        <Toast key={id} {...props}>
+          <div className="grid gap-1">
+            {title ? <ToastTitle>{title}</ToastTitle> : null}
+            {description ? (
+              <ToastDescription>{description}</ToastDescription>
+            ) : null}
+          </div>
+          {action}
+          <ToastClose />
+        </Toast>
+      ))}
+      <ToastViewport />
+    </ToastProvider>
+  )
+}

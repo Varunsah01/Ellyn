@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
+import { Textarea } from "@/components/ui/Textarea";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@/components/ui/Dialog";
 
 export interface EditableTrackerContact {
   id: string;
@@ -52,11 +52,11 @@ function splitFullName(fullName: string): { firstName: string; lastName: string 
   }
 
   if (parts.length === 1) {
-    return { firstName: parts[0], lastName: "" };
+    return { firstName: parts[0] ?? "", lastName: "" };
   }
 
   return {
-    firstName: parts[0],
+    firstName: parts[0] ?? "",
     lastName: parts.slice(1).join(" "),
   };
 }
@@ -74,6 +74,13 @@ function getDisplayEmail(contact: EditableTrackerContact): string {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Render the EditContactModal component.
+ * @param {EditContactModalProps} props - Component props.
+ * @returns {unknown} JSX output for EditContactModal.
+ * @example
+ * <EditContactModal />
+ */
 export function EditContactModal({
   open,
   contact,

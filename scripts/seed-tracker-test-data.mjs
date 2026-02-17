@@ -90,12 +90,12 @@ async function fetchJson(url, init = undefined) {
 
 async function clearSeededContacts(apiBaseUrl) {
   const encodedSearch = encodeURIComponent("Seed");
-  const payload = await fetchJson(`${apiBaseUrl}/api/contacts?limit=1000&search=${encodedSearch}`);
+  const payload = await fetchJson(`${apiBaseUrl}/api/v1/contacts?limit=1000&search=${encodedSearch}`);
   const contacts = Array.isArray(payload.contacts) ? payload.contacts : [];
   const seeded = contacts.filter((item) => String(item.company || "").includes("Seed"));
 
   for (const contact of seeded) {
-    await fetchJson(`${apiBaseUrl}/api/contacts/${contact.id}`, { method: "DELETE" });
+    await fetchJson(`${apiBaseUrl}/api/v1/contacts/${contact.id}`, { method: "DELETE" });
   }
 
   console.log(`Cleared ${seeded.length} seeded contacts from API.`);
@@ -103,7 +103,7 @@ async function clearSeededContacts(apiBaseUrl) {
 
 async function seedViaApi(apiBaseUrl, contacts) {
   for (const contact of contacts) {
-    await fetchJson(`${apiBaseUrl}/api/contacts`, {
+    await fetchJson(`${apiBaseUrl}/api/v1/contacts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -120,7 +120,7 @@ async function seedViaApi(apiBaseUrl, contacts) {
     });
   }
 
-  console.log(`Seeded ${contacts.length} contacts via ${apiBaseUrl}/api/contacts`);
+  console.log(`Seeded ${contacts.length} contacts via ${apiBaseUrl}/api/v1/contacts`);
 }
 
 async function main() {
@@ -160,4 +160,5 @@ main().catch((error) => {
   console.error("[seed-tracker-test-data] Failed:", error);
   process.exit(1);
 });
+
 

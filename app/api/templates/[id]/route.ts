@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { TemplateUpdateSchema, formatZodError } from '@/lib/validation/schemas';
 
 // GET /api/templates/[id] - Fetch a single template
+/**
+ * Handle GET requests for `/api/templates/[id]`.
+ * @param {NextRequest} request - Request input.
+ * @param {{ params: { id: string } }} param2 - Param2 input.
+ * @returns {unknown} JSON response for the GET /api/templates/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // GET /api/templates/[id]
+ * fetch('/api/templates/[id]')
+ */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -37,13 +49,31 @@ export async function GET(
 }
 
 // PATCH /api/templates/[id] - Update a template
+/**
+ * Handle PATCH requests for `/api/templates/[id]`.
+ * @param {NextRequest} request - Request input.
+ * @param {{ params: { id: string } }} param2 - Param2 input.
+ * @returns {unknown} JSON response for the PATCH /api/templates/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // PATCH /api/templates/[id]
+ * fetch('/api/templates/[id]', { method: 'PATCH' })
+ */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const { id } = params;
-    const body = await request.json();
+    const parsed = TemplateUpdateSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
+        { status: 400 }
+      );
+    }
     const {
       name,
       subject,
@@ -52,30 +82,21 @@ export async function PATCH(
       tags,
       icon,
       use_count: useCount,
-    } = body as {
-      name?: string;
-      subject?: string;
-      body?: string;
-      category?: string;
-      tags?: string[];
-      icon?: string;
-      use_count?: number;
-    };
-
-    // Validate required fields
-    if (!name || !subject || !templateBody) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
+    } = parsed.data;
 
     const updatePayload: Record<string, unknown> = {
-      name,
-      subject,
-      body: templateBody,
       updated_at: new Date().toISOString(),
     };
+
+    if (name !== undefined) {
+      updatePayload.name = name;
+    }
+    if (subject !== undefined) {
+      updatePayload.subject = subject;
+    }
+    if (templateBody !== undefined) {
+      updatePayload.body = templateBody;
+    }
 
     if (typeof category === 'string' && category.trim()) {
       updatePayload.category = category.trim();
@@ -105,14 +126,23 @@ export async function PATCH(
 
     // Fallback for DBs that do not include metadata columns yet.
     if (error && isUndefinedColumnError(error)) {
+      const fallbackUpdatePayload: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+
+      if (name !== undefined) {
+        fallbackUpdatePayload.name = name;
+      }
+      if (subject !== undefined) {
+        fallbackUpdatePayload.subject = subject;
+      }
+      if (templateBody !== undefined) {
+        fallbackUpdatePayload.body = templateBody;
+      }
+
       const fallbackUpdate = await supabase
         .from('email_templates')
-        .update({
-          name,
-          subject,
-          body: templateBody,
-          updated_at: new Date().toISOString(),
-        })
+        .update(fallbackUpdatePayload)
         .eq('id', id)
         .select()
         .single();
@@ -144,8 +174,19 @@ export async function PATCH(
 }
 
 // DELETE /api/templates/[id] - Delete a template
+/**
+ * Handle DELETE requests for `/api/templates/[id]`.
+ * @param {NextRequest} request - Request input.
+ * @param {{ params: { id: string } }} param2 - Param2 input.
+ * @returns {unknown} JSON response for the DELETE /api/templates/[id] request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // DELETE /api/templates/[id]
+ * fetch('/api/templates/[id]', { method: 'DELETE' })
+ */
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {

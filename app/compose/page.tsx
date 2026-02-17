@@ -1,4 +1,4 @@
-import { DraftEditor } from "@/components/draft-editor";
+import { DraftEditor } from "@/components/DraftEditor";
 
 export default function ComposePage() {
   return (

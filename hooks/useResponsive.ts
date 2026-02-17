@@ -25,6 +25,12 @@ function getViewportState() {
   };
 }
 
+/**
+ * Custom hook for responsive.
+ * @returns {unknown} Hook state and actions for responsive.
+ * @example
+ * const state = useResponsive()
+ */
 export function useResponsive() {
   const [state, setState] = useState({
     isMobile: false,

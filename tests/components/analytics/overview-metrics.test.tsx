@@ -4,7 +4,7 @@
  */
 
 import { render, screen } from '@testing-library/react';
-import { OverviewMetrics } from '@/components/analytics/overview-metrics';
+import { OverviewMetrics } from '@/components/analytics/OverviewMetrics';
 
 describe('OverviewMetrics', () => {
   const mockData = {

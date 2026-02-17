@@ -1,8 +1,11 @@
-﻿/**
+/**
  * Company intelligence helpers used to enrich AI email prediction context.
  */
 
+import { buildCacheKey, getOrSet, normalizeCacheToken } from '@/lib/cache/redis'
+import { CACHE_TAGS, mxVerificationDomainTag } from '@/lib/cache/tags'
 import { normalizeDomain } from '@/lib/domain-utils'
+import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
 
 export type CompanySize = 'startup' | 'small' | 'medium' | 'large' | 'enterprise'
 
@@ -50,6 +53,8 @@ const KNOWN_COMPANIES: Record<string, CompanySize> = {
   'stripe.com': 'large',
 }
 
+const MX_PROVIDER_CACHE_TTL_SECONDS = 24 * 60 * 60
+
 /**
  * Estimate company size from known mappings + domain heuristics.
  */
@@ -94,59 +99,73 @@ export async function detectEmailProvider(domain: string): Promise<EmailProvider
     }
   }
 
-  try {
-    const mxRecords = await getMxRecords(normalizedDomain)
+  const key = buildCacheKey(['cache', 'mx-verification', 'provider', normalizeCacheToken(normalizedDomain)])
+  return getOrSet<EmailProviderInfo>({
+    key,
+    ttlSeconds: MX_PROVIDER_CACHE_TTL_SECONDS,
+    tags: [CACHE_TAGS.mxVerification, mxVerificationDomainTag(normalizedDomain)],
+    fetcher: async () => {
+      try {
+        const mxRecords = await getMxRecords(normalizedDomain)
 
-    if (mxRecords.length === 0) {
-      return {
-        provider: 'unknown',
-        providerName: 'Unknown',
-        confidence: 0,
-        mxRecords,
+        if (mxRecords.length === 0) {
+          return {
+            provider: 'unknown',
+            providerName: 'Unknown',
+            confidence: 0,
+            mxRecords,
+          }
+        }
+
+        const joined = mxRecords.join(' ').toLowerCase()
+
+        if (joined.includes('google.com') || joined.includes('googlemail.com') || joined.includes('aspmx')) {
+          return {
+            provider: 'google',
+            providerName: 'Google Workspace',
+            confidence: 95,
+            mxRecords,
+          }
+        }
+
+        if (
+          joined.includes('outlook.com') ||
+          joined.includes('protection.outlook.com') ||
+          joined.includes('office365.com') ||
+          joined.includes('microsoft.com')
+        ) {
+          return {
+            provider: 'microsoft',
+            providerName: 'Microsoft 365',
+            confidence: 95,
+            mxRecords,
+          }
+        }
+
+        return {
+          provider: 'custom',
+          providerName: 'Custom Mail Server',
+          confidence: 80,
+          mxRecords,
+        }
+      } catch (error) {
+        console.error('[Company Intelligence] detectEmailProvider failed:', toLogError(error))
+
+        return {
+          provider: 'unknown',
+          providerName: 'Unknown',
+          confidence: 0,
+          mxRecords: [],
+        }
       }
-    }
-
-    const joined = mxRecords.join(' ').toLowerCase()
-
-    if (joined.includes('google.com') || joined.includes('googlemail.com') || joined.includes('aspmx')) {
-      return {
-        provider: 'google',
-        providerName: 'Google Workspace',
-        confidence: 95,
-        mxRecords,
-      }
-    }
-
-    if (
-      joined.includes('outlook.com') ||
-      joined.includes('protection.outlook.com') ||
-      joined.includes('office365.com') ||
-      joined.includes('microsoft.com')
-    ) {
-      return {
-        provider: 'microsoft',
-        providerName: 'Microsoft 365',
-        confidence: 95,
-        mxRecords,
-      }
-    }
-
-    return {
-      provider: 'custom',
-      providerName: 'Custom Mail Server',
-      confidence: 80,
-      mxRecords,
-    }
-  } catch (error) {
-    console.error('[Company Intelligence] detectEmailProvider failed:', toLogError(error))
-
-    return {
-      provider: 'unknown',
-      providerName: 'Unknown',
-      confidence: 0,
-      mxRecords: [],
-    }
-  }
+    },
+    backgroundRefresh: {
+      enabled: true,
+      hotThreshold: 10,
+      refreshAheadSeconds: 10 * 60,
+      cooldownSeconds: 3 * 60,
+    },
+  })
 }
 
 /**
@@ -200,32 +219,73 @@ export function detectIndustry(companyName: string, domain: string): string | nu
 
 async function getMxRecords(domain: string): Promise<string[]> {
   const endpoint = `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`
+  const startedAt = Date.now()
 
-  const response = await fetch(endpoint, {
-    headers: {
-      Accept: 'application/dns-json',
-    },
-    signal: AbortSignal.timeout(3000),
-    cache: 'no-store',
-  })
+  let response: Response
+  try {
+    response = await timeOperation(
+      'google.dns.resolve-mx',
+      async () => await fetch(endpoint, {
+        headers: {
+          Accept: 'application/dns-json',
+        },
+        signal: AbortSignal.timeout(3000),
+        cache: 'no-store',
+      }),
+      {
+        slowThresholdMs: 500,
+        context: {
+          source: 'company-intelligence',
+          operation: 'mx-lookup',
+        },
+      }
+    )
+  } catch (error) {
+    const statusCode = Number((error as { status?: number })?.status)
+    recordExternalApiUsage({
+      service: 'google-dns',
+      operation: 'resolve-mx',
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: Number.isFinite(statusCode) ? statusCode : 500,
+      success: false,
+    })
+    throw error
+  }
 
   if (!response.ok) {
+    recordExternalApiUsage({
+      service: 'google-dns',
+      operation: 'resolve-mx',
+      costUsd: 0,
+      durationMs: Date.now() - startedAt,
+      statusCode: response.status,
+      success: false,
+    })
     throw new Error(`DNS lookup failed (${response.status})`)
   }
 
   const payload = (await response.json()) as {
     Answer?: Array<{ type?: number; data?: string }>
   }
+  recordExternalApiUsage({
+    service: 'google-dns',
+    operation: 'resolve-mx',
+    costUsd: 0,
+    durationMs: Date.now() - startedAt,
+    statusCode: response.status,
+    success: true,
+  })
 
   const answers = Array.isArray(payload.Answer) ? payload.Answer : []
   return answers
     .filter((record) => Number(record?.type) === 15 && typeof record?.data === 'string')
     .map((record) => {
       const pieces = String(record.data).trim().split(/\s+/)
-      const host = pieces.length >= 2 ? pieces[1] : pieces[0]
+      const host = (pieces.length >= 2 ? pieces[1] : pieces[0]) ?? ''
       return host.replace(/\.$/, '')
     })
-    .filter(Boolean)
+    .filter((host): host is string => host.length > 0)
 }
 
 function toLogError(error: unknown) {

@@ -8,6 +8,16 @@ export interface PatternLearning {
   successRate: number;
 }
 
+/**
+ * Record pattern feedback.
+ * @param {string} domain - Domain input.
+ * @param {string} pattern - Pattern input.
+ * @param {boolean} worked - Worked input.
+ * @returns {Promise<void>} Computed Promise<void>.
+ * @throws {Error} If the operation fails.
+ * @example
+ * recordPatternFeedback('domain', 'pattern', true)
+ */
 export async function recordPatternFeedback(
   domain: string,
   pattern: string,
@@ -56,6 +66,14 @@ export async function recordPatternFeedback(
   }
 }
 
+/**
+ * Get learned patterns.
+ * @param {string} domain - Domain input.
+ * @returns {Promise<PatternLearning[]>} Computed Promise<PatternLearning[]>.
+ * @throws {Error} If the operation fails.
+ * @example
+ * getLearnedPatterns('domain')
+ */
 export async function getLearnedPatterns(domain: string): Promise<PatternLearning[]> {
   try {
     const { data, error } = await supabase
@@ -80,6 +98,14 @@ export async function getLearnedPatterns(domain: string): Promise<PatternLearnin
   }
 }
 
+/**
+ * Apply learning.
+ * @param {any[]} patterns - Patterns input.
+ * @param {PatternLearning[]} learnedPatterns - Learned patterns input.
+ * @returns {any[]} Computed any[].
+ * @example
+ * applyLearning([], [])
+ */
 export function applyLearning(
   patterns: any[],
   learnedPatterns: PatternLearning[]
@@ -112,6 +138,14 @@ export function applyLearning(
   }).sort((a, b) => b.confidence - a.confidence);
 }
 
+/**
+ * Get top performing patterns.
+ * @param {number} limit - Limit input.
+ * @returns {Promise<PatternLearning[]>} Computed Promise<PatternLearning[]>.
+ * @throws {Error} If the operation fails.
+ * @example
+ * getTopPerformingPatterns(0)
+ */
 export async function getTopPerformingPatterns(limit: number = 10): Promise<PatternLearning[]> {
   try {
     const { data, error } = await supabase
@@ -136,6 +170,19 @@ export async function getTopPerformingPatterns(limit: number = 10): Promise<Patt
   }
 }
 
+/**
+ * Get domain statistics.
+ * @param {string} domain - Domain input.
+ * @returns {Promise<{
+  totalAttempts: number;
+  successfulAttempts: number;
+  successRate: number;
+  bestPattern: string | null;
+}>} Computed Promise<{ totalAttempts: number; successfulAttempts: number; successRate: number; bestPattern: string | null; }>.
+ * @throws {Error} If the operation fails.
+ * @example
+ * getDomainStatistics('domain')
+ */
 export async function getDomainStatistics(domain: string): Promise<{
   totalAttempts: number;
   successfulAttempts: number;

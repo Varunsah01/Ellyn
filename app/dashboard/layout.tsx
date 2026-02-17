@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sidebar } from "@/components/dashboard/sidebar";
-import { Header } from "@/components/dashboard/header";
-import { DashboardTour } from "@/components/dashboard-tour";
-import { DashboardWrapper } from "@/components/dashboard-wrapper";
+import { Sidebar } from "@/components/dashboard/Sidebar";
+import { Header } from "@/components/dashboard/Header";
+import { DashboardTour } from "@/components/DashboardTour";
+import { DashboardWrapper } from "@/components/DashboardWrapper";
 import { usePathname, useRouter } from "next/navigation";
 import { getOnboardingState } from "@/lib/onboarding";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";

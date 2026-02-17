@@ -40,7 +40,6 @@ describe('Analytics API', () => {
 
     test('returns 500 on database error', async () => {
       // This would require mocking a database error
-      const request = new NextRequest('http://localhost:3000/api/analytics?metric=overview');
 
       // Mock implementation would throw error
       // const response = await GET(request);
@@ -49,9 +48,6 @@ describe('Analytics API', () => {
 
     describe('Overview Metrics', () => {
       test('returns overview metrics without comparison', async () => {
-        const request = new NextRequest(
-          'http://localhost:3000/api/analytics?metric=overview&startDate=2024-01-01&endDate=2024-12-31'
-        );
 
         // This test requires proper mocking of Supabase responses
         // const response = await GET(request);
@@ -63,9 +59,6 @@ describe('Analytics API', () => {
       });
 
       test('returns overview metrics with comparison', async () => {
-        const request = new NextRequest(
-          'http://localhost:3000/api/analytics?metric=overview&startDate=2024-01-01&endDate=2024-12-31&compareWith=previous_period'
-        );
 
         // const response = await GET(request);
         // const data = await response.json();
@@ -75,7 +68,6 @@ describe('Analytics API', () => {
       });
 
       test('defaults to last 30 days when no date range provided', async () => {
-        const request = new NextRequest('http://localhost:3000/api/analytics?metric=overview');
 
         // Should use default date range
         // const response = await GET(request);
@@ -85,9 +77,6 @@ describe('Analytics API', () => {
 
     describe('Contacts Over Time', () => {
       test('returns time series data', async () => {
-        const request = new NextRequest(
-          'http://localhost:3000/api/analytics?metric=contacts_over_time&startDate=2024-01-01&endDate=2024-01-31'
-        );
 
         // const response = await GET(request);
         // const data = await response.json();
@@ -104,9 +93,6 @@ describe('Analytics API', () => {
 
     describe('Sequence Performance', () => {
       test('returns performance metrics for all sequences', async () => {
-        const request = new NextRequest(
-          'http://localhost:3000/api/analytics?metric=sequence_performance&startDate=2024-01-01&endDate=2024-12-31'
-        );
 
         // const response = await GET(request);
         // const data = await response.json();
@@ -134,9 +120,6 @@ describe('Analytics API', () => {
 
     describe('Contact Insights', () => {
       test('returns top companies', async () => {
-        const request = new NextRequest(
-          'http://localhost:3000/api/analytics?metric=contact_insights&startDate=2024-01-01&endDate=2024-12-31'
-        );
 
         // const response = await GET(request);
         // const data = await response.json();
@@ -163,9 +146,6 @@ describe('Analytics API', () => {
 
     describe('Activity Heatmap', () => {
       test('returns 7 days × 24 hours grid', async () => {
-        const request = new NextRequest(
-          'http://localhost:3000/api/analytics?metric=activity_heatmap&startDate=2024-01-01&endDate=2024-12-31'
-        );
 
         // const response = await GET(request);
         // const data = await response.json();
@@ -192,9 +172,6 @@ describe('Analytics API', () => {
     });
 
     test('handles invalid date format', async () => {
-      const request = new NextRequest(
-        'http://localhost:3000/api/analytics?metric=overview&startDate=invalid&endDate=invalid'
-      );
 
       // Should handle gracefully or return error
       // const response = await GET(request);

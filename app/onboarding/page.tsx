@@ -9,11 +9,11 @@ import {
   syncOnboardingState,
   syncUserPreferences,
 } from "@/lib/onboarding"
-import { OnboardingStepper } from "@/components/onboarding/stepper"
-import { WelcomeStep } from "@/components/onboarding/welcome-step"
-import { ExtensionStep } from "@/components/onboarding/extension-step"
-import { SetupStep } from "@/components/onboarding/setup-step"
-import { Button } from "@/components/ui/button"
+import { OnboardingStepper } from "@/components/onboarding/Stepper"
+import { WelcomeStep } from "@/components/onboarding/WelcomeStep"
+import { ExtensionStep } from "@/components/onboarding/ExtensionStep"
+import { SetupStep } from "@/components/onboarding/SetupStep"
+import { Button } from "@/components/ui/Button"
 
 const extensionUrl =
   process.env.NEXT_PUBLIC_EXTENSION_URL ?? "https://chromewebstore.google.com"

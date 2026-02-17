@@ -1,7 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { buildEnrollmentSteps } from "@/lib/sequence-engine"
+import { SequenceEnrollSchema, formatZodError } from "@/lib/validation/schemas"
 
+/**
+ * Handle POST requests for `/api/sequences/[id]/enroll`.
+ * @param {NextRequest} request - Request input.
+ * @param {{ params: { id: string } }} param2 - Param2 input.
+ * @returns {unknown} JSON response for the POST /api/sequences/[id]/enroll request.
+ * @throws {AuthenticationError} If the request is not authenticated.
+ * @throws {ValidationError} If the request payload fails validation.
+ * @throws {Error} If an unexpected server error occurs.
+ * @example
+ * // POST /api/sequences/[id]/enroll
+ * fetch('/api/sequences/[id]/enroll', { method: 'POST' })
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -12,15 +25,14 @@ export async function POST(
     }
 
     const sequenceId = params.id
-    const body = await request.json()
-    const { contactIds = [], startDate, overrides } = body
-
-    if (!Array.isArray(contactIds) || contactIds.length === 0) {
+    const parsed = SequenceEnrollSchema.safeParse(await request.json())
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "contactIds must be a non-empty array" },
+        { error: "Validation failed", details: formatZodError(parsed.error) },
         { status: 400 }
       )
     }
+    const { contactIds, startDate, overrides } = parsed.data
 
     const { data: steps, error: stepsError } = await supabase
       .from("sequence_steps")
@@ -42,7 +54,7 @@ export async function POST(
       .in("contact_id", contactIds)
 
     const existingIds = new Set(existing?.map((e) => e.contact_id))
-    const newContactIds = contactIds.filter((id: string) => !existingIds.has(id))
+    const newContactIds = contactIds.filter((id) => !existingIds.has(id))
 
     if (newContactIds.length === 0) {
       return NextResponse.json({ message: "No new contacts to enroll" })
@@ -51,7 +63,7 @@ export async function POST(
     const startDateObj = startDate ? new Date(startDate) : new Date()
     const now = new Date()
 
-    const enrollmentPayload = newContactIds.map((contactId: string) => ({
+    const enrollmentPayload = newContactIds.map((contactId) => ({
       sequence_id: sequenceId,
       contact_id: contactId,
       status: startDateObj <= now ? "in_progress" : "not_started",

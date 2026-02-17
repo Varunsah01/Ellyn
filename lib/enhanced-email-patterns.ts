@@ -3,6 +3,10 @@
  * Uses company size estimation and role analysis
  */
 
+import { buildCacheKey, getOrSet, normalizeCacheToken } from '@/lib/cache/redis'
+import { CACHE_TAGS, emailPatternDomainTag } from '@/lib/cache/tags'
+import { createServiceRoleClient } from '@/lib/supabase/server'
+
 export type CompanySize = 'startup' | 'small' | 'medium' | 'large' | 'enterprise';
 
 export interface CompanyProfile {
@@ -18,8 +22,9 @@ export interface EmailPattern {
   learned?: boolean;
 }
 
-const KNOWN_DOMAINS: Record<string, string> = {
-  // Tech Giants (Enterprise)
+// Legacy in-memory lookup kept for reference only — DB is now the source of truth.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _KNOWN_DOMAINS_LEGACY: Record<string, string> = {
   'google': 'google.com',
   'alphabet': 'google.com',
   'microsoft': 'microsoft.com',
@@ -29,8 +34,6 @@ const KNOWN_DOMAINS: Record<string, string> = {
   'facebook': 'meta.com',
   'netflix': 'netflix.com',
   'tesla': 'tesla.com',
-
-  // Large Tech
   'adobe': 'adobe.com',
   'salesforce': 'salesforce.com',
   'oracle': 'oracle.com',
@@ -41,8 +44,6 @@ const KNOWN_DOMAINS: Record<string, string> = {
   'cisco': 'cisco.com',
   'dell': 'dell.com',
   'hp': 'hp.com',
-
-  // Consulting
   'mckinsey': 'mckinsey.com',
   'bcg': 'bcg.com',
   'bain': 'bain.com',
@@ -51,17 +52,12 @@ const KNOWN_DOMAINS: Record<string, string> = {
   'ey': 'ey.com',
   'kpmg': 'kpmg.com',
   'accenture': 'accenture.com',
-
-  // Finance
-  'goldman sachs': 'gs.com',
   'goldman': 'gs.com',
-  'morgan stanley': 'morganstanley.com',
+  'morganstanley': 'morganstanley.com',
   'jpmorgan': 'jpmorgan.com',
   'citi': 'citi.com',
-  'bank of america': 'bofa.com',
-  'wells fargo': 'wellsfargo.com',
-
-  // Startups/Medium
+  'bankofamerica': 'bankofamerica.com',
+  'wellsfargo': 'wellsfargo.com',
   'stripe': 'stripe.com',
   'uber': 'uber.com',
   'lyft': 'lyft.com',
@@ -71,14 +67,55 @@ const KNOWN_DOMAINS: Record<string, string> = {
   'slack': 'slack.com',
   'shopify': 'shopify.com',
   'dropbox': 'dropbox.com',
-  'atlassian': 'atlassian.com'
+  'atlassian': 'atlassian.com',
 };
 
-export function getKnownDomain(companyName: string): string | null {
-  const key = companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
-  return KNOWN_DOMAINS[key] || null;
+const EMAIL_PATTERN_CACHE_TTL_SECONDS = 24 * 60 * 60
+
+/**
+ * Get known domain for a company name.
+ * Checks Redis cache first, then the known_company_domains Supabase table.
+ * @param {string} companyName - Company name input (any casing, aliases supported).
+ * @returns {Promise<string | null>} The canonical domain or null if not found.
+ * @example
+ * await getKnownDomain('TCS') // => 'tcs.com'
+ */
+export async function getKnownDomain(companyName: string): Promise<string | null> {
+  const normalized = companyName.toLowerCase().replace(/[^a-z0-9]/g, '')
+  if (!normalized) return null
+
+  const cacheKey = buildCacheKey(['known-domain', normalized])
+
+  return getOrSet<string | null>({
+    key: cacheKey,
+    ttlSeconds: 24 * 60 * 60, // 24h TTL
+    tags: [CACHE_TAGS.domainLookup],
+    cacheNull: true,
+    nullTtlSeconds: 60 * 60, // 1h TTL for negative hits
+    fetcher: async () => {
+      try {
+        const supabase = await createServiceRoleClient()
+        const { data } = await supabase
+          .from('known_company_domains')
+          .select('domain')
+          .eq('normalized_name', normalized)
+          .maybeSingle()
+        return data?.domain ?? null
+      } catch (err) {
+        console.warn('[getKnownDomain] DB lookup failed:', err)
+        return null
+      }
+    },
+  })
 }
 
+/**
+ * Estimate company size.
+ * @param {string} domain - Domain input.
+ * @returns {CompanySize} Computed CompanySize.
+ * @example
+ * estimateCompanySize('domain')
+ */
 export function estimateCompanySize(domain: string): CompanySize {
   // Enterprise companies (Fortune 500)
   const enterpriseCompanies = [
@@ -105,6 +142,16 @@ export function estimateCompanySize(domain: string): CompanySize {
   return 'medium';
 }
 
+/**
+ * Generate smart email patterns.
+ * @param {string} firstName - First name input.
+ * @param {string} lastName - Last name input.
+ * @param {CompanyProfile} companyProfile - Company profile input.
+ * @param {string} role - Role input.
+ * @returns {EmailPattern[]} Computed EmailPattern[].
+ * @example
+ * generateSmartEmailPatterns('firstName', 'lastName', {}, 'role')
+ */
 export function generateSmartEmailPatterns(
   firstName: string,
   lastName: string,
@@ -117,7 +164,6 @@ export function generateSmartEmailPatterns(
   const first = firstName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const last = lastName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   const f = first[0];
-  const l = last[0];
 
   const patterns: EmailPattern[] = [];
 
@@ -194,4 +240,39 @@ export function generateSmartEmailPatterns(
   return patterns
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, 8);
+}
+
+/**
+ * Generate smart patterns with cache (24h TTL).
+ */
+export async function generateSmartEmailPatternsCached(
+  firstName: string,
+  lastName: string,
+  companyProfile: CompanyProfile,
+  role?: string
+): Promise<EmailPattern[]> {
+  const domain = normalizeCacheToken(companyProfile.domain)
+  const key = buildCacheKey([
+    'cache',
+    'email-patterns',
+    domain,
+    firstName,
+    lastName,
+    role || '',
+    companyProfile.estimatedSize,
+    companyProfile.emailProvider || '',
+  ])
+
+  return getOrSet<EmailPattern[]>({
+    key,
+    ttlSeconds: EMAIL_PATTERN_CACHE_TTL_SECONDS,
+    tags: [CACHE_TAGS.emailPatterns, emailPatternDomainTag(domain)],
+    fetcher: async () => generateSmartEmailPatterns(firstName, lastName, companyProfile, role),
+    backgroundRefresh: {
+      enabled: true,
+      hotThreshold: 8,
+      refreshAheadSeconds: 15 * 60,
+      cooldownSeconds: 90,
+    },
+  })
 }
