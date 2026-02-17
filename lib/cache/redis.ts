@@ -377,7 +377,12 @@ async function getTagsForRedisKey(redis: VercelKV, cacheKey: string): Promise<st
     return tags
       .map((tag) => normalizeCacheToken(tag))
       .filter(Boolean)
-  } catch {
+  } catch (error) {
+    incrementMetric('errors', cacheKey)
+    console.warn('[Cache] Redis key tag lookup failed:', {
+      key: cacheKey,
+      error: compactError(error),
+    })
     return []
   }
 }

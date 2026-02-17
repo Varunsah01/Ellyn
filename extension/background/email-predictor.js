@@ -8,6 +8,27 @@
 const EMAIL_PREDICTOR_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const EMAIL_PREDICTOR_CACHE_PREFIX = 'prediction_';
 
+function createPolyfillSignal(ms) {
+  const timeoutMs = Number.isFinite(Number(ms)) && Number(ms) > 0 ? Number(ms) : 1000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  controller.signal.addEventListener(
+    'abort',
+    () => {
+      clearTimeout(timer);
+    },
+    { once: true }
+  );
+  return controller.signal;
+}
+
+function createTimeoutSignal(ms) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  return createPolyfillSignal(ms);
+}
+
 async function predictEmail(contactData, options = {}) {
   const apiBaseUrl = String(options.apiBaseUrl || '').trim();
   const authToken = String(options.authToken || '').trim();
@@ -57,7 +78,7 @@ async function predictEmail(contactData, options = {}) {
       }),
       credentials: 'include',
       cache: 'no-store',
-      signal: AbortSignal.timeout(10_000),
+      signal: createTimeoutSignal(10_000),
     });
 
     let payload = null;

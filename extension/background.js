@@ -24,6 +24,10 @@ const CONFIG = {
   API_BASE_URL: 'https://www.useellyn.com',
   CACHE_DURATION_MS: 30 * 24 * 60 * 60 * 1000, // 30 days
   COST_WINDOW_MS: 30 * 24 * 60 * 60 * 1000, // 30 days rolling cost window
+  HEURISTIC_FALLBACK: {
+    enabled: true,
+    allowOnNoMx: false,
+  },
   PIPELINE_TIMEOUT_MINUTES: 2,
   STAGE_TIMEOUT_MS: {
     extractProfile: 10000,
@@ -837,13 +841,19 @@ async function resolveDomainEnhanced(companyName, companyPageUrl, authToken = ''
       companyPageUrl: companyPageUrl || undefined,
     }),
     credentials: 'include',
-    signal: AbortSignal.timeout(Math.max(CONFIG.STAGE_TIMEOUT_MS.resolveDomain, 5000)),
+    signal: createTimeoutSignal(Math.max(CONFIG.STAGE_TIMEOUT_MS.resolveDomain, 5000)),
     cache: 'no-store',
   });
 
   if (!response.ok) {
-    const error = new Error(`Domain resolution failed: ${response.status}`);
-    error.status = response.status;
+    const error = buildPipelineError(
+      response.status === 405 ? 'METHOD_NOT_ALLOWED' : 'NETWORK_FAILURE',
+      `Domain resolution failed: ${response.status}`,
+      {
+        status: response.status,
+        isRecoverable: [404, 405, 408, 429, 500, 502, 503, 504].includes(response.status),
+      }
+    );
     throw error;
   }
 
@@ -1192,6 +1202,37 @@ function withTimeout(promise, timeoutMs, label) {
   ]);
 }
 
+function createPolyfillSignal(ms) {
+  const timeoutMs = Number.isFinite(Number(ms)) && Number(ms) > 0 ? Number(ms) : 1000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  controller.signal.addEventListener(
+    'abort',
+    () => {
+      clearTimeout(timer);
+    },
+    { once: true }
+  );
+  return controller.signal;
+}
+
+function createTimeoutSignal(ms) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(ms);
+  }
+  return createPolyfillSignal(ms);
+}
+
+function buildPipelineError(code, message, options = {}) {
+  const error = new Error(message || 'Pipeline error');
+  error.code = String(code || 'UNKNOWN_FAILURE').toUpperCase();
+  if (Number.isFinite(Number(options.status))) {
+    error.status = Number(options.status);
+  }
+  error.isRecoverable = options.isRecoverable === true;
+  return error;
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   let payload = null;
@@ -1219,13 +1260,19 @@ async function callBackendPost(path, body, authToken, timeoutMs) {
     headers,
     body: JSON.stringify(body),
     credentials: 'include',
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: createTimeoutSignal(timeoutMs),
     cache: 'no-store',
   });
 
   if (!response.ok) {
-    const error = new Error(payload?.error || `Request failed: ${response.status} ${response.statusText}`);
-    error.status = response.status;
+    const error = buildPipelineError(
+      response.status === 405 ? 'METHOD_NOT_ALLOWED' : 'NETWORK_FAILURE',
+      payload?.error || `Request failed: ${response.status} ${response.statusText}`,
+      {
+        status: response.status,
+        isRecoverable: [404, 405, 408, 429, 500, 502, 503, 504].includes(response.status),
+      }
+    );
     error.payload = payload;
     throw error;
   }
@@ -1237,23 +1284,60 @@ function isMethodNotAllowedError(error) {
   return Number(error?.status) === 405;
 }
 
-function isRecoverableApiError(error) {
+function classifyApiError(error) {
   const status = Number(error?.status);
-  if ([404, 405, 408, 429, 500, 502, 503, 504].includes(status)) {
-    return true;
+  const code = String(error?.code || '').trim().toUpperCase();
+  const message = String(error?.message || '').toLowerCase();
+  const isNoMx =
+    code === 'NO_MX_RECORDS' ||
+    message.includes('no mx') ||
+    message.includes('no mail exchange') ||
+    message.includes('cannot receive email');
+
+  if (isNoMx) {
+    return {
+      isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true,
+      code: 'NO_MX_RECORDS',
+      message: error?.message || 'Domain has no mail exchange (MX) records.',
+    };
   }
 
-  const message = String(error?.message || '').toLowerCase();
-  if (!message) return false;
-
-  return (
-    message.includes('request failed') ||
-    message.includes('failed to fetch') ||
-    message.includes('network') ||
+  const isTimeout =
+    code === 'DNS_TIMEOUT' ||
+    code === 'ABORT_ERR' ||
     message.includes('timeout') ||
-    message.includes('temporarily unavailable') ||
-    message.includes('mx records')
-  );
+    message.includes('timed out') ||
+    message.includes('abort');
+
+  if (isTimeout) {
+    return {
+      isRecoverable: true,
+      code: 'DNS_TIMEOUT',
+      message: 'Request timed out. Please retry.',
+    };
+  }
+
+  if ([404, 405, 408, 429, 500, 502, 503, 504].includes(status)) {
+    return {
+      isRecoverable: true,
+      code: status === 405 ? 'METHOD_NOT_ALLOWED' : 'NETWORK_FAILURE',
+      message: error?.message || 'Temporary API failure.',
+    };
+  }
+
+  if (message.includes('request failed') || message.includes('failed to fetch') || message.includes('network')) {
+    return {
+      isRecoverable: true,
+      code: 'NETWORK_FAILURE',
+      message: error?.message || 'Network request failed.',
+    };
+  }
+
+  return {
+    isRecoverable: error?.isRecoverable === true,
+    code: code || 'UNKNOWN_FAILURE',
+    message: error?.message || 'Unexpected failure.',
+  };
 }
 
 function normalizeConfidenceToUnit(value, fallback = 0.5) {
@@ -1325,19 +1409,41 @@ async function runLegacyGenerateEmailsPipeline(input, authToken) {
 
   candidates.sort((a, b) => b.confidence - a.confidence);
 
-  const domainVerified =
-    legacyResponse?.verification?.verified === true || legacyResponse?.verification?.hasMxRecords === true;
   const topCandidate = candidates[0];
   const domainFromPayload = normalizeDomain(legacyResponse?.domain);
   const domainFromEmail = normalizeDomain(topCandidate.email.split('@')[1] || '');
   const domain = domainFromPayload || domainFromEmail;
-  const primaryConfidenceFloor = domainVerified ? 0.85 : 0.65;
+  if (!domain) {
+    throw buildPipelineError(
+      'INVALID_DOMAIN',
+      'Legacy /api/v1/generate-emails response did not include a valid domain.',
+      { isRecoverable: false }
+    );
+  }
+
+  const mxVerification = await verifyDomainMx(domain);
+  if (!mxVerification?.hasMx) {
+    throw buildPipelineError(
+      'NO_MX_RECORDS',
+      `Domain ${domain} has no mail exchange (MX) records.`,
+      { isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true }
+    );
+  }
+
+  const warnings = ['Legacy fallback used. MX records were revalidated client-side.'];
+  if (domainFromPayload && domainFromEmail && domainFromPayload !== domainFromEmail) {
+    warnings.push(
+      `Legacy response domain mismatch detected: payload=${domainFromPayload}, email=${domainFromEmail}.`
+    );
+  }
+
+  const primaryConfidenceFloor = 0.72;
 
   return {
     email: topCandidate.email,
     pattern: topCandidate.pattern || 'unknown',
     confidence: Math.max(topCandidate.confidence, primaryConfidenceFloor),
-    source: domainVerified ? 'legacy_verified' : 'legacy_generate_emails',
+    source: 'legacy_mx_reverified',
     alternativeEmails: candidates.slice(1, 5).map((candidate) => ({
       email: candidate.email,
       pattern: candidate.pattern || 'unknown',
@@ -1347,6 +1453,7 @@ async function runLegacyGenerateEmailsPipeline(input, authToken) {
     domain,
     verificationResults: [],
     profileUrl: input.profileUrl || '',
+    warnings,
   };
 }
 
@@ -1519,19 +1626,29 @@ async function verifyEmailCandidate(email, authToken) {
 }
 
 async function verifyDomainMx(domain) {
+  console.log('[MX Debug] Checking MX for domain:', domain);
   const url = `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`;
   const { response, payload } = await fetchJson(url, {
     method: 'GET',
-    signal: AbortSignal.timeout(CONFIG.STAGE_TIMEOUT_MS.mxCheck),
+    signal: createTimeoutSignal(CONFIG.STAGE_TIMEOUT_MS.mxCheck),
     cache: 'no-store',
   });
 
+  console.log('[MX Debug] DNS response status:', payload?.Status);
+  console.log('[MX Debug] Answers:', JSON.stringify(payload?.Answer));
+
   if (!response.ok) {
-    throw new Error(`MX verification failed: ${response.status}`);
+    const err = buildPipelineError('NETWORK_FAILURE', `MX verification failed: ${response.status}`, {
+      status: response.status,
+      isRecoverable: response.status >= 500 || response.status === 408 || response.status === 429,
+    });
+    throw err;
   }
 
   const answers = Array.isArray(payload?.Answer) ? payload.Answer : [];
   const hasMx = answers.some((answer) => Number(answer?.type) === 15);
+
+  console.log('[MX Debug] hasMx result:', hasMx);
 
   return {
     hasMx,
@@ -1548,12 +1665,13 @@ function getFallbackPatterns() {
   ];
 }
 
-async function buildOfflineFallbackPayload(input, triggerMessage = '') {
+async function buildOfflineFallbackPayload(input, triggerMessage = '', context = {}) {
   const guessedDomain = normalizeDomain(guessDomainFromCompanyName(input.company));
   if (!guessedDomain) {
     throw new Error(triggerMessage || 'Could not infer company domain.');
   }
 
+  const resolvedDomain = normalizeDomain(context?.resolvedDomain);
   const fallbackPatterns = getFallbackPatterns();
   const candidates = buildCandidates(
     input.firstName,
@@ -1577,6 +1695,10 @@ async function buildOfflineFallbackPayload(input, triggerMessage = '') {
   const top = candidates[0];
   const baseConfidence = hasMx ? 0.58 : 0.38;
   const effectiveConfidence = Math.max(baseConfidence, Number(top.confidence || 0.35));
+  const mismatchWarning =
+    resolvedDomain && resolvedDomain !== guessedDomain
+      ? ` Heuristic fallback domain ${guessedDomain} differs from resolved domain ${resolvedDomain}.`
+      : '';
 
   return {
     email: top.email,
@@ -1593,7 +1715,7 @@ async function buildOfflineFallbackPayload(input, triggerMessage = '') {
     verificationResults: [],
     profileUrl: input.profileUrl || '',
     warning:
-      'Some APIs are unavailable right now. Returned heuristic candidates so you can continue outreach.',
+      `Some APIs are unavailable right now. Returned heuristic candidates so you can continue outreach.${mismatchWarning}`.trim(),
   };
 }
 
@@ -1842,6 +1964,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     try {
       domainResult = await resolveDomain(input.company, authToken, companyPageUrl);
     } catch (error) {
+      const resolutionError = classifyApiError(error);
       if (isMethodNotAllowedError(error)) {
         console.warn('[Extension] /api/v1/resolve-domain returned 405. Falling back to /api/v1/generate-emails.', error);
 
@@ -1881,11 +2004,23 @@ async function handleFindEmail(data, sender, sendResponse) {
           });
           return;
         } catch (legacyError) {
+          const legacyClassification = classifyApiError(legacyError);
+          if (!legacyClassification.isRecoverable) {
+            throw legacyError;
+          }
           console.warn(
             '[Extension] Legacy /api/v1/generate-emails fallback failed. Using local heuristic domain fallback.',
             legacyError
           );
         }
+      }
+
+      if (!resolutionError.isRecoverable) {
+        throw error;
+      }
+
+      if (CONFIG.HEURISTIC_FALLBACK.enabled !== true) {
+        throw error;
       }
 
       const guessedDomain = guessDomainFromCompanyName(input.company);
@@ -1897,10 +2032,17 @@ async function handleFindEmail(data, sender, sendResponse) {
         domain: guessedDomain,
         source: 'local_heuristic',
         confidence: 0.4,
+        warnings: [
+          'Heuristic fallback enabled due recoverable domain-resolution failure.',
+          `Original error: ${resolutionError.code}`,
+        ],
       };
     }
 
     domain = normalizeDomain(domainResult?.domain);
+    const domainWarnings = Array.isArray(domainResult?.warnings)
+      ? domainResult.warnings.filter((warning) => typeof warning === 'string' && warning.trim().length > 0)
+      : [];
 
     if (!domain) {
       throw new Error('Domain resolution failed.');
@@ -1970,7 +2112,11 @@ async function handleFindEmail(data, sender, sendResponse) {
 
     const mxResult = await verifyDomainMx(domain);
     if (!mxResult?.hasMx) {
-      throw new Error(`Domain ${domain} has no MX records. Cannot receive email.`);
+      throw buildPipelineError(
+        'NO_MX_RECORDS',
+        `Domain ${domain} has no mail exchange (MX) records.`,
+        { isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true }
+      );
     }
 
     // STAGE 5: Abstract verification
@@ -2046,6 +2192,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       domain,
       verificationResults,
       profileUrl: input.profileUrl || '',
+      warnings: domainWarnings,
     };
 
     await trackLookupAnalytics({
@@ -2082,18 +2229,22 @@ async function handleFindEmail(data, sender, sendResponse) {
       data: payload,
     });
   } catch (error) {
-    const message = error?.message || 'Unknown error';
-    const errorCode = typeof error?.code === 'string' ? error.code : null;
+    const classified = classifyApiError(error);
+    const message = error?.message || classified.message || 'Unknown error';
+    const errorCode = typeof error?.code === 'string' ? error.code : classified.code || null;
     const resetDate = typeof error?.resetDate === 'string' ? error.resetDate : null;
 
     if (
       normalizedInput &&
       errorCode !== 'QUOTA_EXCEEDED' &&
       errorCode !== 'UNAUTHORIZED' &&
-      isRecoverableApiError(error)
+      classified.isRecoverable &&
+      CONFIG.HEURISTIC_FALLBACK.enabled === true
     ) {
       try {
-        const fallbackPayload = await buildOfflineFallbackPayload(normalizedInput, message);
+        const fallbackPayload = await buildOfflineFallbackPayload(normalizedInput, message, {
+          resolvedDomain: domain,
+        });
         fallbackPayload.cost = toRoundedMoney(Number(fallbackPayload.cost || 0));
 
         await trackLookupAnalytics({
@@ -2165,4 +2316,3 @@ async function handleFindEmail(data, sender, sendResponse) {
 // ============================================================================
 
 console.log('[Extension] Email Finder service worker initialized');
-
