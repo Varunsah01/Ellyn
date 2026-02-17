@@ -10,6 +10,8 @@ import { getOnboardingState } from "@/lib/onboarding";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useResponsive } from "@/hooks/useResponsive";
 import { cn } from "@/lib/utils";
+import { SubscriptionProvider } from "@/context/SubscriptionContext";
+import { QuotaWarningBanner } from "@/components/subscription/QuotaWarningBanner";
 
 export default function DashboardLayout({
   children,
@@ -107,35 +109,38 @@ export default function DashboardLayout({
 
   return (
     <DashboardWrapper>
-      <div className="flex h-screen overflow-hidden bg-background">
-        {/* Sidebar - Hidden on mobile, shown on tablet/desktop */}
-        <div className="hidden sm:flex">
-          <Sidebar
-            collapsed={isTablet ? true : sidebarCollapsed}
-            onToggleCollapse={() => {
-              if (isTablet) return;
-              setSidebarCollapsed(!sidebarCollapsed);
-            }}
-          />
-        </div>
+      <SubscriptionProvider>
+        <div className="flex h-screen overflow-hidden bg-background">
+          {/* Sidebar - Hidden on mobile, shown on tablet/desktop */}
+          <div className="hidden sm:flex">
+            <Sidebar
+              collapsed={isTablet ? true : sidebarCollapsed}
+              onToggleCollapse={() => {
+                if (isTablet) return;
+                setSidebarCollapsed(!sidebarCollapsed);
+              }}
+            />
+          </div>
 
-        {/* Main Content Area */}
-        <div className="flex flex-col flex-1 overflow-hidden">
-          <Header />
-          <main className="flex-1 overflow-y-auto">
-            <div
-              className={cn(
-                isContactsWorkspaceRoute
-                  ? "max-w-none p-0"
-                  : "container mx-auto max-w-7xl p-3 sm:p-4 lg:p-5"
-              )}
-            >
-              {children}
-            </div>
-          </main>
+          {/* Main Content Area */}
+          <div className="flex flex-col flex-1 overflow-hidden">
+            <Header />
+            <QuotaWarningBanner />
+            <main className="flex-1 overflow-y-auto">
+              <div
+                className={cn(
+                  isContactsWorkspaceRoute
+                    ? "max-w-none p-0"
+                    : "container mx-auto max-w-7xl p-3 sm:p-4 lg:p-5"
+                )}
+              >
+                {children}
+              </div>
+            </main>
+          </div>
+          <DashboardTour />
         </div>
-        <DashboardTour />
-      </div>
+      </SubscriptionProvider>
     </DashboardWrapper>
   );
 }

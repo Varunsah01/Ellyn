@@ -4,6 +4,8 @@ import { checkAiRateLimit, getRateLimitIdentifier } from '@/lib/ai-rate-limit'
 import { getGeminiClient } from '@/lib/gemini'
 import { buildPrompt, getPromptConfig, mapEnhanceAction } from '@/lib/template-prompts'
 import { EnhanceDraftSchema, formatZodError } from '@/lib/validation/schemas'
+import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
+import { incrementAIDraftGeneration, QuotaExceededError } from '@/lib/quota'
 
 interface EnhanceDraftResponse {
   success: boolean
@@ -35,6 +37,37 @@ export async function POST(request: NextRequest): Promise<NextResponse<EnhanceDr
   const startedAt = Date.now()
 
   try {
+    // Quota enforcement
+    try {
+      const user = await getAuthenticatedUserFromRequest(request)
+      await incrementAIDraftGeneration(user.id)
+    } catch (quotaErr) {
+      if (quotaErr instanceof QuotaExceededError) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'quota_exceeded',
+            feature: quotaErr.feature,
+            used: quotaErr.used,
+            limit: quotaErr.limit,
+            plan_type: quotaErr.plan_type,
+            upgrade_url: '/dashboard/upgrade',
+            originalLength: 0,
+            newLength: 0,
+            cost: 0,
+          } as unknown as EnhanceDraftResponse,
+          { status: 402 }
+        )
+      }
+      if (quotaErr instanceof Error && quotaErr.message === 'Unauthorized') {
+        return NextResponse.json(
+          { success: false, error: 'Unauthorized', originalLength: 0, newLength: 0, cost: 0 },
+          { status: 401 }
+        )
+      }
+      throw quotaErr
+    }
+
     const limiter = checkAiRateLimit(getRateLimitIdentifier(request))
     if (!limiter.allowed) {
       return NextResponse.json(

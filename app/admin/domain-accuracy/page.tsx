@@ -274,7 +274,7 @@ export default function DomainAccuracyPage() {
                         <Cell key={entry.name} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v: number) => [v.toLocaleString(), 'Resolutions']} />
+                    <Tooltip formatter={(v) => [(v as number).toLocaleString(), 'Resolutions']} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -297,7 +297,7 @@ export default function DomainAccuracyPage() {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="source" tick={{ fontSize: 11 }} />
                     <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} unit="%" />
-                    <Tooltip unit="%" />
+                    <Tooltip formatter={(v) => [`${v}%`]} />
                     <Legend />
                     <Bar dataKey="confidence" name="Avg Confidence" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="successRate" name="MX Success Rate" fill="#22c55e" radius={[4, 4, 0, 0]} />

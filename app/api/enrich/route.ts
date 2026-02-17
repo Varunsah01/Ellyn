@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
         console.log('[Enrich] Smart TLD resolved:', domain);
       } else {
         attemptedLayers.push({ layer: 'heuristic', result: 'miss' });
-        void logDomainResolution({ companyName, domain: '', domainSource: 'unknown', mxValid: false, confidenceScore: 0, attemptedLayers }).catch(console.error);
+        logDomainResolution({ companyName, domain: '', domainSource: 'unknown', mxValid: false, confidenceScore: 0, attemptedLayers });
         return NextResponse.json({
           success: false,
           error: 'Could not determine company domain',

@@ -23,7 +23,7 @@ export interface EmailPattern {
 }
 
 // Legacy in-memory lookup kept for reference only — DB is now the source of truth.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// @ts-ignore -- retained for documentation purposes
 const _KNOWN_DOMAINS_LEGACY: Record<string, string> = {
   'google': 'google.com',
   'alphabet': 'google.com',

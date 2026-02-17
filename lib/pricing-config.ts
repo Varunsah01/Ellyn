@@ -166,3 +166,16 @@ export function getPricingRegionDisplayLabel(region: PricingRegion) {
 
   return "Rest of World";
 }
+
+/**
+ * Get Dodo Payments product ID for the given region.
+ * Dodo Products encompass both billing cycles; cycle is passed separately to the API.
+ * @param {PricingRegion} region - Pricing region.
+ * @returns {string} Dodo product ID.
+ */
+export function getDodoProductId(region: PricingRegion): string {
+  const key = region === PRICING_REGION.IN ? 'DODO_PRO_PRODUCT_ID_IN' : 'DODO_PRO_PRODUCT_ID_GLOBAL'
+  const id = process.env[key]
+  if (!id) throw new Error(`Missing env var: ${key}`)
+  return id
+}

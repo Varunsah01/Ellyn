@@ -16,6 +16,8 @@ import {
 import { getLearnedPatterns, applyLearnedBoosts } from '@/lib/pattern-learning';
 import { supabase } from '@/lib/supabase';
 import { EmailGenerateSchema, formatZodError } from '@/lib/validation/schemas';
+import { getAuthenticatedUser } from '@/lib/auth/helpers';
+import { incrementEmailGeneration, QuotaExceededError } from '@/lib/quota';
 
 /**
  * Handle POST requests for `/api/generate-emails`.
@@ -30,6 +32,30 @@ import { EmailGenerateSchema, formatZodError } from '@/lib/validation/schemas';
  */
 export async function POST(request: NextRequest) {
   try {
+    // Quota enforcement (auth required)
+    try {
+      const user = await getAuthenticatedUser();
+      await incrementEmailGeneration(user.id);
+    } catch (quotaErr) {
+      if (quotaErr instanceof QuotaExceededError) {
+        return NextResponse.json(
+          {
+            error: 'quota_exceeded',
+            feature: quotaErr.feature,
+            used: quotaErr.used,
+            limit: quotaErr.limit,
+            plan_type: quotaErr.plan_type,
+            upgrade_url: '/dashboard/upgrade',
+          },
+          { status: 402 }
+        );
+      }
+      if (quotaErr instanceof Error && quotaErr.message === 'Unauthorized') {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      throw quotaErr;
+    }
+
     const parsed = EmailGenerateSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -60,6 +86,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // domain is guaranteed non-null from here on
+    let resolvedDomain: string = domain;
+
     // Check domain cache if domain was inferred
     if (domainSource === 'inferred') {
       try {
@@ -75,9 +104,10 @@ export async function POST(request: NextRequest) {
           const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
           if (lastVerified > sevenDaysAgo) {
-            domain = cachedDomain.domain;
+            resolvedDomain = cachedDomain.domain;
+            domain = resolvedDomain;
             domainSource = 'cache';
-            console.log(`Using cached domain for ${companyName}: ${domain}`);
+            console.log(`Using cached domain for ${companyName}: ${resolvedDomain}`);
           }
         }
       } catch (cacheError) {
@@ -86,24 +116,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Verify domain with MX records (DNS lookup)
-    const domainVerification = await verifyDomainMxRecords(domain);
+    const domainVerification = await verifyDomainMxRecords(resolvedDomain);
     const verificationStatus = getVerificationStatusDisplay(
       domainVerification.isValid,
       domainVerification.error
     );
 
     // Step 3: Estimate company size
-    const companySize = estimateCompanySize(domain);
+    const companySize = estimateCompanySize(resolvedDomain);
 
     // Step 4: Get learned patterns for this company
-    const learnedPatterns = await getLearnedPatterns(domain);
+    const learnedPatterns = await getLearnedPatterns(resolvedDomain);
 
     // Step 5: Generate smart email patterns
     const smartPatterns = await generateSmartEmailPatternsCached(
       firstName,
       lastName,
       {
-        domain,
+        domain: resolvedDomain,
         estimatedSize: companySize,
         emailProvider: domainVerification.emailProvider,
       },
@@ -145,7 +175,7 @@ export async function POST(request: NextRequest) {
           .upsert(
             {
               company_name: companyName.trim().toLowerCase(),
-              domain,
+              domain: resolvedDomain,
               verified: true,
               mx_records: domainVerification.mxRecords,
               email_provider: domainVerification.emailProvider,
@@ -155,7 +185,7 @@ export async function POST(request: NextRequest) {
               onConflict: 'company_name',
             }
           );
-        console.log(`Cached verified domain for ${companyName}: ${domain}`);
+        console.log(`Cached verified domain for ${companyName}: ${resolvedDomain}`);
         await invalidateCompanyDomainLookupCache(companyName)
       } catch (cacheWriteError) {
         console.warn('Failed to write to cache:', cacheWriteError);
@@ -165,7 +195,7 @@ export async function POST(request: NextRequest) {
     // Step 9: Return enhanced results
     return NextResponse.json({
       success: true,
-      domain,
+      domain: resolvedDomain,
       domainSource,
       companySize,
       verification: {
