@@ -48,6 +48,10 @@ const CONFIG = {
   },
 };
 
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+const CSRF_REFRESH_PATH = '/api/v1';
+const CSRF_TOKEN_TTL_MS = 5 * 60 * 1000;
+
 const AUTH_STORAGE_KEYS = ['isAuthenticated', 'user', 'auth_token'];
 const COST_STORAGE_KEY = 'api_cost_tracker';
 const OPERATION_STORAGE_PREFIX = 'find_email_op_';
@@ -57,6 +61,9 @@ const PATTERN_CACHE_PREFIX = 'pattern_';
 const CONTENT_SCRIPT_FILE = 'content/linkedin-extractor.js';
 const quotaManager = globalThis?.quotaManager || null;
 const analyticsClient = globalThis?.analytics || null;
+let csrfTokenCache = '';
+let csrfTokenFetchedAt = 0;
+let csrfRefreshPromise = null;
 
 async function configureSidePanelBehavior() {
   if (!chrome.sidePanel?.setPanelBehavior) {
@@ -484,21 +491,54 @@ async function extractProfileReadOnlyFromPage(tabId) {
         return '';
       };
 
+      const looksLikeRole = (value) => {
+        const text = clean(value);
+        if (!text) return false;
+
+        const roleKeywords =
+          /\b(co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|executive|administrator|officer|head of|chief)\b/i;
+        if (!roleKeywords.test(text)) return false;
+        if (/\b(?:at|@)\b/i.test(text)) return false;
+
+        const companyIndicators =
+          /\b(inc|inc\.|ltd|ltd\.|llc|plc|corp|corp\.|co|co\.|company|group|holdings|technologies|technology|systems|solutions|services|bank|insurance|life|limited)\b/i;
+        if (companyIndicators.test(text)) return false;
+
+        return text.split(/\s+/).length <= 8;
+      };
+
+      const isLikelyCompany = (value) => {
+        const text = clean(value);
+        if (!text || text.length < 2 || text.length > 100) return false;
+        if (looksLikeRole(text)) return false;
+        if (/linkedin|followers|connections|yrs|mos|contact info/i.test(text)) return false;
+        if (/^[0-9]+$/.test(text)) return false;
+        if (/[@|]/.test(text)) return false;
+
+        const suspiciousPatterns = [
+          /^(full-time|part-time|contract|freelance|self-employed)$/i,
+          /^\d{4}\s*-\s*(present|current|\d{4})$/i,
+          /^(he\/him|she\/her|they\/them)$/i,
+          /^[\u00B7\u2022]\s/i,
+        ];
+        return !suspiciousPatterns.some((pattern) => pattern.test(text));
+      };
+
       const parseCompanyFromHeadline = (headline) => {
         const text = clean(headline);
         if (!text) return '';
 
         const patterns = [
-          /\b(?:at|@)\s+([^|,·•]+?)(?:\s*(?:\||,|·|•|$))/i,
-          /^(?:co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|consultant)\s*,\s*([^|,·•]+?)(?:\s*(?:\||·|•|$))/i,
-          /^[^|,·•]+,\s*([^|,·•]+?)(?:\s*(?:\||·|•|$))/i,
+          /\b(?:at|@)\s+([^|,\n\u00B7\u2022]+?)(?:\s*(?:\||,|\u00B7|\u2022|$))/i,
+          /^(?:co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|consultant)\s*,\s*([^|,\n\u00B7\u2022]+?)(?:\s*(?:\||\u00B7|\u2022|$))/i,
+          /^[^|,\n\u00B7\u2022]+,\s*([^|,\n\u00B7\u2022]+?)(?:\s*(?:\||\u00B7|\u2022|$))/i,
         ];
 
         for (const pattern of patterns) {
           const match = text.match(pattern);
           if (!match?.[1]) continue;
           const candidate = clean(match[1]);
-          if (candidate) return candidate;
+          if (candidate && isLikelyCompany(candidate)) return candidate;
         }
 
         return '';
@@ -670,7 +710,8 @@ async function extractProfileReadOnlyFromPage(tabId) {
           ].join(', ')
         );
         const fromText = clean(companyLink?.textContent || '');
-        company = fromText || parseCompanyFromUrl(companyLink?.href || '');
+        const fromUrl = parseCompanyFromUrl(companyLink?.href || '');
+        company = isLikelyCompany(fromText) ? fromText : isLikelyCompany(fromUrl) ? fromUrl : '';
       }
 
       if (!company) {
@@ -688,7 +729,13 @@ async function extractProfileReadOnlyFromPage(tabId) {
             ) {
               continue;
             }
-            if (line.length > 1 && line.length <= 100 && !/\b(full[- ]?time|part[- ]?time|self[- ]?employed)\b/i.test(line)) {
+            if (
+              line.length > 1 &&
+              line.length <= 100 &&
+              !/\b(full[- ]?time|part[- ]?time|self[- ]?employed)\b/i.test(line) &&
+              !looksLikeRole(line) &&
+              isLikelyCompany(line)
+            ) {
               company = line;
               break;
             }
@@ -844,52 +891,24 @@ async function extractProfileWithCompany(tabId) {
 }
 
 async function resolveDomainEnhanced(companyName, companyPageUrl, authToken = '') {
-  const headers = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-  };
-
-  if (authToken) {
-    headers.Authorization = `Bearer ${authToken}`;
-  }
-
-  const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/resolve-domain-v2`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
+  const payload = await callBackendPost(
+    '/api/v1/resolve-domain-v2',
+    {
       companyName,
       companyPageUrl: companyPageUrl || undefined,
-    }),
-    credentials: 'include',
-    signal: createTimeoutSignal(Math.max(CONFIG.STAGE_TIMEOUT_MS.resolveDomain, 5000)),
-    cache: 'no-store',
-  });
+    },
+    authToken,
+    Math.max(CONFIG.STAGE_TIMEOUT_MS.resolveDomain, 5000)
+  );
 
-  if (!response.ok) {
-    const error = buildPipelineError(
-      response.status === 405 ? 'METHOD_NOT_ALLOWED' : 'NETWORK_FAILURE',
-      `Domain resolution failed: ${response.status}`,
-      {
-        status: response.status,
-        isRecoverable: [404, 405, 408, 429, 500, 502, 503, 504].includes(response.status),
-      }
-    );
-    throw error;
+  const success = payload?.success === true || payload?.data?.success === true;
+  const result = payload?.result || payload?.data?.result || null;
+  if (!success || !result) {
+    throw new Error(getApiErrorMessage(payload) || 'Invalid response from /api/v1/resolve-domain-v2');
   }
 
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
-
-  if (!payload?.success || !payload?.result) {
-    throw new Error('Invalid response from /api/v1/resolve-domain-v2');
-  }
-
-  console.log('[Domain] Resolved:', payload.result);
-  return payload.result;
+  console.log('[Domain] Resolved:', result);
+  return result;
 }
 
 async function handleExtractProfileFromTabMessage(data, sender, sendResponse) {
@@ -1264,7 +1283,69 @@ async function fetchJson(url, options = {}) {
   return { response, payload };
 }
 
-async function callBackendPost(path, body, authToken, timeoutMs) {
+function getApiErrorCode(payload) {
+  const directCode = String(payload?.code || '').trim();
+  if (directCode) return directCode;
+  const nestedCode = String(payload?.data?.code || '').trim();
+  if (nestedCode) return nestedCode;
+  return '';
+}
+
+function getApiErrorMessage(payload) {
+  const directMessage = String(payload?.error || '').trim();
+  if (directMessage) return directMessage;
+  const nestedMessage = String(payload?.data?.error || '').trim();
+  if (nestedMessage) return nestedMessage;
+  return '';
+}
+
+function isCsrfInvalidPayload(payload) {
+  const code = getApiErrorCode(payload).toUpperCase();
+  if (code === 'CSRF_INVALID') return true;
+
+  const message = getApiErrorMessage(payload).toLowerCase();
+  return message.includes('csrf');
+}
+
+function updateCsrfTokenFromResponse(response) {
+  const token = response?.headers?.get?.(CSRF_HEADER_NAME) || response?.headers?.get?.('x-csrf-token') || '';
+  if (!token) return;
+  csrfTokenCache = token;
+  csrfTokenFetchedAt = Date.now();
+}
+
+async function refreshCsrfToken(force = false) {
+  const cacheAgeMs = Date.now() - csrfTokenFetchedAt;
+  if (!force && csrfTokenCache && cacheAgeMs < CSRF_TOKEN_TTL_MS) {
+    return csrfTokenCache;
+  }
+
+  if (!force && csrfRefreshPromise) {
+    return csrfRefreshPromise;
+  }
+
+  csrfRefreshPromise = (async () => {
+    try {
+      const response = await fetch(`${CONFIG.API_BASE_URL}${CSRF_REFRESH_PATH}`, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        signal: createTimeoutSignal(5000),
+      });
+      updateCsrfTokenFromResponse(response);
+      return csrfTokenCache;
+    } catch (error) {
+      console.warn('[Extension] Failed to refresh CSRF token:', error?.message || String(error));
+      return '';
+    } finally {
+      csrfRefreshPromise = null;
+    }
+  })();
+
+  return csrfRefreshPromise;
+}
+
+async function executeBackendPost(url, body, authToken, timeoutMs, forceCsrfRefresh = false) {
   const headers = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -1274,7 +1355,11 @@ async function callBackendPost(path, body, authToken, timeoutMs) {
     headers.Authorization = `Bearer ${authToken}`;
   }
 
-  const url = `${CONFIG.API_BASE_URL}${path}`;
+  const csrfToken = await refreshCsrfToken(forceCsrfRefresh);
+  if (csrfToken) {
+    headers[CSRF_HEADER_NAME] = csrfToken;
+  }
+
   const { response, payload } = await fetchJson(url, {
     method: 'POST',
     headers,
@@ -1283,11 +1368,30 @@ async function callBackendPost(path, body, authToken, timeoutMs) {
     signal: createTimeoutSignal(timeoutMs),
     cache: 'no-store',
   });
+  updateCsrfTokenFromResponse(response);
+
+  return { response, payload };
+}
+
+async function callBackendPost(path, body, authToken, timeoutMs) {
+  const url = `${CONFIG.API_BASE_URL}${path}`;
+  let { response, payload } = await executeBackendPost(url, body, authToken, timeoutMs, false);
+
+  if (response.status === 403 && isCsrfInvalidPayload(payload)) {
+    ({ response, payload } = await executeBackendPost(url, body, authToken, timeoutMs, true));
+  }
 
   if (!response.ok) {
+    const apiCode = getApiErrorCode(payload);
+    const apiErrorMessage = getApiErrorMessage(payload);
+    const normalizedApiCode = String(apiCode || '').toUpperCase();
+    const normalizedMessage =
+      normalizedApiCode === 'CSRF_INVALID'
+        ? 'Session verification failed. Please retry or sign in again.'
+        : apiErrorMessage || `Request failed: ${response.status} ${response.statusText}`;
     const error = buildPipelineError(
-      response.status === 405 ? 'METHOD_NOT_ALLOWED' : 'NETWORK_FAILURE',
-      payload?.error || `Request failed: ${response.status} ${response.statusText}`,
+      normalizedApiCode || (response.status === 405 ? 'METHOD_NOT_ALLOWED' : 'NETWORK_FAILURE'),
+      normalizedMessage,
       {
         status: response.status,
         isRecoverable: [404, 405, 408, 429, 500, 502, 503, 504].includes(response.status),
@@ -1319,6 +1423,15 @@ function classifyApiError(error) {
       isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true,
       code: 'NO_MX_RECORDS',
       message: error?.message || 'Domain has no mail exchange (MX) records.',
+    };
+  }
+
+  const isCsrf = code === 'CSRF_INVALID' || message.includes('csrf');
+  if (isCsrf) {
+    return {
+      isRecoverable: false,
+      code: 'CSRF_INVALID',
+      message: 'Session verification failed. Please retry or sign in again.',
     };
   }
 

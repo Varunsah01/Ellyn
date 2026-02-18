@@ -732,12 +732,12 @@ class LinkedInExtractor {
     this.log('Scanning top-card for company name');
 
     const topCardSelectors = [
-      // 2024–2025 LinkedIn — primary spans
-      'div.mt2.relative span.text-body-medium[aria-hidden="true"]',
-      'main section:first-of-type span.text-body-medium[aria-hidden="true"]',
       // company link text
       'main section:first-of-type a[href*="/company/"] span[aria-hidden="true"]',
       'div[class*="pv-text-details"] a[href*="/company/"] span[aria-hidden="true"]',
+      // 2024–2025 LinkedIn — primary spans
+      'div.mt2.relative span.text-body-medium[aria-hidden="true"]',
+      'main section:first-of-type span.text-body-medium[aria-hidden="true"]',
       // legacy selectors (keep as fallback)
       'div[class*="pv-text-details"] div.text-body-medium:not(.break-words)',
       'div.pv-text-details__left-panel div.text-body-medium span[aria-hidden="true"]',
@@ -751,7 +751,8 @@ class LinkedInExtractor {
         const element = document.querySelector(selector);
         if (!element) continue;
 
-        const text = this.cleanCompanyCandidate(element.textContent || '');
+        const rawText = this.cleanText(element.textContent || '');
+        const text = this.extractCompanyFromMixedText(rawText) || this.cleanCompanyCandidate(rawText);
         if (text && !this.looksLikeRole(text)) {
           this.log('Top-card company candidate found', { selector, text });
           return text;
@@ -799,9 +800,21 @@ class LinkedInExtractor {
         const isCurrent = /\b(current|present)\b/i.test(itemText);
         if (!isCurrent) continue;
 
+        const companyLink = item.querySelector('a[href*="/company/"]');
+        const linkedCompany = this.cleanCompanyCandidate(
+          companyLink?.querySelector('span[aria-hidden="true"]')?.textContent ||
+            companyLink?.textContent ||
+            ''
+        );
+        if (linkedCompany && !this.looksLikeRole(linkedCompany)) {
+          this.log('Current company found in experience link', { text: linkedCompany });
+          return linkedCompany;
+        }
+
         const companySpans = item.querySelectorAll('span[aria-hidden="true"]');
         for (const span of companySpans) {
-          const text = this.cleanCompanyCandidate(span.textContent || '');
+          const rawText = this.cleanText(span.textContent || '');
+          const text = this.extractCompanyFromMixedText(rawText) || this.cleanCompanyCandidate(rawText);
           if (!text || this.looksLikeRole(text)) continue;
 
           this.log('Current company found in experience', { text });
@@ -842,6 +855,26 @@ class LinkedInExtractor {
 
   extractCompanyFromTopCardAffiliations() {
     return this.extractCompanyFromTopCard();
+  }
+
+  extractCompanyFromMixedText(value) {
+    const text = this.cleanText(value);
+    if (!text) return '';
+
+    const patterns = [
+      /\b(?:at|@)\s+([^|,\n\u00B7\u2022]+?)(?:\s*(?:\||,|\u00B7|\u2022|$))/i,
+      /\b(?:at|@)\s+(.+)$/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (!match?.[1]) continue;
+
+      const candidate = this.cleanCompanyCandidate(match[1]);
+      if (candidate) return candidate;
+    }
+
+    return '';
   }
 
   // Role Extraction ----------------------------------------------------------
@@ -1191,7 +1224,12 @@ class LinkedInExtractor {
       if (!companyCandidate) {
         for (const line of lines) {
           const candidate = this.cleanCompanyCandidate(line);
-          if (!candidate || candidate === titleCandidate || this.looksLikeEducation(candidate)) {
+          if (
+            !candidate ||
+            candidate === titleCandidate ||
+            this.looksLikeEducation(candidate) ||
+            this.looksLikeRole(candidate)
+          ) {
             continue;
           }
           if (candidate) {
@@ -1271,11 +1309,22 @@ class LinkedInExtractor {
   }
 
   cleanCompanyCandidate(value) {
-    const text = this.cleanText(value)
+    let text = this.cleanText(value)
       .replace(/\s*[\u00B7\u2022]\s*(full-time|part-time|contract|self-employed).*$/i, '')
       .replace(/\|\s*LinkedIn.*$/i, '')
       .replace(/^(?:co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|consultant)\s*,\s*/i, '')
       .trim();
+
+    const explicitMatch = text.match(
+      /\b(?:at|@)\s+([^|,\n\u00B7\u2022]+?)(?:\s*(?:\||,|\u00B7|\u2022|$))/i
+    );
+    if (explicitMatch?.[1]) {
+      text = this.cleanText(explicitMatch[1]);
+    }
+
+    if (text.includes('|') || text.includes('\u00B7') || text.includes('\u2022')) {
+      text = this.cleanText(text.split(/[\|\u00B7\u2022]/)[0] || '');
+    }
 
     return this.isLikelyCompany(text) ? text : '';
   }
@@ -1328,9 +1377,17 @@ class LinkedInExtractor {
     const text = value.trim();
     if (!text) return false;
 
-    const rolePrefixes =
-      /^(co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|head of|chief)\b/i;
-    return rolePrefixes.test(text);
+    const roleKeywords =
+      /\b(co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|executive|administrator|officer|head of|chief)\b/i;
+    if (!roleKeywords.test(text)) return false;
+
+    if (/\b(?:at|@)\b/i.test(text)) return false;
+
+    const companyIndicators =
+      /\b(inc|inc\.|ltd|ltd\.|llc|plc|corp|corp\.|co|co\.|company|group|holdings|technologies|technology|systems|solutions|services|bank|insurance|life|limited)\b/i;
+    if (companyIndicators.test(text)) return false;
+
+    return text.split(/\s+/).length <= 8;
   }
 
   isLikelyCompany(value) {
@@ -1339,8 +1396,9 @@ class LinkedInExtractor {
     const text = this.cleanText(value);
     if (!text || text.length < 2 || text.length > 100) return false;
     if (this.looksLikeRole(text)) return false;
-    if (/linkedin|followers|connections|yrs|mos/i.test(text)) return false;
+    if (/linkedin|followers|connections|yrs|mos|contact info/i.test(text)) return false;
     if (/^[0-9]+$/.test(text)) return false;
+    if (/[@|]/.test(text)) return false;
 
     const suspiciousPatterns = [
       /^(full-time|part-time|contract|freelance|self-employed)$/i,
