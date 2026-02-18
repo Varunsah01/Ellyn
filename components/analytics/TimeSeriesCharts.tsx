@@ -48,6 +48,22 @@ export function TimeSeriesCharts({ contactsData, loading }: TimeSeriesChartsProp
     );
   }
 
+  if (contactsData.length < 2) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Contacts Added Over Time</CardTitle>
+          <CardDescription>Daily contact acquisition trend</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex h-[300px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50">
+            <p className="text-sm text-muted-foreground">Add more contacts to see your growth trend.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -125,6 +141,22 @@ export function EmailTrendCharts({ data, loading }: EmailTrendChartsProps) {
         </CardHeader>
         <CardContent>
           <div className="h-[300px] animate-pulse bg-muted rounded" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (data.length < 2) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Email Activity Trend</CardTitle>
+          <CardDescription>Emails sent and replies received</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex h-[300px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50">
+            <p className="text-sm text-muted-foreground">Send emails to see your activity trend.</p>
+          </div>
         </CardContent>
       </Card>
     );

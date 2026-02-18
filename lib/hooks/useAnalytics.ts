@@ -161,6 +161,20 @@ export function useDashboardStats() {
   // Re-fetch when contacts are mutated or stats are explicitly invalidated
   useRefreshListener(['contacts', 'stats'], fetchStats);
 
+  // Realtime — re-fetch immediately when a new contact is inserted
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel('useDashboardStats:contacts-inserts')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'contacts' },
+        () => { void fetchStats(); }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [fetchStats]);
+
   return { stats, loading, error, refresh: fetchStats };
 }
 

@@ -147,7 +147,8 @@ async function getOverviewMetrics(
 
   const totalSent = outreachData?.length || 0;
   const repliedCount = outreachData?.filter((o) => o.status === "replied").length || 0;
-  const replyRate = totalSent > 0 ? ((repliedCount / totalSent) * 100).toFixed(1) : "0.0";
+  // Return null when no emails sent so the UI can show "—" instead of "0%"
+  const replyRate = totalSent > 0 ? ((repliedCount / totalSent) * 100).toFixed(1) : null;
 
   // Best performing sequence
   const sequencePerfResponse = await getSequencePerformance(start, end, userId);
@@ -201,17 +202,18 @@ async function getOverviewMetrics(
 
   return NextResponse.json({
     data: {
-      totalContacts,
-      totalDrafts,
-      emailsSent,
+      totalContacts: totalContacts ?? 0,
+      totalDrafts: totalDrafts ?? 0,
+      emailsSent: emailsSent ?? 0,
+      // null signals "no data" — UI renders "—" instead of "0%" or fake rate
       replyRate,
-      bestPerformingSequence: sequencePerf?.name || "N/A",
+      bestPerformingSequence: sequencePerf?.name ?? null,
       bestPerformingReplyRate:
-        typeof sequencePerf?.replyRate === "number"
+        typeof sequencePerf?.replyRate === "number" && sequencePerf.sent > 0
           ? sequencePerf.replyRate.toFixed(1)
-          : "0.0",
-      mostActiveDay,
-      mostActiveHour: mostActiveHour !== "N/A" ? `${mostActiveHour}:00` : "N/A",
+          : null,
+      mostActiveDay: mostActiveDay !== "N/A" ? mostActiveDay : null,
+      mostActiveHour: mostActiveHour !== "N/A" ? `${mostActiveHour}:00` : null,
     },
     comparison,
   });
@@ -467,7 +469,8 @@ async function getActivityHeatmap(start: Date, end: Date, userId: string) {
     .lte("sent_at", format(end, "yyyy-MM-dd"))
     .not("sent_at", "is", null);
 
-  if (!data) {
+  // Return empty array when there is no outreach data so the component shows its empty state
+  if (!data || data.length === 0) {
     return NextResponse.json({ data: [] });
   }
 

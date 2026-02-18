@@ -194,3 +194,77 @@ export function useSequenceStats() {
   return { stats, loading, error, refresh: fetchStats };
 }
 
+// ── Top sequences by reply rate ──────────────────────────────────────────────
+
+export interface TopSequence {
+  id: string;
+  name: string;
+  /** Reply rate as a percentage (0–100). Always 0 when emailsSent === 0. */
+  replyRate: number;
+  emailsSent: number;
+  contactsEnrolled: number;
+}
+
+/**
+ * Returns the top N sequences sorted by reply rate (desc).
+ * Returns an empty array when the user has no sequences.
+ */
+export function useTopSequences(limit = 3) {
+  const [sequences, setSequences] = useState<TopSequence[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchSequences = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fetch('/api/v1/sequences');
+      if (!response.ok) throw new Error('Failed to fetch sequences');
+
+      const data = await response.json();
+
+      const raw: Array<{
+        id: string;
+        name: string;
+        contacts: string[];
+        stats: { emailsSent: number; replied: number; totalContacts: number } | null;
+      }> = data.sequences ?? [];
+
+      const mapped: TopSequence[] = raw.map((s) => {
+        const emailsSent = s.stats?.emailsSent ?? 0;
+        const replied = s.stats?.replied ?? 0;
+        const replyRate =
+          emailsSent > 0 ? Math.round((replied / emailsSent) * 1000) / 10 : 0;
+        return {
+          id: s.id,
+          name: s.name,
+          replyRate,
+          emailsSent,
+          contactsEnrolled: s.stats?.totalContacts ?? s.contacts?.length ?? 0,
+        };
+      });
+
+      // Primary sort: reply rate desc. Tiebreaker: emails sent desc.
+      mapped.sort((a, b) =>
+        b.replyRate !== a.replyRate
+          ? b.replyRate - a.replyRate
+          : b.emailsSent - a.emailsSent
+      );
+
+      setSequences(mapped.slice(0, limit));
+    } catch (err) {
+      console.error('[useTopSequences] Error:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+      setSequences([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [limit]);
+
+  useEffect(() => {
+    fetchSequences();
+  }, [fetchSequences]);
+
+  return { sequences, loading, error };
+}

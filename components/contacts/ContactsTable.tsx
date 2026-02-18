@@ -24,6 +24,7 @@ import {
   Trash,
   ArrowUpDown,
   Linkedin,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyContacts } from "@/components/EmptyState";
@@ -252,16 +253,26 @@ export function ContactsTable({ search = "", status = "", source = "" }: Contact
         const url = row.original.linkedinUrl;
         if (!url) return null;
         return (
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center justify-center text-[#0A66C2] hover:text-[#0A66C2]/80 transition-colors"
-            title="View LinkedIn profile"
-          >
-            <Linkedin className="h-4 w-4" />
-          </a>
+          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center text-[#0A66C2] hover:text-[#0A66C2]/80 transition-colors"
+              title="View LinkedIn profile"
+            >
+              <Linkedin className="h-4 w-4" />
+            </a>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+              title="Open in Extension"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          </div>
         );
       },
     },

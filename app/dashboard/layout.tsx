@@ -71,6 +71,24 @@ export default function DashboardLayout({
 
       if (event === "SIGNED_OUT" || !session) {
         setIsAuthenticated(false);
+
+        // Best-effort: tell the extension the user signed out so it can clear its session
+        try {
+          const extId = localStorage.getItem("ellyn_extension_id");
+          const cr = (window as Window & {
+            chrome?: { runtime?: { sendMessage?: unknown; lastError?: unknown } };
+          }).chrome?.runtime;
+          if (extId && typeof cr?.sendMessage === "function") {
+            (cr.sendMessage as (id: string, msg: unknown, cb: () => void) => void)(
+              extId,
+              { type: "AUTH_LOGOUT_LOCAL" },
+              () => { void (cr.lastError); }
+            );
+          }
+        } catch {
+          // Extension may not be installed; ignore silently
+        }
+
         router.replace("/auth/login?next=/dashboard");
       }
     });

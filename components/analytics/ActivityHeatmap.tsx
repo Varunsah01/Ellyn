@@ -35,6 +35,22 @@ export function ActivityHeatmap({ data, loading }: ActivityHeatmapProps) {
     );
   }
 
+  if (data.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Activity Heatmap</CardTitle>
+          <CardDescription>Email activity by day of week and hour</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex h-[300px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50">
+            <p className="text-sm text-muted-foreground">Send emails to see your activity heatmap.</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   // Find max count for color scaling
   const maxCount = Math.max(
     ...data.flatMap((day) => day.hours.map((hour) => hour.count)),
@@ -42,7 +58,7 @@ export function ActivityHeatmap({ data, loading }: ActivityHeatmapProps) {
   );
 
   const getHeatmapColor = (count: number) => {
-    if (count === 0) return "bg-muted";
+    if (count === 0) return "bg-slate-100 dark:bg-slate-800";
     const intensity = count / maxCount;
     if (intensity > 0.75) return "bg-green-600";
     if (intensity > 0.5) return "bg-green-500";
@@ -101,7 +117,7 @@ export function ActivityHeatmap({ data, loading }: ActivityHeatmapProps) {
           <div className="flex items-center justify-end gap-2 pt-4 text-xs text-muted-foreground">
             <span>Less</span>
             <div className="flex gap-1">
-              <div className="w-4 h-4 rounded-sm bg-muted" />
+              <div className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-800" />
               <div className="w-4 h-4 rounded-sm bg-green-300" />
               <div className="w-4 h-4 rounded-sm bg-green-400" />
               <div className="w-4 h-4 rounded-sm bg-green-500" />

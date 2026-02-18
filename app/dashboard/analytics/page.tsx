@@ -173,9 +173,9 @@ export default function AnalyticsPage() {
 
               {overviewData && (
                 <GoalTracker
-                  currentContacts={overviewData.data?.totalContacts || 0}
-                  currentEmails={overviewData.data?.emailsSent || 0}
-                  currentReplyRate={parseFloat(overviewData.data?.replyRate || "0")}
+                  currentContacts={overviewData.data?.totalContacts ?? 0}
+                  currentEmails={overviewData.data?.emailsSent ?? 0}
+                  currentReplyRate={overviewData.data?.replyRate !== null ? parseFloat(overviewData.data?.replyRate ?? "0") : 0}
                 />
               )}
             </div>

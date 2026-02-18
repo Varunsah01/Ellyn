@@ -1,21 +1,8 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
-import { Progress } from "@/components/ui/Progress";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Trophy, Target, TrendingUp, Zap } from "lucide-react";
-import { motion } from "framer-motion";
-
-interface Goal {
-  id: string;
-  title: string;
-  target: number;
-  current: number;
-  unit: string;
-  period: string;
-  icon: React.ElementType;
-}
+import { Trophy, Target } from "lucide-react";
 
 interface GoalTrackerProps {
   currentContacts: number;
@@ -35,140 +22,51 @@ export function GoalTracker({
   currentEmails,
   currentReplyRate,
 }: GoalTrackerProps) {
-  // Define goals (these would typically come from user settings)
-  const goals: Goal[] = [
-    {
-      id: "contacts",
-      title: "Add Contacts",
-      target: 50,
-      current: currentContacts,
-      unit: "contacts",
-      period: "this month",
-      icon: Target,
-    },
-    {
-      id: "emails",
-      title: "Send Emails",
-      target: 100,
-      current: currentEmails,
-      unit: "emails",
-      period: "this month",
-      icon: TrendingUp,
-    },
-    {
-      id: "reply_rate",
-      title: "Reply Rate",
-      target: 30,
-      current: currentReplyRate,
-      unit: "%",
-      period: "target",
-      icon: Zap,
-    },
-  ];
-
-  const getProgressColor = (percentage: number) => {
-    if (percentage >= 100) return "bg-green-500";
-    if (percentage >= 75) return "bg-blue-500";
-    if (percentage >= 50) return "bg-yellow-500";
-    return "bg-gray-500";
-  };
-
-  const getMilestone = (current: number, target: number) => {
-    const percentage = (current / target) * 100;
-    if (percentage >= 100) return { label: "Completed!", color: "bg-green-500" };
-    if (percentage >= 75) return { label: "Almost there!", color: "bg-blue-500" };
-    if (percentage >= 50) return { label: "Halfway!", color: "bg-yellow-500" };
-    if (percentage >= 25) return { label: "Getting started", color: "bg-gray-500" };
-    return { label: "Just started", color: "bg-gray-400" };
-  };
+  const achievements = [
+    currentContacts >= 10 && { label: "First 10 Contacts" },
+    currentContacts >= 50 && { label: "50 Contacts" },
+    currentEmails >= 50 && { label: "50 Emails Sent" },
+    currentEmails >= 100 && { label: "100 Emails Sent" },
+    currentReplyRate >= 20 && { label: "20% Reply Rate" },
+    currentReplyRate >= 30 && { label: "30% Reply Rate" },
+  ].filter(Boolean) as Array<{ label: string }>;
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Trophy className="h-5 w-5 text-yellow-500" />
-              Goal Tracking
-            </CardTitle>
-            <CardDescription>Track your progress towards your goals</CardDescription>
-          </div>
-          <Button variant="outline" size="sm">
-            Edit Goals
-          </Button>
-        </div>
+        <CardTitle className="flex items-center gap-2">
+          <Trophy className="h-5 w-5 text-yellow-500" />
+          Goal Tracking
+        </CardTitle>
+        <CardDescription>Track your progress towards your goals</CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-6">
-          {goals.map((goal, index) => {
-            const Icon = goal.icon;
-            const percentage = Math.min((goal.current / goal.target) * 100, 100);
-            const milestone = getMilestone(goal.current, goal.target);
-
-            return (
-              <motion.div
-                key={goal.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="space-y-2"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Icon className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="font-medium">{goal.title}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {goal.current} / {goal.target} {goal.unit} {goal.period}
-                      </div>
-                    </div>
-                  </div>
-                  <Badge className={milestone.color}>{milestone.label}</Badge>
-                </div>
-
-                <Progress value={percentage} className={`h-3 ${getProgressColor(percentage)}`} />
-
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{percentage.toFixed(0)}% complete</span>
-                  {percentage < 100 && (
-                    <span>{goal.target - goal.current} {goal.unit} remaining</span>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })}
+      <CardContent className="space-y-6">
+        {/* Empty state — goals feature coming soon */}
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+          <Target className="mb-3 h-8 w-8 text-slate-300" />
+          <p className="text-sm font-medium text-slate-600">Goal setting coming soon</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            You&apos;ll be able to set custom targets for contacts, emails, and reply rate.
+          </p>
         </div>
 
-        {/* Achievement badges */}
-        <div className="mt-6 pt-6 border-t">
-          <div className="text-sm font-medium mb-3">Recent Achievements</div>
-          <div className="flex flex-wrap gap-2">
-            {currentContacts >= 10 && (
-              <Badge variant="outline" className="gap-1">
-                <Trophy className="h-3 w-3 text-yellow-500" />
-                First 10 Contacts
-              </Badge>
-            )}
-            {currentEmails >= 50 && (
-              <Badge variant="outline" className="gap-1">
-                <Trophy className="h-3 w-3 text-yellow-500" />
-                50 Emails Sent
-              </Badge>
-            )}
-            {currentReplyRate >= 20 && (
-              <Badge variant="outline" className="gap-1">
-                <Trophy className="h-3 w-3 text-yellow-500" />
-                20% Reply Rate
-              </Badge>
-            )}
-            {currentContacts < 10 && currentEmails < 50 && currentReplyRate < 20 && (
-              <div className="text-sm text-muted-foreground">
-                Keep going! Achievements will appear here.
-              </div>
-            )}
-          </div>
+        {/* Achievements — always shown when earned */}
+        <div className="border-t pt-4">
+          <div className="text-sm font-medium mb-3">Achievements</div>
+          {achievements.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {achievements.map((a) => (
+                <Badge key={a.label} variant="outline" className="gap-1">
+                  <Trophy className="h-3 w-3 text-yellow-500" />
+                  {a.label}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Keep going! Achievements will appear here.
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>

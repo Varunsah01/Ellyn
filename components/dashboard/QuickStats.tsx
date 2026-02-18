@@ -7,6 +7,7 @@ import { Progress } from "@/components/ui/Progress";
 import { ArrowRight, TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import type { TopSequence } from "@/lib/hooks/useSequences";
 
 interface Contact {
   id: string;
@@ -16,19 +17,12 @@ interface Contact {
   addedAt: Date;
 }
 
-interface Sequence {
-  id: string;
-  name: string;
-  replyRate: number;
-  contactsEnrolled: number;
-}
-
 interface QuickStatsProps {
   recentContacts: Contact[];
-  topSequences: Sequence[];
+  topSequences: TopSequence[];
+  loading?: boolean;
   onViewAllContacts?: () => void;
   onViewAllSequences?: () => void;
-  loading?: boolean;
 }
 
 /**
@@ -41,46 +35,10 @@ interface QuickStatsProps {
 export function QuickStats({
   recentContacts,
   topSequences,
+  loading = false,
   onViewAllContacts,
   onViewAllSequences,
-  loading = false,
 }: QuickStatsProps) {
-  if (loading) {
-    return (
-      <div className="space-y-4 animate-pulse">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Recent Contacts</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {[1, 2, 3].map((item) => (
-              <div key={item} className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full bg-muted" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 w-1/2 rounded bg-muted" />
-                  <div className="h-3 w-1/3 rounded bg-muted" />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Top Sequences</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[1, 2].map((item) => (
-              <div key={item} className="space-y-2">
-                <div className="h-3 w-2/3 rounded bg-muted" />
-                <div className="h-2 w-full rounded bg-muted" />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
       {/* Recent Contacts */}
@@ -143,13 +101,33 @@ export function QuickStats({
           </div>
         </CardHeader>
         <CardContent>
-          {topSequences.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No sequences yet
-            </p>
+          {loading ? (
+            /* Skeleton rows — same pattern as the contacts skeleton */
+            <div className="space-y-4 animate-pulse">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-6 w-6 rounded-full bg-muted flex-shrink-0" />
+                    <div className="h-3 w-2/3 rounded bg-muted" />
+                  </div>
+                  <div className="h-1.5 w-full rounded bg-muted" />
+                  <div className="h-3 w-1/3 rounded bg-muted" />
+                </div>
+              ))}
+            </div>
+          ) : topSequences.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+              <p className="text-sm text-muted-foreground">No sequences yet</p>
+              <Link
+                href="/dashboard/sequences"
+                className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
+              >
+                Create your first →
+              </Link>
+            </div>
           ) : (
             <div className="space-y-4">
-              {topSequences.slice(0, 3).map((sequence, index) => (
+              {topSequences.map((sequence, index) => (
                 <div key={sequence.id}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -161,50 +139,43 @@ export function QuickStats({
                       </Badge>
                       <p className="text-sm font-medium truncate">{sequence.name}</p>
                     </div>
-                    <div className="flex items-center gap-1 text-sm flex-shrink-0">
-                      {sequence.replyRate >= 30 ? (
-                        <TrendingUp className="h-3 w-3 text-green-500" />
-                      ) : (
-                        <TrendingDown className="h-3 w-3 text-muted-foreground" />
-                      )}
-                      <span
-                        className={cn(
-                          "font-medium",
-                          sequence.replyRate >= 30
-                            ? "text-green-600 dark:text-green-500"
-                            : "text-muted-foreground"
-                        )}
-                      >
-                        {sequence.replyRate}%
+                    {sequence.emailsSent === 0 ? (
+                      <span className="text-sm font-medium text-muted-foreground flex-shrink-0">
+                        —
                       </span>
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-sm flex-shrink-0">
+                        {sequence.replyRate >= 30 ? (
+                          <TrendingUp className="h-3 w-3 text-green-500" />
+                        ) : (
+                          <TrendingDown className="h-3 w-3 text-muted-foreground" />
+                        )}
+                        <span
+                          className={cn(
+                            "font-medium",
+                            sequence.replyRate >= 30
+                              ? "text-green-600 dark:text-green-500"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {sequence.replyRate}%
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1">
-                    <Progress value={sequence.replyRate} className="h-1.5" />
+                    {sequence.emailsSent > 0 && (
+                      <Progress value={sequence.replyRate} className="h-1.5" />
+                    )}
                     <p className="text-xs text-muted-foreground">
-                      {sequence.contactsEnrolled} contacts enrolled
+                      {sequence.contactsEnrolled} contact
+                      {sequence.contactsEnrolled !== 1 ? "s" : ""} enrolled
                     </p>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Tips & Recommendations */}
-      <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-        <CardHeader>
-          <CardTitle className="text-base">💡 Quick Tip</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm">
-            Your reply rate is above average! Keep personalizing your messages to
-            maintain this momentum.
-          </p>
-          <p className="text-xs text-muted-foreground mt-2">
-            Best send time: Tuesdays at 10 AM
-          </p>
         </CardContent>
       </Card>
     </div>

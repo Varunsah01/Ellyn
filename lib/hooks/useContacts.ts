@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRefreshListener } from '@/lib/context/AppRefreshContext';
+import { createClient } from '@/lib/supabase/client';
 
 export interface Contact {
   id: string;
@@ -123,6 +124,20 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
 
   // Re-fetch when any contacts mutation fires a refresh event
   useRefreshListener('contacts', fetchContacts);
+
+  // Realtime — re-fetch immediately when a new contact is inserted
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel('useContacts:contacts-inserts')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'contacts' },
+        () => { void fetchContacts(); }
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [fetchContacts]);
 
   return {
     contacts,

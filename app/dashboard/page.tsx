@@ -8,12 +8,11 @@ import { Button } from "@/components/ui/Button";
 import { AnimatedCard } from "@/components/ui/AnimatedCard";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Progress } from "@/components/ui/Progress";
 import { Users, Mail, Zap, Plus, BarChart3, RefreshCw, CheckCircle2, Circle } from "lucide-react";
 import Link from "next/link";
 import { useDashboardStats, useRecentActivity } from "@/lib/hooks/useAnalytics";
 import { useContacts } from "@/lib/hooks/useContacts";
-import { useSequenceStats } from "@/lib/hooks/useSequences";
+import { useSequenceStats, useTopSequences } from "@/lib/hooks/useSequences";
 import { SmartQuickActions } from "@/components/ContextualActions";
 
 export default function DashboardPage() {
@@ -22,6 +21,7 @@ export default function DashboardPage() {
   const { activities, loading: activityLoading, refresh: refreshActivity } = useRecentActivity(10);
   const { contacts: recentContacts, loading: contactsLoading } = useContacts({ limit: 5 });
   const { stats: sequenceStats, loading: sequenceLoading } = useSequenceStats();
+  const { sequences: topSequences, loading: seqLoading } = useTopSequences(3);
 
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
@@ -36,19 +36,6 @@ export default function DashboardPage() {
     email: c.confirmed_email || c.inferred_email || '',
     addedAt: new Date(c.created_at),
   }));
-
-  // Mock top sequences (will be replaced when sequence analytics are implemented)
-  const mockTopSequences = [
-    { id: "1", name: "Software Engineer Outreach", replyRate: 34.2, contactsEnrolled: 45 },
-    { id: "2", name: "Product Manager Referral", replyRate: 42.8, contactsEnrolled: 12 },
-    { id: "3", name: "Alumni Network", replyRate: 38.5, contactsEnrolled: 18 },
-  ];
-
-  // Calculate weekly goal progress (based on new contacts this week)
-  const weeklyGoal = 30; // Target: 30 new contacts per week
-  const weeklyProgress = dashboardStats.newContactsThisWeek > 0
-    ? Math.min((dashboardStats.newContactsThisWeek / weeklyGoal) * 100, 100)
-    : 0;
 
   const nextSteps = [
     {
@@ -206,14 +193,9 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span>Response rate</span>
-                    <span className="font-bold">{dashboardStats.responseRate}%</span>
-                  </div>
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-muted-foreground">Weekly Goal</span>
-                      <span>{Math.round(weeklyProgress)}%</span>
-                    </div>
-                    <Progress value={weeklyProgress} className="h-2" />
+                    <span className="font-bold">
+                      {dashboardStats.emailsSent === 0 ? "—" : `${dashboardStats.responseRate}%`}
+                    </span>
                   </div>
                 </div>
               )}
@@ -242,7 +224,7 @@ export default function DashboardPage() {
             change={dashboardStats.emailsSentThisWeek}
             trend="up"
             icon={Mail}
-            description={`${dashboardStats.responseRate}% response rate`}
+            description={dashboardStats.emailsSent === 0 ? "No emails sent yet" : `${dashboardStats.responseRate}% response rate`}
             loading={statsLoading}
           />
         </div>
@@ -262,8 +244,8 @@ export default function DashboardPage() {
           <div className="space-y-6">
             <QuickStats
               recentContacts={formattedRecentContacts}
-              topSequences={mockTopSequences}
-              loading={contactsLoading}
+              topSequences={topSequences}
+              loading={seqLoading}
             />
           </div>
         </div>

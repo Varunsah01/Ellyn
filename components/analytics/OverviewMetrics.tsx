@@ -70,11 +70,11 @@ interface OverviewMetricsProps {
     totalContacts: number;
     totalDrafts: number;
     emailsSent: number;
-    replyRate: string;
-    bestPerformingSequence: string;
-    bestPerformingReplyRate: string;
-    mostActiveDay: string;
-    mostActiveHour: string;
+    replyRate: string | null;
+    bestPerformingSequence: string | null;
+    bestPerformingReplyRate: string | null;
+    mostActiveDay: string | null;
+    mostActiveHour: string | null;
   };
   comparison?: {
     contacts: number;
@@ -133,10 +133,10 @@ export function OverviewMetrics({ data, comparison, loading }: OverviewMetricsPr
 
       <MetricCard
         title="Reply Rate"
-        value={`${data.replyRate}%`}
+        value={data.replyRate !== null ? `${data.replyRate}%` : "—"}
         icon={Zap}
-        description="Of sent emails"
-        trend={comparison ? {
+        description={data.replyRate !== null ? "Of sent emails" : "No emails sent yet"}
+        trend={comparison && data.replyRate !== null ? {
           value: comparison.replyRate,
           isPositive: comparison.replyRate > 0
         } : undefined}
@@ -155,10 +155,16 @@ export function OverviewMetrics({ data, comparison, loading }: OverviewMetricsPr
             </div>
           ) : (
             <>
-              <div className="text-xl font-bold">{data.bestPerformingSequence}</div>
-              <p className="text-sm text-muted-foreground">
-                {data.bestPerformingReplyRate}% reply rate
-              </p>
+              {data.bestPerformingSequence !== null ? (
+                <>
+                  <div className="text-xl font-bold">{data.bestPerformingSequence}</div>
+                  <p className="text-sm text-muted-foreground">
+                    {data.bestPerformingReplyRate}% reply rate
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No sequences yet</p>
+              )}
             </>
           )}
         </CardContent>
@@ -166,17 +172,17 @@ export function OverviewMetrics({ data, comparison, loading }: OverviewMetricsPr
 
       <MetricCard
         title="Most Active Day"
-        value={data.mostActiveDay}
+        value={data.mostActiveDay ?? "—"}
         icon={Calendar}
-        description="Peak activity day"
+        description={data.mostActiveDay !== null ? "Peak activity day" : "No email activity yet"}
         loading={loading}
       />
 
       <MetricCard
         title="Most Active Hour"
-        value={data.mostActiveHour}
+        value={data.mostActiveHour ?? "—"}
         icon={Clock}
-        description="Peak activity time"
+        description={data.mostActiveHour !== null ? "Peak activity time" : "No email activity yet"}
         loading={loading}
       />
     </div>

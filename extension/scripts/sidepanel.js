@@ -1,11 +1,24 @@
 const AUTH_REDIRECT_URL = "https://www.useellyn.com/auth";
 const PRICING_URL = "https://www.useellyn.com/pricing";
 const API_BASE_URL = "https://www.useellyn.com";
+const APP_BASE_URL = "https://app.ellyn.app";
 const AUTH_STORAGE_KEYS = ["isAuthenticated", "user", "auth_token"];
 const SAVED_CONTACTS_KEY = "saved_contact_results";
 const FEEDBACK_QUEUE_KEY = "feedback_queue";
+const SYNC_STATUS_KEY = "sync_status";
 const PROFILE_SYNC_INTERVAL_MS = 2000;
 const PROFILE_CONTEXT_FRESH_MS = 15000;
+
+const STAGES = Object.freeze({
+  EXTRACTION: "extraction",
+  DRAFT: "draft",
+  TRACKING: "tracking",
+});
+
+const appState = {
+  stage: STAGES.EXTRACTION,
+  contact: null,
+};
 
 const PIPELINE_STAGES = [
   { label: "Extracting LinkedIn data...", progress: 18 },
@@ -79,6 +92,54 @@ const elements = {
   profileContextUrl: null,
   refreshProfileContextBtn: null,
   toastContainer: null,
+  syncStatusRow: null,
+  syncDot: null,
+  syncLabel: null,
+  syncActionBtn: null,
+  // Queue
+  queueEmptyState: null,
+  queuePopulatedView: null,
+  queueCountLabel: null,
+  generateAllDraftsBtn: null,
+  queueContactsList: null,
+  // Notes toggle
+  notesToggle: null,
+  notesBody: null,
+  // Session-expired banner
+  sessionExpiredBanner: null,
+  sessionExpiredSignInBtn: null,
+  // Dashboard footer nav
+  dashFooter: null,
+  dashNavContacts: null,
+  dashNavAnalytics: null,
+  dashNavSettings: null,
+  // Stage 2 — sent callout + view-all link
+  markSentButton: null,
+  sentCallout: null,
+  sentCalloutAction: null,
+  sentCalloutDismiss: null,
+  viewAllInDashboard: null,
+  // Issue 1 — Discover Email gate
+  discoverEmailButton: null,
+  firstName: null,
+  lastName: null,
+  company: null,
+  role: null,
+  manualEntryToggle: null,
+  manualEntryBody: null,
+  // Issue 2 — Copy buttons
+  copyEmailButton: null,
+  trackingCopyButton: null,
+  // Issue 3 — Template menu
+  templateToggle: null,
+  templateMenu: null,
+  templateChevron: null,
+  selectedTemplate: null,
+  // Issue 4 — Stage 2 back navigation
+  backToStage1Btn: null,
+  // Issue 5 — Dynamic error state
+  errorTitle: null,
+  enterManuallyBtn: null,
 };
 
 function getDefaultProfileContext() {
@@ -148,9 +209,59 @@ function cacheElements() {
   elements.refreshProfileContextBtn = document.getElementById("refreshProfileContextBtn");
 
   elements.toastContainer = document.getElementById("toastContainer");
+
+  elements.syncStatusRow = document.getElementById("syncStatusRow");
+  elements.syncDot = document.getElementById("syncDot");
+  elements.syncLabel = document.getElementById("syncLabel");
+  elements.syncActionBtn = document.getElementById("syncActionBtn");
+
+  elements.queueEmptyState = document.getElementById("queueEmptyState");
+  elements.queuePopulatedView = document.getElementById("queuePopulatedView");
+  elements.queueCountLabel = document.getElementById("queueCountLabel");
+  elements.generateAllDraftsBtn = document.getElementById("generateAllDraftsBtn");
+  elements.queueContactsList = document.getElementById("queueContactsList");
+  elements.notesToggle = document.getElementById("notesToggle");
+  elements.notesBody = document.getElementById("notesBody");
+  elements.sessionExpiredBanner = document.getElementById("sessionExpiredBanner");
+  elements.sessionExpiredSignInBtn = document.getElementById("sessionExpiredSignInBtn");
+  // Dashboard footer nav
+  elements.dashFooter = document.getElementById("dashFooter");
+  elements.dashNavContacts = document.getElementById("dashNavContacts");
+  elements.dashNavAnalytics = document.getElementById("dashNavAnalytics");
+  elements.dashNavSettings = document.getElementById("dashNavSettings");
+  // Stage 2 — sent callout + view-all link
+  elements.markSentButton = document.getElementById("markSentButton");
+  elements.sentCallout = document.getElementById("sentCallout");
+  elements.sentCalloutAction = document.getElementById("sentCalloutAction");
+  elements.sentCalloutDismiss = document.getElementById("sentCalloutDismiss");
+  elements.viewAllInDashboard = document.getElementById("viewAllInDashboard");
+  // Issue 1 — Discover Email gate
+  elements.discoverEmailButton = document.getElementById("discoverEmailButton");
+  elements.firstName = document.getElementById("firstName");
+  elements.lastName = document.getElementById("lastName");
+  elements.company = document.getElementById("company");
+  elements.role = document.getElementById("role");
+  elements.manualEntryToggle = document.getElementById("manualEntryToggle");
+  elements.manualEntryBody = document.getElementById("manualEntryBody");
+  // Issue 2 — Copy buttons
+  elements.copyEmailButton = document.getElementById("copyEmailButton");
+  elements.trackingCopyButton = document.getElementById("trackingCopyButton");
+  // Issue 3 — Template menu
+  elements.templateToggle = document.getElementById("templateToggle");
+  elements.templateMenu = document.getElementById("templateMenu");
+  elements.templateChevron = document.getElementById("templateChevron");
+  elements.selectedTemplate = document.getElementById("selectedTemplate");
+  // Issue 4 — Stage 2 back navigation
+  elements.backToStage1Btn = document.getElementById("backToStage1Btn");
+  // Issue 5 — Dynamic error state
+  elements.errorTitle = document.getElementById("errorTitle");
+  elements.enterManuallyBtn = document.getElementById("enterManuallyBtn");
 }
 
 function bindEvents() {
+  elements.syncActionBtn?.addEventListener("click", handleSyncAction);
+  elements.notesToggle?.addEventListener("click", toggleNotesBody);
+  elements.sessionExpiredSignInBtn?.addEventListener("click", () => openAuth("signin", elements.sessionExpiredSignInBtn));
   elements.signInButton?.addEventListener("click", () => openAuth("signin", elements.signInButton));
   elements.createAccountButton?.addEventListener("click", () => openAuth("signup", elements.createAccountButton));
   elements.logoutButton?.addEventListener("click", signOut);
@@ -166,6 +277,91 @@ function bindEvents() {
   });
   elements.refreshProfileContextBtn?.addEventListener("click", () => {
     void refreshProfileContext("manual");
+  });
+
+  // ── Dashboard footer nav ─────────────────────────────────────────────────
+  elements.dashNavContacts?.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/contacts` });
+  });
+  elements.dashNavAnalytics?.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/analytics` });
+  });
+  elements.dashNavSettings?.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/settings` });
+  });
+
+  // ── Stage 2 — sent callout ───────────────────────────────────────────────
+  elements.markSentButton?.addEventListener("click", () => {
+    showSentCallout();
+  });
+  elements.sentCalloutAction?.addEventListener("click", () => {
+    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/analytics` });
+    dismissSentCallout();
+  });
+  elements.sentCalloutDismiss?.addEventListener("click", dismissSentCallout);
+
+  // ── Stage 2 — view all in dashboard link ────────────────────────────────
+  elements.viewAllInDashboard?.addEventListener("click", (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/contacts?status=contacted` });
+  });
+
+  // ── Issue 1: Discover Email button gate ─────────────────────────────────
+  const manualFields = [elements.firstName, elements.lastName, elements.company, elements.role];
+  manualFields.forEach((field) => {
+    field?.addEventListener("input", validateDiscoverEmailBtn);
+  });
+  // Prevent form submit if button is still disabled (double-safety)
+  document.getElementById("contactForm")?.addEventListener("submit", (e) => {
+    if (elements.discoverEmailButton?.disabled) e.preventDefault();
+  });
+
+  // ── Issue 2: Copy buttons with checkmark feedback ────────────────────────
+  elements.copyEmailButton?.addEventListener("click", () => {
+    const email = String(document.getElementById("contactEmailText")?.textContent || "").trim();
+    void copyTextWithFeedback(email, elements.copyEmailButton);
+  });
+  elements.trackingCopyButton?.addEventListener("click", () => {
+    const email = String(document.getElementById("trackingEmail")?.textContent || "").trim();
+    void copyTextWithFeedback(email, elements.trackingCopyButton);
+  });
+
+  // ── Issue 3: Template menu ───────────────────────────────────────────────
+  elements.templateToggle?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    toggleTemplateMenu();
+  });
+  elements.templateMenu?.addEventListener("click", (e) => {
+    const option = e.target.closest(".template-option");
+    if (!option) return;
+    const name = option.dataset.template || "";
+    if (elements.selectedTemplate) elements.selectedTemplate.textContent = name;
+    elements.templateToggle?.setAttribute("aria-selected-value", name);
+    closeTemplateMenu();
+  });
+  // Close on Escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeTemplateMenu();
+  });
+  // Close on click outside
+  document.addEventListener("click", (e) => {
+    if (!elements.templateMenu?.classList.contains("hidden") &&
+        !elements.templateToggle?.contains(e.target) &&
+        !elements.templateMenu?.contains(e.target)) {
+      closeTemplateMenu();
+    }
+  });
+  // Close on scroll
+  document.querySelector("main")?.addEventListener("scroll", () => closeTemplateMenu(), { passive: true });
+
+  // ── Issue 4: Stage 2 back button ─────────────────────────────────────────
+  elements.backToStage1Btn?.addEventListener("click", () => {
+    goToStage(STAGES.EXTRACTION);
+  });
+
+  // ── Issue 5: "Enter manually" link in error state ─────────────────────────
+  elements.enterManuallyBtn?.addEventListener("click", () => {
+    expandManualEntryForm();
   });
 }
 
@@ -196,8 +392,12 @@ function bindRuntimeListeners() {
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;
-    if (!changes.isAuthenticated && !changes.user && !changes.auth_token) return;
-    syncAuthStateFromStorage();
+    if (changes.isAuthenticated || changes.user || changes.auth_token) {
+      syncAuthStateFromStorage();
+    }
+    if (changes[SYNC_STATUS_KEY]) {
+      void renderSyncStatus();
+    }
   });
 }
 
@@ -228,6 +428,26 @@ async function syncAuthStateFromStorage() {
   renderAuthState();
 
   if (isAuthenticated) {
+    // Personalised greeting — replaced once profile status is known
+    const userMeta =
+      emailFinderState.user &&
+      typeof emailFinderState.user === "object" &&
+      emailFinderState.user.user_metadata
+        ? emailFinderState.user.user_metadata
+        : {};
+    const rawName = String(
+      userMeta.full_name ||
+        userMeta.name ||
+        (typeof emailFinderState.user?.email === "string"
+          ? emailFinderState.user.email.split("@")[0]
+          : "") ||
+        ""
+    ).trim();
+    const firstName = rawName.split(/\s+/)[0] || "";
+    if (firstName) {
+      setStatus(`Hi, ${firstName} 👋`, "neutral");
+    }
+
     startProfileContextSync();
     await updateQuotaStatus();
     await refreshProfileContext("auth");
@@ -240,12 +460,15 @@ async function syncAuthStateFromStorage() {
   } else {
     setStatus("Sign in to use the email finder.", "neutral");
   }
+
+  void renderSyncStatus();
 }
 
 function renderAuthState() {
   elements.authHeaderActions?.classList.toggle("hidden", !emailFinderState.isAuthenticated);
   elements.stageAuth?.classList.toggle("hidden", emailFinderState.isAuthenticated);
   elements.emailFinderSection?.classList.toggle("hidden", !emailFinderState.isAuthenticated);
+  elements.dashFooter?.classList.toggle("visible", emailFinderState.isAuthenticated);
 
   if (!emailFinderState.isAuthenticated) {
     emailFinderState.quotaKnown = false;
@@ -255,9 +478,15 @@ function renderAuthState() {
     stopLoadingCycle();
     hideResultAndError();
     resetQuotaUI();
+  } else {
+    hideSessionExpiredBanner();
   }
 
   applyFindEmailAvailability();
+  renderStages();
+  if (emailFinderState.isAuthenticated) {
+    void renderQueueCard();
+  }
 }
 
 function startProfileContextSync() {
@@ -889,6 +1118,14 @@ function showError(message, code, resetDate) {
   emailFinderState.currentError = message;
   emailFinderState.currentResult = null;
 
+  // Set dynamic title based on error type
+  if (elements.errorTitle) {
+    const isLinkedInError = /linkedin|profile|selector|page not detected/i.test(message || "");
+    elements.errorTitle.textContent = isLinkedInError
+      ? "LinkedIn page not detected"
+      : "Could not find email";
+  }
+
   if (elements.errorMessage) {
     elements.errorMessage.textContent = message || "Unknown error";
   }
@@ -912,19 +1149,129 @@ async function copyCurrentEmail() {
     showToast("No email to copy.", "error");
     return;
   }
+  await copyTextWithFeedback(email, elements.copyEmailBtn);
+}
 
+/**
+ * Copy text to clipboard and swap the button icon to a checkmark for 1.5 s.
+ * Falls back to a toast on failure.
+ */
+async function copyTextWithFeedback(text, btn) {
+  if (!text) return;
   try {
-    await navigator.clipboard.writeText(email);
+    await navigator.clipboard.writeText(text);
     showToast("Copied to clipboard!", "success");
+    swapButtonToCheckmark(btn, 1500);
   } catch {
     showToast("Copy failed. Please copy manually.", "error");
+  }
+}
+
+/**
+ * Temporarily swap a button's inner SVG to a checkmark, then restore.
+ * @param {HTMLElement|null} btn
+ * @param {number} durationMs
+ */
+function swapButtonToCheckmark(btn, durationMs = 1500) {
+  if (!btn) return;
+  const originalHTML = btn.innerHTML;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
+    <path d="M5 12.5 9 16l10-10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+  setTimeout(() => {
+    btn.innerHTML = originalHTML;
+  }, durationMs);
+}
+
+async function setSyncStatus(status) {
+  await storageSet({
+    [SYNC_STATUS_KEY]: {
+      lastSyncStatus: status,
+      lastSyncAt: new Date().toISOString(),
+    },
+  });
+}
+
+async function renderSyncStatus() {
+  if (!elements.syncStatusRow) return;
+
+  if (!emailFinderState.isAuthenticated) {
+    // Gray dot — not connected
+    elements.syncStatusRow.classList.remove("hidden");
+    if (elements.syncDot) elements.syncDot.dataset.status = "none";
+    if (elements.syncLabel) elements.syncLabel.textContent = "Not connected";
+    if (elements.syncActionBtn) {
+      elements.syncActionBtn.textContent = "Connect";
+      elements.syncActionBtn.dataset.action = "connect";
+      elements.syncActionBtn.classList.remove("hidden");
+    }
+    return;
+  }
+
+  // Authenticated — read persisted sync state
+  const stored = await storageGet([SYNC_STATUS_KEY]);
+  const syncState = stored?.[SYNC_STATUS_KEY] || null;
+  const status = syncState?.lastSyncStatus || null;
+
+  elements.syncStatusRow.classList.remove("hidden");
+
+  if (status === "failed") {
+    // Yellow dot — sync pending
+    if (elements.syncDot) elements.syncDot.dataset.status = "failed";
+    if (elements.syncLabel) elements.syncLabel.textContent = "Sync pending";
+    if (elements.syncActionBtn) {
+      elements.syncActionBtn.textContent = "Retry";
+      elements.syncActionBtn.dataset.action = "retry";
+      elements.syncActionBtn.classList.remove("hidden");
+    }
+  } else {
+    // Green dot — synced (covers "success" and null/no-sync-yet)
+    if (elements.syncDot) elements.syncDot.dataset.status = "success";
+    if (elements.syncLabel) elements.syncLabel.textContent = "Synced with Ellyn App";
+    if (elements.syncActionBtn) elements.syncActionBtn.classList.add("hidden");
+  }
+}
+
+async function handleSyncAction() {
+  const action = elements.syncActionBtn?.dataset.action;
+  if (action === "connect") {
+    const url = `${API_BASE_URL}/extension-auth?extensionId=${chrome.runtime.id}`;
+    chrome.tabs.create({ url });
+  } else if (action === "retry") {
+    await retryPendingContacts();
+  }
+}
+
+async function retryPendingContacts() {
+  if (elements.syncActionBtn) {
+    elements.syncActionBtn.textContent = "Retrying…";
+    elements.syncActionBtn.disabled = true;
+  }
+
+  try {
+    const existing = await storageGet([SAVED_CONTACTS_KEY]);
+    const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
+    const pending = list.filter((entry) => !entry.backendId);
+
+    for (const entry of pending) {
+      // syncContactToBackend handles success/failure status internally
+      await syncContactToBackend(entry, null);
+    }
+  } finally {
+    if (elements.syncActionBtn) {
+      elements.syncActionBtn.disabled = false;
+    }
+    await renderSyncStatus();
   }
 }
 
 async function syncContactToBackend(savedRow, profileContext) {
   try {
     const authToken = await getAuthToken();
-    if (!authToken) return;
+    if (!authToken) {
+      showSessionExpiredBanner();
+      return;
+    }
 
     const ctx = profileContext || {};
     const body = {
@@ -956,13 +1303,23 @@ async function syncContactToBackend(savedRow, profileContext) {
       10000
     );
 
+    if (response.status === 401) {
+      // Auth token expired — show the session-expired banner
+      showSessionExpiredBanner();
+      await setSyncStatus("failed");
+      return;
+    }
+
     if (response.status === 409) {
+      // Already exists in backend — treat as success
       console.log("[Sidepanel] Contact already exists in backend (409).");
+      await setSyncStatus("success");
       return;
     }
 
     if (!response.ok) {
       console.warn("[Sidepanel] syncContactToBackend: non-OK status", response.status);
+      await setSyncStatus("failed");
       return;
     }
 
@@ -970,11 +1327,15 @@ async function syncContactToBackend(savedRow, profileContext) {
     try {
       data = await response.json();
     } catch {
+      await setSyncStatus("failed");
       return;
     }
 
     const backendId = data?.contact?.id;
-    if (!backendId) return;
+    if (!backendId) {
+      await setSyncStatus("failed");
+      return;
+    }
 
     // Patch the local entry with the backend-assigned ID
     const existing = await storageGet([SAVED_CONTACTS_KEY]);
@@ -986,8 +1347,11 @@ async function syncContactToBackend(savedRow, profileContext) {
       list[idx] = { ...list[idx], backendId };
       await storageSet({ [SAVED_CONTACTS_KEY]: list });
     }
+
+    await setSyncStatus("success");
   } catch (err) {
     console.warn("[Sidepanel] syncContactToBackend failed:", err);
+    await setSyncStatus("failed");
   }
 }
 
@@ -1014,6 +1378,7 @@ async function saveCurrentResultToContacts() {
   await storageSet({ [SAVED_CONTACTS_KEY]: list.slice(0, 250) });
 
   showToast("Saved to contacts.", "success");
+  void renderQueueCard();
 
   // Best-effort backend sync — never blocks or shows errors to the user
   void syncContactToBackend(savedRow, emailFinderState.profileContext);
@@ -1428,6 +1793,128 @@ async function fetchWithTimeout(url, options, timeoutMs = 8000) {
   }
 }
 
+// ── Session-expired banner helpers ──────────────────────────────────────────
+
+function showSessionExpiredBanner() {
+  elements.sessionExpiredBanner?.classList.remove("hidden");
+}
+
+function hideSessionExpiredBanner() {
+  elements.sessionExpiredBanner?.classList.add("hidden");
+}
+
+// ── Sent callout helpers ─────────────────────────────────────────────────────
+
+let _sentCalloutTimer = null;
+
+function showSentCallout() {
+  if (!elements.sentCallout) return;
+  elements.sentCallout.classList.remove("hidden");
+  // Auto-dismiss after 5 seconds
+  clearTimeout(_sentCalloutTimer);
+  _sentCalloutTimer = setTimeout(dismissSentCallout, 5000);
+}
+
+function dismissSentCallout() {
+  clearTimeout(_sentCalloutTimer);
+  _sentCalloutTimer = null;
+  elements.sentCallout?.classList.add("hidden");
+}
+
+// ── Stage / Queue / Notes helpers ──────────────────────────────────────────
+
+/**
+ * Show/hide stage1/stage2/stage3 based on authentication state and appState.
+ * Stage 1 (extraction + queue): visible when authenticated and stage === EXTRACTION.
+ * Stage 2 (draft workspace): visible when stage === DRAFT and a contact is set.
+ * Stage 3 (tracking): visible when stage === TRACKING.
+ */
+function renderStages() {
+  if (!emailFinderState.isAuthenticated) {
+    elements.stage1?.classList.add("hidden");
+    elements.stage2?.classList.add("hidden");
+    elements.stage3?.classList.add("hidden");
+    return;
+  }
+
+  const stage = appState.stage;
+  elements.stage1?.classList.toggle("hidden", stage !== STAGES.EXTRACTION);
+  elements.stage2?.classList.toggle("hidden", !(stage === STAGES.DRAFT && appState.contact !== null));
+  elements.stage3?.classList.toggle("hidden", stage !== STAGES.TRACKING);
+}
+
+/**
+ * Load saved contacts from chrome.storage.local and render the queue card.
+ * Shows the empty-state (from empty-states.js) when no contacts exist.
+ * Shows the populated view with count + contact rows otherwise.
+ */
+async function renderQueueCard() {
+  if (!elements.queueEmptyState || !elements.queuePopulatedView) return;
+
+  const stored = await storageGet([SAVED_CONTACTS_KEY]);
+  const contacts = Array.isArray(stored?.[SAVED_CONTACTS_KEY])
+    ? stored[SAVED_CONTACTS_KEY]
+    : [];
+  const isEmpty = contacts.length === 0;
+
+  elements.queueEmptyState.classList.toggle("hidden", !isEmpty);
+  elements.queuePopulatedView.classList.toggle("hidden", isEmpty);
+
+  if (isEmpty) {
+    // Inject the empty-state node once (idempotent)
+    if (
+      elements.queueEmptyState.childElementCount === 0 &&
+      typeof createQueueEmptyState === "function"
+    ) {
+      elements.queueEmptyState.appendChild(createQueueEmptyState());
+    }
+    return;
+  }
+
+  if (elements.queueCountLabel) {
+    elements.queueCountLabel.textContent = `${contacts.length} Contact${contacts.length !== 1 ? "s" : ""}`;
+  }
+
+  if (elements.queueContactsList) {
+    elements.queueContactsList.innerHTML = contacts
+      .slice(0, 20)
+      .map((c) => {
+        const email = escapeHtml(String(c.email || "\u2014"));
+        const dateStr = c.createdAt
+          ? new Date(c.createdAt).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            })
+          : "";
+        return `<div class="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:12px;color:#334155">${email}</span>
+          <span style="flex-shrink:0;font-size:11px;color:#94a3b8">${dateStr}</span>
+        </div>`;
+      })
+      .join("");
+  }
+}
+
+/**
+ * Toggle the notes textarea open/closed and update the chevron rotation.
+ */
+function toggleNotesBody() {
+  if (!elements.notesBody || !elements.notesToggle) return;
+
+  const willExpand = elements.notesBody.classList.contains("hidden");
+  elements.notesBody.classList.toggle("hidden", !willExpand);
+  elements.notesToggle.setAttribute("aria-expanded", String(willExpand));
+
+  const chevron = document.getElementById("notesChevron");
+  if (chevron) {
+    chevron.style.transform = willExpand ? "rotate(180deg)" : "";
+  }
+
+  if (willExpand) {
+    elements.notesBody.querySelector("textarea")?.focus();
+  }
+}
+
 window.addEventListener("beforeunload", () => {
   stopProfileContextSync();
 });
@@ -1435,4 +1922,66 @@ window.addEventListener("beforeunload", () => {
 document.addEventListener("DOMContentLoaded", () => {
   void init();
 });
+
+// ── Issue 1: Discover Email button validation ────────────────────────────────
+
+function validateDiscoverEmailBtn() {
+  if (!elements.discoverEmailButton) return;
+  const allFilled =
+    (elements.firstName?.value || "").trim().length > 0 &&
+    (elements.lastName?.value || "").trim().length > 0 &&
+    (elements.company?.value || "").trim().length > 0 &&
+    (elements.role?.value || "").trim().length > 0;
+  elements.discoverEmailButton.disabled = !allFilled;
+}
+
+// ── Issue 3: Template menu open/close ───────────────────────────────────────
+
+function toggleTemplateMenu() {
+  const isOpen = !elements.templateMenu?.classList.contains("hidden");
+  if (isOpen) {
+    closeTemplateMenu();
+  } else {
+    openTemplateMenu();
+  }
+}
+
+function openTemplateMenu() {
+  elements.templateMenu?.classList.remove("hidden");
+  elements.templateToggle?.setAttribute("aria-expanded", "true");
+  if (elements.templateChevron) {
+    elements.templateChevron.style.transform = "rotate(180deg)";
+  }
+}
+
+function closeTemplateMenu() {
+  elements.templateMenu?.classList.add("hidden");
+  elements.templateToggle?.setAttribute("aria-expanded", "false");
+  if (elements.templateChevron) {
+    elements.templateChevron.style.transform = "";
+  }
+}
+
+// ── Issue 4 + 7: Stage navigation with scroll reset ─────────────────────────
+
+function goToStage(newStage) {
+  appState.stage = newStage;
+  renderStages();
+  // Scroll the main panel to top on every stage transition
+  document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ── Issue 5: Expand manual entry form from error state ──────────────────────
+
+function expandManualEntryForm() {
+  if (!elements.manualEntryBody || !elements.manualEntryToggle) return;
+  // Expand the accordion
+  elements.manualEntryBody.classList.remove("hidden");
+  elements.manualEntryToggle.setAttribute("aria-expanded", "true");
+  const chevron = document.getElementById("manualEntryChevron");
+  if (chevron) chevron.style.transform = "rotate(180deg)";
+  // Scroll to it and focus the first field
+  elements.manualEntryToggle.scrollIntoView({ behavior: "smooth", block: "start" });
+  setTimeout(() => elements.firstName?.focus(), 300);
+}
 

@@ -36,6 +36,14 @@ function ExtensionAuthInner() {
         return;
       }
 
+      // Fetch plan_type for the extension to personalise quota display
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("plan_type")
+        .eq("id", session.user.id)
+        .single();
+      const planType = (profile?.plan_type as string | undefined) ?? "free";
+
       const payload = {
         auth_token: session.access_token,
         user: {
@@ -46,6 +54,7 @@ function ExtensionAuthInner() {
             session.user.email ??
             "",
         },
+        plan_type: planType,
       };
 
       // chrome.runtime.sendMessage is available to web pages listed in
@@ -88,6 +97,13 @@ function ExtensionAuthInner() {
             }
           );
         });
+
+        // Persist the extensionId so the dashboard can notify on logout
+        try {
+          localStorage.setItem("ellyn_extension_id", extensionId);
+        } catch {
+          // localStorage may be unavailable in some contexts
+        }
 
         setStatus("success");
       } catch (err) {
