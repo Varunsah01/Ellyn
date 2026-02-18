@@ -23,15 +23,16 @@ import {
   Edit,
   Trash,
   ArrowUpDown,
+  Linkedin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyContacts } from "@/components/EmptyState";
 import { showToast } from "@/lib/toast";
-import { matchesTrackerSearch } from "@/lib/tracker-v2";
+import { ListSkeleton } from "@/components/ui/Skeleton";
+import { useContacts, type Contact as ApiContact } from "@/lib/hooks/useContacts";
 import {
   buildTrackerContactHref,
   saveTrackerDeepLinkContact,
-  toTrackerContact,
 } from "@/lib/tracker-integration";
 
 export type Contact = {
@@ -44,66 +45,30 @@ export type Contact = {
   lastContact: string;
   source: string;
   tags: string[];
+  linkedinUrl?: string;
 };
 
-// Mock data - replace with real data from Supabase
-const mockContacts: Contact[] = [
-  {
-    id: "1",
-    name: "John Smith",
-    email: "john.smith@google.com",
-    company: "Google",
-    role: "Senior Software Engineer",
-    status: "contacted",
-    lastContact: "2024-02-01",
-    source: "LinkedIn",
-    tags: ["Engineering", "Senior"],
-  },
-  {
-    id: "2",
-    name: "Sarah Johnson",
-    email: "sarah.j@meta.com",
-    company: "Meta",
-    role: "Product Manager",
-    status: "responded",
-    lastContact: "2024-02-03",
-    source: "LinkedIn",
-    tags: ["Product", "Management"],
-  },
-  {
-    id: "3",
-    name: "Michael Chen",
-    email: "m.chen@microsoft.com",
-    company: "Microsoft",
-    role: "Engineering Manager",
-    status: "interested",
-    lastContact: "2024-02-05",
-    source: "Referral",
-    tags: ["Engineering", "Management"],
-  },
-  {
-    id: "4",
-    name: "Emily Davis",
-    email: "emily.davis@apple.com",
-    company: "Apple",
-    role: "UX Designer",
-    status: "new",
-    lastContact: "2024-02-06",
-    source: "LinkedIn",
-    tags: ["Design", "UX"],
-  },
-  {
-    id: "5",
-    name: "David Wilson",
-    email: "d.wilson@amazon.com",
-    company: "Amazon",
-    role: "Data Scientist",
-    status: "not_interested",
-    lastContact: "2024-01-28",
-    source: "LinkedIn",
-    tags: ["Data", "ML"],
-  },
-];
+const API_STATUS_MAP: Record<ApiContact["status"], Contact["status"]> = {
+  new: "new",
+  contacted: "contacted",
+  replied: "responded",
+  no_response: "not_interested",
+};
+
+function toLocalContact(api: ApiContact): Contact {
+  return {
+    id: api.id,
+    name: api.full_name,
+    email: api.confirmed_email ?? api.inferred_email ?? "",
+    company: api.company ?? "",
+    role: api.role ?? "",
+    status: API_STATUS_MAP[api.status],
+    lastContact: api.updated_at,
+    source: api.source ?? "",
+    tags: api.tags ?? [],
+    linkedinUrl: api.linkedin_url ?? undefined,
+  };
+}
 
 const statusColors = {
   new: "bg-blue-500/10 text-blue-500 border-blue-500/20",
@@ -118,18 +83,48 @@ const statusLabels = {
   contacted: "Contacted",
   responded: "Responded",
   interested: "Interested",
-  not_interested: "Not Interested",
+  not_interested: "No Response",
 };
 
-/**
- * Render the ContactsTable component.
- * @returns {unknown} JSX output for ContactsTable.
- * @example
- * <ContactsTable />
- */
-export function ContactsTable() {
+const sourceConfig: Record<string, { label: string; className: string }> = {
+  extension: { label: "Extension", className: "bg-blue-500/10 text-blue-600 border-blue-500/20" },
+  manual: { label: "Manual", className: "bg-slate-500/10 text-slate-600 border-slate-500/20" },
+  csv: { label: "CSV Import", className: "bg-green-500/10 text-green-600 border-green-500/20" },
+  csv_import: { label: "CSV Import", className: "bg-green-500/10 text-green-600 border-green-500/20" },
+};
+
+function getSourceConfig(source: string) {
+  const key = source.toLowerCase();
+  return sourceConfig[key] ?? { label: source || "Manual", className: "bg-slate-500/10 text-slate-600 border-slate-500/20" };
+}
+
+interface ContactsTableProps {
+  search?: string;
+  status?: string;
+  source?: string;
+}
+
+export function ContactsTable({ search = "", status = "", source = "" }: ContactsTableProps) {
   const router = useRouter();
-  const contacts = mockContacts;
+  const { contacts: apiContacts, loading, error, refresh } = useContacts({ search, status, source });
+  const contacts = apiContacts.map(toLocalContact);
+
+  if (loading) {
+    return <ListSkeleton count={5} />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 gap-4">
+        <p className="text-sm text-muted-foreground">
+          Failed to load contacts. Please try again.
+        </p>
+        <Button variant="outline" onClick={() => void refresh()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   const openInTracker = (contact: Contact) => {
     saveTrackerDeepLinkContact({
@@ -143,7 +138,6 @@ export function ContactsTable() {
     router.push(buildTrackerContactHref(contact.id, { source: "contacts" }));
   };
 
-  // Show empty state if no contacts
   if (contacts.length === 0) {
     return <EmptyContacts />;
   }
@@ -163,6 +157,7 @@ export function ContactsTable() {
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
           aria-label="Select row"
+          onClick={(e) => e.stopPropagation()}
         />
       ),
       enableSorting: false,
@@ -170,20 +165,6 @@ export function ContactsTable() {
     },
     {
       accessorKey: "name",
-      filterFn: (row, _columnId, value) => {
-        const query = String(value || "");
-        return matchesTrackerSearch(
-          toTrackerContact({
-            id: row.original.id,
-            full_name: row.original.name,
-            company: row.original.company,
-            role: row.original.role,
-            inferred_email: row.original.email,
-            status: row.original.status,
-          }),
-          query
-        );
-      },
       header: ({ column }) => {
         return (
           <Button
@@ -208,17 +189,8 @@ export function ContactsTable() {
               <AvatarFallback className="text-xs">{initials}</AvatarFallback>
             </Avatar>
             <div>
-              <button
-                type="button"
-                className="font-medium text-left hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7B7B]/40 rounded-sm"
-                onClick={() => openInTracker(contact)}
-                aria-label={`Open ${contact.name} in tracker`}
-              >
-                {contact.name}
-              </button>
-              <div className="text-sm text-muted-foreground">
-                {contact.role}
-              </div>
+              <div className="font-medium">{contact.name}</div>
+              <div className="text-sm text-muted-foreground">{contact.role}</div>
             </div>
           </div>
         );
@@ -257,6 +229,39 @@ export function ContactsTable() {
           >
             {statusLabels[status]}
           </Badge>
+        );
+      },
+    },
+    {
+      accessorKey: "source",
+      header: "Source",
+      cell: ({ row }) => {
+        const source = row.getValue("source") as string;
+        const cfg = getSourceConfig(source);
+        return (
+          <Badge variant="outline" className={cn("font-medium", cfg.className)}>
+            {cfg.label}
+          </Badge>
+        );
+      },
+    },
+    {
+      id: "linkedin",
+      header: "LinkedIn",
+      cell: ({ row }) => {
+        const url = row.original.linkedinUrl;
+        if (!url) return null;
+        return (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center justify-center text-[#0A66C2] hover:text-[#0A66C2]/80 transition-colors"
+            title="View LinkedIn profile"
+          >
+            <Linkedin className="h-4 w-4" />
+          </a>
         );
       },
     },
@@ -307,14 +312,19 @@ export function ContactsTable() {
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="h-8 w-8 p-0">
+              <Button
+                variant="ghost"
+                className="h-8 w-8 p-0"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <span className="sr-only">Open menu</span>
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => {
+              <DropdownMenuItem onClick={(e) => {
+                e.stopPropagation();
                 navigator.clipboard.writeText(contact.email);
                 showToast.success("Email copied to clipboard");
               }}>
@@ -322,7 +332,8 @@ export function ContactsTable() {
                 Copy email
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   openInTracker(contact);
                 }}
               >
@@ -330,17 +341,28 @@ export function ContactsTable() {
                 View in Tracker
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => showToast.info("View details coming soon")}>
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  router.push(`/dashboard/contacts/${contact.id}`);
+                }}
+              >
                 <Eye className="mr-2 h-4 w-4" />
                 View details
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => showToast.info("Edit contact coming soon")}>
+              <DropdownMenuItem onClick={(e) => {
+                e.stopPropagation();
+                showToast.info("Edit contact coming soon");
+              }}>
                 <Edit className="mr-2 h-4 w-4" />
                 Edit contact
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive"
-                onClick={() => showToast.error("Delete functionality coming soon")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  showToast.error("Delete functionality coming soon");
+                }}
               >
                 <Trash className="mr-2 h-4 w-4" />
                 Delete contact
@@ -356,8 +378,7 @@ export function ContactsTable() {
     <DataTable
       columns={columns}
       data={contacts}
-      searchKey="name"
-      searchPlaceholder="Search contacts..."
+      onRowClick={(contact) => router.push(`/dashboard/contacts/${contact.id}`)}
     />
   );
 }

@@ -21,7 +21,10 @@
       "mcp__claude_ai_Vercel__get_deployment",
       "Bash(NEXT_TELEMETRY_DISABLED=1 SKIP_ENV_VALIDATION=true npx next build:*)",
       "WebFetch(domain:docs.dodopayments.com)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(printf:*)",
+      "Bash(npm run lint:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

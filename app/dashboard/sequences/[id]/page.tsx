@@ -16,6 +16,7 @@ import {
   SequenceEvent,
   SequenceStep,
 } from "@/lib/types/sequence"
+import { Skeleton } from "@/components/ui/Skeleton"
 import { AlertCircle, Pause, Play, Users } from "lucide-react"
 
 interface SequenceDetailResponse {
@@ -24,6 +25,45 @@ interface SequenceDetailResponse {
   enrollments: SequenceEnrollment[]
   enrollmentSteps: SequenceEnrollmentStep[]
   events: SequenceEvent[]
+}
+
+function SequenceDetailSkeleton() {
+  return (
+    <DashboardShell>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-64" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-36" />
+            <Skeleton className="h-9 w-24" />
+          </div>
+        </div>
+        {/* Stat cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="rounded-lg border p-6 space-y-3">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-8 w-12" />
+            </div>
+          ))}
+        </div>
+        {/* Step performance + templates */}
+        <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+          <Skeleton className="h-48 rounded-lg" />
+          <Skeleton className="h-48 rounded-lg" />
+        </div>
+        {/* Enrollments + timeline */}
+        <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <Skeleton className="h-64 rounded-lg" />
+          <Skeleton className="h-64 rounded-lg" />
+        </div>
+      </div>
+    </DashboardShell>
+  )
 }
 
 export default function SequenceDetailPage() {
@@ -183,17 +223,13 @@ export default function SequenceDetailPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <DashboardShell>
-        <p className="text-muted-foreground">Loading sequence...</p>
-      </DashboardShell>
-    )
-  }
+  if (loading) return <SequenceDetailSkeleton />
 
   if (error || !data) {
     return (
-      <DashboardShell>
+      <DashboardShell
+        breadcrumbs={[{ label: "Sequences", href: "/dashboard/sequences" }]}
+      >
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive flex items-center gap-2">
           <AlertCircle className="h-4 w-4" />
           {error || "Sequence not found"}
@@ -203,7 +239,12 @@ export default function SequenceDetailPage() {
   }
 
   return (
-    <DashboardShell>
+    <DashboardShell
+      breadcrumbs={[
+        { label: "Sequences", href: "/dashboard/sequences" },
+        { label: data.sequence.name },
+      ]}
+    >
       <div className="space-y-6">
         <PageHeader
           title={data.sequence.name}

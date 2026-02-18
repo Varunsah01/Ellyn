@@ -6,6 +6,7 @@ import {
   formatZodError,
   type ContactUpdateInput,
 } from "@/lib/validation/schemas";
+import { recordActivity } from "@/lib/utils/recordActivity";
 
 interface RouteContext {
   params: { id: string };
@@ -96,11 +97,18 @@ async function updateContact(request: NextRequest, id: string, userId: string) {
 
     if (error) throw error;
 
-    return NextResponse.json({
-      success: true,
-      contact,
-      message: "Contact updated successfully",
-    });
+    recordActivity({
+      userId,
+      type: 'contact_updated',
+      description: `Updated ${contact.first_name} ${contact.last_name}`,
+      contactId: contact.id,
+      metadata: { contactName: `${contact.first_name} ${contact.last_name}`, company: contact.company },
+    })
+
+    return NextResponse.json(
+      { success: true, contact, message: "Contact updated successfully" },
+      { headers: { "X-Trigger-Refresh": "contacts,stats" } }
+    );
   } catch (error) {
     console.error("Update contact error:", error);
     return NextResponse.json(
@@ -200,10 +208,10 @@ export async function DELETE(_request: NextRequest, { params }: RouteContext) {
 
     if (error) throw error;
 
-    return NextResponse.json({
-      success: true,
-      message: "Contact deleted successfully",
-    });
+    return NextResponse.json(
+      { success: true, message: "Contact deleted successfully" },
+      { headers: { "X-Trigger-Refresh": "contacts,stats" } }
+    );
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

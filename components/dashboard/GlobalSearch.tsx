@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Dialog,
@@ -16,6 +16,7 @@ import {
   Plus,
   Command,
   Home,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -42,11 +43,15 @@ interface GlobalSearchProps {
  */
 export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const abortRef = useRef<AbortController | null>(null);
 
-  const searchableItems = useMemo<SearchResult[]>(() => [
+  // ── Static items: actions + pages only ─────────────────────────────────────
+  const staticItems = useMemo<SearchResult[]>(() => [
     {
       id: "action-add-contact",
       type: "action",
@@ -117,62 +122,92 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       subtitle: "Account and product preferences",
       url: "/dashboard/settings",
     },
-
-    {
-      id: "template-recruiter",
-      type: "template",
-      title: "Template: To Recruiter",
-      subtitle: "Cold outreach to recruiting teams",
-      url: "/dashboard/templates",
-    },
-    {
-      id: "template-referral",
-      type: "template",
-      title: "Template: Referral Request",
-      subtitle: "Ask employees or alumni for referrals",
-      url: "/dashboard/templates",
-    },
-
-    {
-      id: "sequence-sample-1",
-      type: "sequence",
-      title: "Sequence: Software Engineer Outreach",
-      subtitle: "Active sequence with follow-ups",
-      url: "/dashboard/sequences",
-    },
-
-    {
-      id: "contact-sample-1",
-      type: "contact",
-      title: "Contact: John Smith",
-      subtitle: "Senior Engineer at Google",
-      url: "/dashboard/contacts",
-    },
   ], []);
 
-  const performSearch = useCallback((searchQuery: string) => {
-    if (!searchQuery.trim()) {
-      const defaultActions = searchableItems.filter(
-        (item) => item.type === "action"
-      );
-      setResults(defaultActions);
+  // ── Debounce query 300ms ────────────────────────────────────────────────────
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  // ── Search: static filter + live API fetch ─────────────────────────────────
+  useEffect(() => {
+    setSelectedIndex(0);
+
+    if (!debouncedQuery.trim()) {
+      setResults(staticItems.filter((item) => item.type === "action"));
+      setLoading(false);
       return;
     }
 
-    const normalized = searchQuery.toLowerCase();
+    const normalized = debouncedQuery.toLowerCase();
 
-    const filtered = searchableItems.filter((item) => {
-      const haystack = `${item.title} ${item.subtitle || ""}`.toLowerCase();
-      return haystack.includes(normalized);
+    // Filter static items (actions + pages)
+    const staticMatches = staticItems.filter((item) =>
+      `${item.title} ${item.subtitle ?? ""}`.toLowerCase().includes(normalized)
+    );
+
+    // Cancel any in-flight request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setLoading(true);
+
+    const encoded = encodeURIComponent(debouncedQuery);
+
+    Promise.all([
+      fetch(`/api/v1/contacts?search=${encoded}&limit=5`, { signal: controller.signal })
+        .then((r) => (r.ok ? r.json() : { contacts: [] }))
+        .then((d: { contacts?: Array<{ id: string; full_name?: string; first_name?: string; last_name?: string; company?: string; role?: string }> }) =>
+          (d.contacts ?? []).map((c): SearchResult => ({
+            id: `contact-${c.id}`,
+            type: "contact",
+            title: c.full_name ?? [c.first_name, c.last_name].filter(Boolean).join(" ") ?? "Unknown",
+            subtitle: [c.role, c.company].filter(Boolean).join(" at ") || undefined,
+            url: `/dashboard/contacts/${c.id}`,
+          }))
+        )
+        .catch(() => [] as SearchResult[]),
+
+      fetch(`/api/v1/sequences?search=${encoded}`, { signal: controller.signal })
+        .then((r) => (r.ok ? r.json() : { sequences: [] }))
+        .then((d: { sequences?: Array<{ id: string; name: string; description?: string | null; steps?: unknown[] }> }) =>
+          (d.sequences ?? []).slice(0, 5).map((s): SearchResult => ({
+            id: `sequence-${s.id}`,
+            type: "sequence",
+            title: s.name,
+            subtitle: s.description ?? `${s.steps?.length ?? 0} step${(s.steps?.length ?? 0) !== 1 ? "s" : ""}`,
+            url: `/dashboard/sequences/${s.id}`,
+          }))
+        )
+        .catch(() => [] as SearchResult[]),
+
+      fetch(`/api/v1/templates`, { signal: controller.signal })
+        .then((r) => (r.ok ? r.json() : { templates: [] }))
+        .then((d: { templates?: Array<{ id: string; name: string; subject?: string }> }) =>
+          (d.templates ?? [])
+            .filter((t) =>
+              `${t.name} ${t.subject ?? ""}`.toLowerCase().includes(normalized)
+            )
+            .slice(0, 5)
+            .map((t): SearchResult => ({
+              id: `template-${t.id}`,
+              type: "template",
+              title: t.name,
+              subtitle: t.subject || undefined,
+              url: `/dashboard/templates`,
+            }))
+        )
+        .catch(() => [] as SearchResult[]),
+    ]).then(([contacts, sequences, templates]) => {
+      if (controller.signal.aborted) return;
+      setResults([...staticMatches, ...contacts, ...sequences, ...templates]);
+      setLoading(false);
     });
 
-    setResults(filtered);
-  }, [searchableItems]);
-
-  useEffect(() => {
-    performSearch(query);
-    setSelectedIndex(0);
-  }, [query, performSearch]);
+    return () => controller.abort();
+  }, [debouncedQuery, staticItems]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -208,6 +243,16 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, [open, onOpenChange, results, selectedIndex]);
+
+  // Reset state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setDebouncedQuery("");
+      setLoading(false);
+      abortRef.current?.abort();
+    }
+  }, [open]);
 
   const handleSelect = (result: SearchResult) => {
     if (result.action) {
@@ -294,7 +339,12 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
         </div>
 
         <div className="max-h-[440px] overflow-y-auto p-2">
-          {results.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-12 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mr-2" />
+              <span className="text-sm">Searching…</span>
+            </div>
+          ) : results.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p className="text-sm">No results found</p>

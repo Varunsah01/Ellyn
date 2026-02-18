@@ -120,6 +120,39 @@ class LinkedInExtractor {
     audit.profileCardCount = profileCards.length;
     console.log('Profile card elements:', profileCards.length);
 
+    audit.selectorTests = {
+      company: this._testSelectors([
+        'div.mt2.relative span.text-body-medium[aria-hidden="true"]',
+        'main section:first-of-type span.text-body-medium[aria-hidden="true"]',
+        'main section:first-of-type a[href*="/company/"] span[aria-hidden="true"]',
+        'div[class*="pv-text-details"] a[href*="/company/"] span[aria-hidden="true"]',
+        'div[class*="pv-text-details"] div.text-body-medium:not(.break-words)',
+        'div.pv-text-details__left-panel div.text-body-medium span[aria-hidden="true"]',
+        'section.pv-top-card div.text-body-medium:not(.break-words)',
+        'div[class*="top-card-layout__entity-info"] div.text-body-medium',
+      ]),
+      headline: this._testSelectors([
+        'main section:first-of-type div.text-body-medium.break-words span[aria-hidden="true"]',
+        'div.ph5.pb5 div.text-body-medium.break-words span[aria-hidden="true"]',
+        '[data-view-name="profile-card"] div.text-body-medium.break-words',
+        'div.text-body-medium.break-words',
+        'div[class*="pv-text-details__left-panel"] div.text-body-medium',
+        'div[class*="top-card-layout__headline"]',
+      ]),
+      location: this._testSelectors([
+        'main section:first-of-type span.text-body-small.t-black--light span[aria-hidden="true"]',
+        'div.mt2.relative span.text-body-small[aria-hidden="true"]',
+        'div.pv-text-details__left-panel span.text-body-small.inline.t-black--light.break-words',
+        'span.text-body-small.inline.t-black--light.break-words',
+      ]),
+      education: {
+        sectionFound: Boolean(document.querySelector('section#education, section[aria-label*="Education"]')),
+      },
+    };
+    audit.profileType = this.detectProfileType?.() || null;
+    console.log('Selector tests:', audit.selectorTests);
+    console.log('Profile type:', audit.profileType);
+
     console.groupEnd();
     return audit;
   }
@@ -200,11 +233,26 @@ class LinkedInExtractor {
       };
     }
 
+    // Partial profile needed for detectProfileType to check hasCompany
+    this._lastExtractedProfile = { company };
+
+    let education = null;
+    try {
+      education = this.extractEducationRaw();
+    } catch (error) {
+      this.log('Education extraction failed', { error: error?.message || 'Unknown error' });
+    }
+    this._pendingEducation = education;
+
+    const profileType = this.detectProfileType();
+
     const profile = {
       name,
       company,
       role,
       location,
+      education,
+      profileType,
       profileUrl: window.location.href,
       extractionConfidence: this.calculateConfidence({ name, company, role, location }),
       extractionTimestamp: new Date().toISOString(),
@@ -218,13 +266,16 @@ class LinkedInExtractor {
         company: Boolean(company?.name),
         role: Boolean(role?.title),
         location: Boolean(location?.location),
+        education: Boolean(education?.institution),
       },
+      profileType: profileType?.type,
       extractionConfidence: profile.extractionConfidence,
       sources: {
         name: name?.source,
         company: company?.source,
         role: role?.source,
         location: location?.source,
+        education: education?.source,
       },
     });
 
@@ -681,6 +732,13 @@ class LinkedInExtractor {
     this.log('Scanning top-card for company name');
 
     const topCardSelectors = [
+      // 2024–2025 LinkedIn — primary spans
+      'div.mt2.relative span.text-body-medium[aria-hidden="true"]',
+      'main section:first-of-type span.text-body-medium[aria-hidden="true"]',
+      // company link text
+      'main section:first-of-type a[href*="/company/"] span[aria-hidden="true"]',
+      'div[class*="pv-text-details"] a[href*="/company/"] span[aria-hidden="true"]',
+      // legacy selectors (keep as fallback)
       'div[class*="pv-text-details"] div.text-body-medium:not(.break-words)',
       'div.pv-text-details__left-panel div.text-body-medium span[aria-hidden="true"]',
       'div.mt2.relative div.text-body-medium span[aria-hidden="true"]',
@@ -701,6 +759,24 @@ class LinkedInExtractor {
       } catch (error) {
         this.log('Top-card selector failed', { selector, error: error?.message || 'Unknown selector failure' });
       }
+    }
+
+    // Fallback: company links visible in top portion of the page
+    try {
+      const companyLinks = document.querySelectorAll('a[href*="/company/"]');
+      for (const link of companyLinks) {
+        const rect = link.getBoundingClientRect();
+        if (rect.top >= 0 && rect.top < 400) {
+          const span = link.querySelector('span[aria-hidden="true"]') || link;
+          const text = this.cleanCompanyCandidate(span.textContent || '');
+          if (text && !this.looksLikeRole(text)) {
+            this.log('Top-card company found via company link fallback', { text });
+            return text;
+          }
+        }
+      }
+    } catch (error) {
+      this.log('Company link fallback failed', { error: error?.message || 'Unknown error' });
     }
 
     this.log('No valid company found in top-card');
@@ -869,6 +945,8 @@ class LinkedInExtractor {
 
   extractLocationFromDom() {
     const selectors = [
+      'main section:first-of-type span.text-body-small.t-black--light span[aria-hidden="true"]',
+      'div.mt2.relative span.text-body-small[aria-hidden="true"]',
       'div.pv-text-details__left-panel span.text-body-small.inline.t-black--light.break-words',
       'span.text-body-small.inline.t-black--light.break-words',
       '[class*="top-card"] [class*="location"]',
@@ -1150,6 +1228,8 @@ class LinkedInExtractor {
 
     const selectors = [
       'main section:first-of-type div.text-body-medium.break-words span[aria-hidden="true"]',
+      'div.ph5.pb5 div.text-body-medium.break-words span[aria-hidden="true"]',
+      '[data-view-name="profile-card"] div.text-body-medium.break-words',
       'div.text-body-medium.break-words',
       'div[class*="pv-text-details__left-panel"] div.text-body-medium',
       'div[class*="top-card-layout__headline"]',
@@ -1292,7 +1372,81 @@ class LinkedInExtractor {
 
   looksLikeEducation(value) {
     const text = this.cleanText(value);
-    return /\b(university|school|college|institute|academy|faculty)\b/i.test(text);
+    return /\b(university|school|college|institute|academy|faculty|iit|nit|iiit|iim|bits|iisc)\b/i.test(text);
+  }
+
+  extractEducationRaw() {
+    // Tier 1: JSON-LD alumniOf / affiliation
+    const jsonLd = this.extractFromJsonLd();
+    const alumniOf = jsonLd?.alumniOf;
+    if (alumniOf) {
+      const inst = this.cleanText(
+        typeof alumniOf === 'string' ? alumniOf : alumniOf?.name || ''
+      );
+      if (inst) return { institution: inst, source: 'json-ld' };
+    }
+
+    // Tier 2: Education section DOM
+    const eduSection = document.querySelector(
+      'section#education, section[id*="education"], section[aria-label*="Education"]'
+    );
+    if (eduSection) {
+      const firstItem = eduSection.querySelector('li, div[class*="pvs-list__item"]');
+      if (firstItem) {
+        for (const span of firstItem.querySelectorAll('span[aria-hidden="true"]')) {
+          const text = this.cleanText(span.textContent || '');
+          if (text && this.looksLikeEducation(text)) {
+            return { institution: text, source: 'education-section' };
+          }
+        }
+      }
+    }
+
+    // Tier 3: Headline "at IIT Bombay" pattern
+    const headline = this.getHeadlineText();
+    const match = headline.match(/\bat\s+([A-Z][^|,·\n]{3,60})(?:\s*[|,·]|$)/i);
+    if (match?.[1] && this.looksLikeEducation(match[1])) {
+      return { institution: this.cleanText(match[1]), source: 'headline' };
+    }
+
+    return null;
+  }
+
+  detectProfileType() {
+    const headline = (this.getHeadlineText() || '').toLowerCase();
+    const hasCompany = Boolean(this._lastExtractedProfile?.company?.name);
+    const hasEducation = Boolean(this._pendingEducation?.institution);
+
+    const STUDENT_SIGNALS = [
+      /\bstudent\b/i, /\bstudying\b/i, /\bpursuing\b/i,
+      /\bundergrad\b/i, /\bphd\b/i, /\bpostgrad\b/i,
+      /\b(?:b\.?tech|b\.?e\.|m\.?tech|bsc|msc|mba)\b(?:\s+student)?/i,
+      /class of \d{4}/i,
+      /\d(?:st|nd|rd|th)\s+year\b/i,
+    ];
+    const FREELANCE_SIGNALS = [/\bfreelance/i, /\bself[- ]?employed/i];
+
+    if (STUDENT_SIGNALS.some(r => r.test(headline)) || (hasEducation && !hasCompany)) {
+      return { type: 'STUDENT', confidence: 0.85 };
+    }
+    if (FREELANCE_SIGNALS.some(r => r.test(headline)) && !hasCompany) {
+      return { type: 'FREELANCER', confidence: 0.75 };
+    }
+    if (hasCompany) {
+      return { type: 'PROFESSIONAL', confidence: 0.9 };
+    }
+    return { type: 'UNKNOWN', confidence: 0.3 };
+  }
+
+  _testSelectors(selectors) {
+    return selectors.map(sel => {
+      try {
+        const el = document.querySelector(sel);
+        return { selector: sel, found: Boolean(el), text: el?.textContent?.trim().slice(0, 80) || null };
+      } catch {
+        return { selector: sel, found: false, text: null, error: 'invalid selector' };
+      }
+    });
   }
 
   parseHumanName(value) {

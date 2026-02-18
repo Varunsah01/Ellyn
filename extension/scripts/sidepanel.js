@@ -921,6 +921,76 @@ async function copyCurrentEmail() {
   }
 }
 
+async function syncContactToBackend(savedRow, profileContext) {
+  try {
+    const authToken = await getAuthToken();
+    if (!authToken) return;
+
+    const ctx = profileContext || {};
+    const body = {
+      firstName: String(ctx.firstName || "").trim() || undefined,
+      lastName: String(ctx.lastName || "").trim() || undefined,
+      company: String(ctx.company || "").trim() || undefined,
+      role: String(ctx.role || "").trim() || undefined,
+      inferredEmail: String(savedRow.email || "").trim() || undefined,
+      linkedinUrl: String(ctx.profileUrl || savedRow.profileUrl || "").trim() || undefined,
+      source: "extension",
+    };
+
+    // Remove undefined keys so the API schema validation doesn't choke on them
+    Object.keys(body).forEach((k) => {
+      if (body[k] === undefined) delete body[k];
+    });
+
+    const response = await fetchWithTimeout(
+      `${API_BASE_URL}/api/contacts`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(body),
+      },
+      10000
+    );
+
+    if (response.status === 409) {
+      console.log("[Sidepanel] Contact already exists in backend (409).");
+      return;
+    }
+
+    if (!response.ok) {
+      console.warn("[Sidepanel] syncContactToBackend: non-OK status", response.status);
+      return;
+    }
+
+    let data = null;
+    try {
+      data = await response.json();
+    } catch {
+      return;
+    }
+
+    const backendId = data?.contact?.id;
+    if (!backendId) return;
+
+    // Patch the local entry with the backend-assigned ID
+    const existing = await storageGet([SAVED_CONTACTS_KEY]);
+    const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
+    const idx = list.findIndex(
+      (entry) => entry.email === savedRow.email && entry.createdAt === savedRow.createdAt
+    );
+    if (idx !== -1) {
+      list[idx] = { ...list[idx], backendId };
+      await storageSet({ [SAVED_CONTACTS_KEY]: list });
+    }
+  } catch (err) {
+    console.warn("[Sidepanel] syncContactToBackend failed:", err);
+  }
+}
+
 async function saveCurrentResultToContacts() {
   const result = emailFinderState.currentResult;
   if (!result?.email) {
@@ -944,6 +1014,9 @@ async function saveCurrentResultToContacts() {
   await storageSet({ [SAVED_CONTACTS_KEY]: list.slice(0, 250) });
 
   showToast("Saved to contacts.", "success");
+
+  // Best-effort backend sync — never blocks or shows errors to the user
+  void syncContactToBackend(savedRow, emailFinderState.profileContext);
 }
 
 async function submitFeedback(worked) {

@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabase"
 import { computeSequenceStats } from "@/lib/sequence-engine"
 import { SequenceCreateSchema, formatZodError } from "@/lib/validation/schemas"
 
+
 /**
  * Handle GET requests for `/api/sequences`.
  * @returns {unknown} JSON response for the GET /api/sequences request.
@@ -12,7 +13,7 @@ import { SequenceCreateSchema, formatZodError } from "@/lib/validation/schemas"
  * // GET /api/sequences
  * fetch('/api/sequences')
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     if (!isSupabaseConfigured) {
       return NextResponse.json(
@@ -20,6 +21,8 @@ export async function GET() {
         { status: 503 }
       )
     }
+
+    const search = request.nextUrl.searchParams.get("search") ?? ""
 
     const [{ data: sequences, error: seqError }, { data: steps }, { data: enrollments }, { data: events }] =
       await Promise.all([
@@ -84,7 +87,18 @@ export async function GET() {
       }
     })
 
-    return NextResponse.json({ sequences: enriched })
+    const filtered = search
+      ? (() => {
+          const q = search.toLowerCase()
+          return enriched.filter(
+            (s) =>
+              s.name.toLowerCase().includes(q) ||
+              (s.description && (s.description as string).toLowerCase().includes(q))
+          )
+        })()
+      : enriched
+
+    return NextResponse.json({ sequences: filtered })
   } catch (error) {
     return NextResponse.json(
       { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown" },

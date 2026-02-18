@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
 import { ContactCreateSchema, formatZodError } from '@/lib/validation/schemas';
+import { recordActivity } from '@/lib/utils/recordActivity';
 
 // GET /api/contacts - List all contacts
 /**
@@ -22,6 +23,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status') || '';
+    const source = searchParams.get('source') || '';
+    const since = searchParams.get('since') || '';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
     const includeOutreach = searchParams.get('includeOutreach') !== 'false';
@@ -40,6 +43,17 @@ export async function GET(request: NextRequest) {
     // Apply status filter
     if (status) {
       query = query.eq('status', status);
+    }
+
+    // Apply source filter
+    if (source) {
+      query = query.eq('source', source);
+    }
+
+    // Apply since filter (supports '24h')
+    if (since === '24h') {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      query = query.gte('created_at', cutoff);
     }
 
     // Apply pagination
@@ -160,11 +174,18 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({
-      success: true,
-      contact,
-      message: 'Contact created successfully',
-    }, { status: 201 });
+    recordActivity({
+      userId: user.id,
+      type: 'contact_added',
+      description: `${body.firstName} ${body.lastName} from ${body.company}`,
+      contactId: contact.id,
+      metadata: { contactName: `${body.firstName} ${body.lastName}`, company: body.company },
+    })
+
+    return NextResponse.json(
+      { success: true, contact, message: 'Contact created successfully' },
+      { status: 201, headers: { 'X-Trigger-Refresh': 'contacts,stats' } }
+    );
 
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {

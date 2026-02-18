@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRefreshListener } from '@/lib/context/AppRefreshContext';
 
 export interface Contact {
   id: string;
@@ -16,6 +17,7 @@ export interface Contact {
   linkedin_url?: string;
   notes?: string;
   tags?: string[];
+  source?: string;
   company_domain?: string;
   company_industry?: string;
   company_size?: string;
@@ -36,6 +38,7 @@ export interface UseContactsOptions {
   limit?: number;
   search?: string;
   status?: string;
+  source?: string;
   autoRefresh?: boolean;
   refreshInterval?: number;
 }
@@ -53,6 +56,7 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
     limit = 20,
     search = '',
     status = '',
+    source = '',
     autoRefresh = false,
     refreshInterval = 30000, // 30 seconds
   } = options;
@@ -75,6 +79,7 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
 
       if (search) params.append('search', search);
       if (status) params.append('status', status);
+      if (source) params.append('source', source);
 
       const response = await fetch(`/api/v1/contacts?${params.toString()}`);
 
@@ -98,7 +103,7 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
     } finally {
       setLoading(false);
     }
-  }, [page, limit, search, status]);
+  }, [page, limit, search, status, source]);
 
   // Initial fetch
   useEffect(() => {
@@ -115,6 +120,9 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
 
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, fetchContacts]);
+
+  // Re-fetch when any contacts mutation fires a refresh event
+  useRefreshListener('contacts', fetchContacts);
 
   return {
     contacts,

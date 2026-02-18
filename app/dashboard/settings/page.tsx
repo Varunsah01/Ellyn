@@ -1,14 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/Checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/Dialog";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
-import { Textarea } from "@/components/ui/Textarea";
-import { Switch } from "@/components/ui/Switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import {
   Select,
   SelectContent,
@@ -16,98 +27,685 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/Select";
-import { User, Mail, Zap, Bell, Shield, Key, Link as LinkIcon, Lock, Save } from "lucide-react";
-import { syncOnboardingState } from "@/lib/onboarding";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { Switch } from "@/components/ui/Switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
+import { Textarea } from "@/components/ui/Textarea";
+import { useToast } from "@/hooks/useToast";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { validatePasswordStrength } from "@/lib/validation/password";
-import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
-import { apiFetch } from "@/lib/api-client";
+import {
+  AlertTriangle,
+  Bell,
+  Copy,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  Key,
+  Link as LinkIcon,
+  Lock,
+  Mail,
+  RefreshCw,
+  Save,
+  Shield,
+  Trash2,
+  Upload,
+  User,
+  Zap,
+} from "lucide-react";
+
+type EmailProvider = "gmail" | "outlook" | "smtp";
+type SmtpEncryption = "tls" | "ssl" | "none";
+
+interface EmailPreferences {
+  fromName: string;
+  provider: EmailProvider;
+  smtp: {
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    encryption: SmtpEncryption;
+  };
+  signature: string;
+  defaultSendTime: string;
+  timezone: string;
+  includeUnsubscribeFooter: boolean;
+}
+
+interface SequencePreferences {
+  followUpIntervalDays: number;
+  maxFollowUpsPerContact: number;
+  autoPauseOnReply: boolean;
+  autoPauseOnOoo: boolean;
+  dailySendLimit: number;
+  sendingWindowStart: string;
+  sendingWindowEnd: string;
+  sendingDays: string[];
+  blackoutDates: string[];
+}
+
+interface NotificationPreferences {
+  email: Record<"replyReceived" | "sequenceCompleted" | "contactBounced" | "sequencePaused", boolean>;
+  inApp: Record<
+    "replyReceived" | "sequenceCompleted" | "contactBounced" | "sequencePaused" | "newTemplateSuggestions",
+    boolean
+  >;
+  weeklyDigest: { weeklyPerformanceSummary: boolean };
+}
+
+interface PrivacyPreferences {
+  retention: "6_months" | "1_year" | "2_years" | "forever";
+  allowAnonymizedAi: boolean;
+}
+
+interface IntegrationPreferences {
+  gmail_connected: boolean;
+  outlook_connected: boolean;
+  extension_linked: boolean;
+}
+
+const DEFAULT_EMAIL_PREFERENCES: EmailPreferences = {
+  fromName: "",
+  provider: "gmail",
+  smtp: { host: "", port: 587, username: "", password: "", encryption: "tls" },
+  signature: "",
+  defaultSendTime: "09:00",
+  timezone: "America/New_York",
+  includeUnsubscribeFooter: true,
+};
+
+const DEFAULT_SEQUENCE_PREFERENCES: SequencePreferences = {
+  followUpIntervalDays: 3,
+  maxFollowUpsPerContact: 3,
+  autoPauseOnReply: true,
+  autoPauseOnOoo: true,
+  dailySendLimit: 50,
+  sendingWindowStart: "09:00",
+  sendingWindowEnd: "17:00",
+  sendingDays: ["mon", "tue", "wed", "thu", "fri"],
+  blackoutDates: [],
+};
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  email: { replyReceived: true, sequenceCompleted: true, contactBounced: true, sequencePaused: true },
+  inApp: {
+    replyReceived: true,
+    sequenceCompleted: true,
+    contactBounced: true,
+    sequencePaused: true,
+    newTemplateSuggestions: true,
+  },
+  weeklyDigest: { weeklyPerformanceSummary: true },
+};
+const DEFAULT_PRIVACY_PREFERENCES: PrivacyPreferences = {
+  retention: "1_year",
+  allowAnonymizedAi: true,
+};
+
+const DEFAULT_INTEGRATIONS: IntegrationPreferences = {
+  gmail_connected: false,
+  outlook_connected: false,
+  extension_linked: false,
+};
+
+const TIMEZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Los_Angeles",
+  "Europe/London",
+  "Europe/Berlin",
+  "Asia/Kolkata",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+];
+
+const DAYS = [
+  { value: "mon", label: "Mon" },
+  { value: "tue", label: "Tue" },
+  { value: "wed", label: "Wed" },
+  { value: "thu", label: "Thu" },
+  { value: "fri", label: "Fri" },
+  { value: "sat", label: "Sat" },
+  { value: "sun", label: "Sun" },
+];
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function asBool(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function asNum(value: unknown, fallback: number): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function splitFullName(fullName: string): [string, string] {
+  const [first = "", ...rest] = fullName.trim().split(/\s+/);
+  return [first, rest.join(" ")];
+}
+
+function initials(value: string): string {
+  const token = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((v) => v[0]?.toUpperCase() || "")
+    .join("");
+  return token || "?";
+}
+
+function maskApiKey(key: string): string {
+  if (!key) return "No key generated yet";
+  if (key.length < 12) return key;
+  return `${key.slice(0, 4)}-****...${key.slice(-4)}`;
+}
+
+function extensionCode(userId: string, email: string): string {
+  const source = `${userId}:${email}`;
+  let hash = 0;
+  for (let i = 0; i < source.length; i += 1) {
+    hash = (hash * 31 + source.charCodeAt(i)) % 1_000_000_007;
+  }
+  return `ELLYN-${Math.abs(hash).toString(36).toUpperCase().padStart(8, "0").slice(0, 8)}`;
+}
 
 export default function SettingsPage() {
-  const [isSaving, setIsSaving] = useState(false);
-  const [isRestartingTour, setIsRestartingTour] = useState(false);
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState("");
+  const [email, setEmail] = useState("");
+  const [metadata, setMetadata] = useState<Record<string, unknown>>({});
+  const metadataRef = useRef<Record<string, unknown>>({});
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [role, setRole] = useState("");
+  const [company, setCompany] = useState("");
+  const [bio, setBio] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
+
+  const [emailPrefs, setEmailPrefs] = useState<EmailPreferences>(DEFAULT_EMAIL_PREFERENCES);
+  const [sequencePrefs, setSequencePrefs] = useState<SequencePreferences>(DEFAULT_SEQUENCE_PREFERENCES);
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(
+    DEFAULT_NOTIFICATION_PREFERENCES,
+  );
+  const [privacyPrefs, setPrivacyPrefs] = useState<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
+  const [integrations, setIntegrations] = useState<IntegrationPreferences>(DEFAULT_INTEGRATIONS);
+
+  const [apiKey, setApiKey] = useState("sk-ellyn-demo-key-123");
+  const [apiUsage, setApiUsage] = useState({ used: 0, limit: 1000 });
+  const [apiLoading, setApiLoading] = useState(true);
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  const [blackoutInput, setBlackoutInput] = useState("");
+  const [saveProfileLoading, setSaveProfileLoading] = useState(false);
+  const [saveEmailLoading, setSaveEmailLoading] = useState(false);
+  const [saveSequenceLoading, setSaveSequenceLoading] = useState(false);
+  const [saveNotificationLoading, setSaveNotificationLoading] = useState(false);
+  const [savePrivacyLoading, setSavePrivacyLoading] = useState(false);
+  const [smtpTesting, setSmtpTesting] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [regeneratingApiKey, setRegeneratingApiKey] = useState(false);
+  const [apiDialogOpen, setApiDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmEmail, setDeleteConfirmEmail] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [passwordUpdateError, setPasswordUpdateError] = useState("");
   const [passwordUpdateSuccess, setPasswordUpdateSuccess] = useState("");
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [passwordUpdating, setPasswordUpdating] = useState(false);
 
-  const passwordStrength = useMemo(
-    () => validatePasswordStrength(newPassword),
-    [newPassword],
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const nameForAvatar = useMemo(
+    () => `${firstName} ${lastName}`.trim() || email.split("@")[0] || "Account",
+    [firstName, lastName, email],
+  );
+  const passwordStrength = useMemo(() => validatePasswordStrength(newPassword), [newPassword]);
+
+  useEffect(() => {
+    metadataRef.current = metadata;
+  }, [metadata]);
+  const saveMetadataPatch = useCallback(
+    async (patch: Record<string, unknown>, successMessage: string) => {
+      if (!isSupabaseConfigured) {
+        toast({
+          variant: "destructive",
+          title: "Supabase not configured",
+          description: "Cannot save settings.",
+        });
+        return false;
+      }
+
+      const merged = { ...metadataRef.current, ...patch };
+      const { error } = await supabase.auth.updateUser({ data: merged });
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Save failed",
+          description: error.message || "Unable to save settings.",
+        });
+        return false;
+      }
+
+      setMetadata(merged);
+      metadataRef.current = merged;
+      toast({ title: "Saved", description: successMessage });
+      return true;
+    },
+    [toast],
   );
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsSaving(false);
+  const loadApiKey = useCallback(async () => {
+    setApiLoading(true);
+    try {
+      const res = await fetch("/api/v1/account/api-key", { cache: "no-store" });
+      const payload = (await res.json()) as Record<string, unknown>;
+      if (!res.ok) throw new Error(asString(payload.error, "Failed to load API key"));
+      setApiKey(asString(payload.key, "sk-ellyn-demo-key-123"));
+      setApiUsage({ used: asNum(payload.used, 0), limit: asNum(payload.limit, 1000) });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "API key unavailable",
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setApiLoading(false);
+    }
+  }, [toast]);
+
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+      if (error) throw error;
+      if (!user) throw new Error("No authenticated user");
+
+      const meta = asRecord(user.user_metadata);
+      const [splitFirst, splitLast] = splitFullName(asString(meta.full_name));
+      setUserId(user.id);
+      setEmail(asString(user.email));
+      setFirstName(asString(meta.first_name, splitFirst));
+      setLastName(asString(meta.last_name, splitLast));
+      setRole(asString(meta.role));
+      setCompany(asString(meta.company));
+      setBio(asString(meta.bio));
+      setAvatarUrl(asString(meta.avatar_url));
+
+      const emailMeta = asRecord(meta.email_preferences);
+      const smtpMeta = asRecord(emailMeta.smtp);
+      const provider = asString(emailMeta.provider, "gmail");
+      const encryption = asString(smtpMeta.encryption, "tls");
+      setEmailPrefs({
+        fromName: asString(emailMeta.fromName),
+        provider: provider === "outlook" || provider === "smtp" ? (provider as EmailProvider) : "gmail",
+        smtp: {
+          host: asString(smtpMeta.host),
+          port: asNum(smtpMeta.port, 587),
+          username: asString(smtpMeta.username),
+          password: asString(smtpMeta.password),
+          encryption: encryption === "ssl" || encryption === "none" ? (encryption as SmtpEncryption) : "tls",
+        },
+        signature: asString(emailMeta.signature),
+        defaultSendTime: asString(emailMeta.defaultSendTime, "09:00"),
+        timezone: asString(emailMeta.timezone, "America/New_York"),
+        includeUnsubscribeFooter: asBool(emailMeta.includeUnsubscribeFooter, true),
+      });
+
+      const seq = asRecord(meta.sequence_preferences);
+      const sendDays = Array.isArray(seq.sendingDays)
+        ? seq.sendingDays.filter((d): d is string => typeof d === "string")
+        : DEFAULT_SEQUENCE_PREFERENCES.sendingDays;
+      const blackouts = Array.isArray(seq.blackoutDates)
+        ? seq.blackoutDates.filter((d): d is string => typeof d === "string")
+        : [];
+      setSequencePrefs({
+        followUpIntervalDays: asNum(seq.followUpIntervalDays, 3),
+        maxFollowUpsPerContact: asNum(seq.maxFollowUpsPerContact, 3),
+        autoPauseOnReply: asBool(seq.autoPauseOnReply, true),
+        autoPauseOnOoo: asBool(seq.autoPauseOnOoo, true),
+        dailySendLimit: Math.min(200, Math.max(1, asNum(seq.dailySendLimit, 50))),
+        sendingWindowStart: asString(seq.sendingWindowStart, "09:00"),
+        sendingWindowEnd: asString(seq.sendingWindowEnd, "17:00"),
+        sendingDays: sendDays.length ? sendDays : DEFAULT_SEQUENCE_PREFERENCES.sendingDays,
+        blackoutDates: blackouts,
+      });
+
+      const notif = asRecord(meta.notification_preferences);
+      const notifEmail = asRecord(notif.email);
+      const notifInApp = asRecord(notif.inApp);
+      const notifDigest = asRecord(notif.weeklyDigest);
+      setNotificationPrefs({
+        email: {
+          replyReceived: asBool(notifEmail.replyReceived, true),
+          sequenceCompleted: asBool(notifEmail.sequenceCompleted, true),
+          contactBounced: asBool(notifEmail.contactBounced, true),
+          sequencePaused: asBool(notifEmail.sequencePaused, true),
+        },
+        inApp: {
+          replyReceived: asBool(notifInApp.replyReceived, true),
+          sequenceCompleted: asBool(notifInApp.sequenceCompleted, true),
+          contactBounced: asBool(notifInApp.contactBounced, true),
+          sequencePaused: asBool(notifInApp.sequencePaused, true),
+          newTemplateSuggestions: asBool(notifInApp.newTemplateSuggestions, true),
+        },
+        weeklyDigest: { weeklyPerformanceSummary: asBool(notifDigest.weeklyPerformanceSummary, true) },
+      });
+
+      const privacy = asRecord(meta.privacy_preferences);
+      const retention = asString(privacy.retention, "1_year");
+      setPrivacyPrefs({
+        retention:
+          retention === "6_months" || retention === "2_years" || retention === "forever"
+            ? (retention as PrivacyPreferences["retention"])
+            : "1_year",
+        allowAnonymizedAi: asBool(privacy.allowAnonymizedAi, true),
+      });
+
+      setIntegrations({
+        gmail_connected: asBool(meta.gmail_connected),
+        outlook_connected: asBool(meta.outlook_connected),
+        extension_linked: asBool(meta.extension_linked),
+      });
+      setMetadata(meta);
+      metadataRef.current = meta;
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Unable to load settings",
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void loadSettings();
+    void loadApiKey();
+  }, [loadApiKey, loadSettings]);
+  const saveProfile = async () => {
+    setSaveProfileLoading(true);
+    const startedAt = Date.now();
+    await saveMetadataPatch(
+      {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        full_name: `${firstName} ${lastName}`.trim(),
+        role: role.trim(),
+        company: company.trim(),
+        bio: bio.trim(),
+      },
+      "Profile updated.",
+    );
+    const elapsed = Date.now() - startedAt;
+    if (elapsed < 350) {
+      await new Promise((resolve) => setTimeout(resolve, 350 - elapsed));
+    }
+    setSaveProfileLoading(false);
   };
 
-  const handleRestartTour = async () => {
-    setIsRestartingTour(true);
-    await syncOnboardingState({
-      tourPending: true,
-      tourCompleted: false,
-      tourDismissed: false,
-    });
-    setIsRestartingTour(false);
-    window.location.href = "/dashboard";
+  const onAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !isSupabaseConfigured || !userId) return;
+    setAvatarLoading(true);
+    try {
+      const path = `${userId}/avatar`;
+      const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const url = `${data.publicUrl}?v=${Date.now()}`;
+      setAvatarUrl(url);
+      await saveMetadataPatch({ avatar_url: url }, "Avatar updated.");
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Avatar upload failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      if (avatarInputRef.current) avatarInputRef.current.value = "";
+      setAvatarLoading(false);
+    }
   };
 
-  const handleChangePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+  const removeAvatar = async () => {
+    if (!isSupabaseConfigured || !userId) return;
+    setAvatarLoading(true);
+    await supabase.storage.from("avatars").remove([`${userId}/avatar`]);
+    setAvatarUrl("");
+    await saveMetadataPatch({ avatar_url: null }, "Avatar removed.");
+    setAvatarLoading(false);
+  };
+
+  const testSmtp = async () => {
+    setSmtpTesting(true);
+    try {
+      const res = await fetch("/api/v1/settings/test-smtp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(emailPrefs.smtp),
+      });
+      const payload = (await res.json()) as Record<string, unknown>;
+      if (!res.ok || !asBool(payload.ok, false)) {
+        throw new Error(asString(payload.error, "SMTP test failed"));
+      }
+      toast({ title: "SMTP connected", description: "SMTP connection test succeeded." });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "SMTP test failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setSmtpTesting(false);
+    }
+  };
+
+  const saveEmail = async () => {
+    setSaveEmailLoading(true);
+    await saveMetadataPatch({ email_preferences: emailPrefs }, "Email preferences saved.");
+    setSaveEmailLoading(false);
+  };
+
+  const saveSequences = async () => {
+    setSaveSequenceLoading(true);
+    await saveMetadataPatch({ sequence_preferences: sequencePrefs }, "Sequence preferences saved.");
+    setSaveSequenceLoading(false);
+  };
+
+  const saveNotifications = async () => {
+    setSaveNotificationLoading(true);
+    await saveMetadataPatch(
+      { notification_preferences: notificationPrefs },
+      "Notification preferences saved.",
+    );
+    setSaveNotificationLoading(false);
+  };
+
+  const savePrivacy = async () => {
+    setSavePrivacyLoading(true);
+    await saveMetadataPatch({ privacy_preferences: privacyPrefs }, "Privacy preferences saved.");
+    setSavePrivacyLoading(false);
+  };
+
+  const addBlackout = () => {
+    const next = blackoutInput.trim();
+    if (!next) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) {
+      toast({ variant: "destructive", title: "Invalid date", description: "Use YYYY-MM-DD format." });
+      return;
+    }
+    if (!sequencePrefs.blackoutDates.includes(next)) {
+      setSequencePrefs((prev) => ({ ...prev, blackoutDates: [...prev.blackoutDates, next] }));
+    }
+    setBlackoutInput("");
+  };
+
+  const changePassword = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPasswordUpdateError("");
     setPasswordUpdateSuccess("");
-
     if (!currentPassword) {
       setPasswordUpdateError("Current password is required.");
       return;
     }
-
     if (newPassword !== confirmNewPassword) {
       setPasswordUpdateError("New password and confirmation do not match.");
       return;
     }
-
     if (!passwordStrength.isValid) {
       setPasswordUpdateError("Password does not meet strength requirements.");
       return;
     }
+    if (!isSupabaseConfigured || !email) {
+      setPasswordUpdateError("Unable to update password.");
+      return;
+    }
 
-    setIsUpdatingPassword(true);
-
+    setPasswordUpdating(true);
     try {
-      const response = await apiFetch("/auth/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-          confirmPassword: confirmNewPassword,
-        }),
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword,
       });
-
-      const payload = await response.json();
-
-      if (!response.ok) {
-        const errorMessage =
-          payload?.error || payload?.data?.error || "Failed to update password.";
-        setPasswordUpdateError(errorMessage);
+      if (reauthError) {
+        setPasswordUpdateError(reauthError.message || "Current password is incorrect.");
         return;
       }
-
-      setPasswordUpdateSuccess(
-        payload?.message || payload?.data?.message || "Password updated successfully.",
-      );
+      const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+      if (updateError) {
+        setPasswordUpdateError(updateError.message || "Failed to update password.");
+        return;
+      }
       setCurrentPassword("");
       setNewPassword("");
       setConfirmNewPassword("");
+      setPasswordUpdateSuccess("Password updated successfully.");
     } catch (error) {
-      console.error("Change password error:", error);
-      setPasswordUpdateError("Failed to update password.");
+      setPasswordUpdateError(error instanceof Error ? error.message : "Failed to update password.");
     } finally {
-      setIsUpdatingPassword(false);
+      setPasswordUpdating(false);
     }
+  };
+  const deleteAccount = async () => {
+    if (deleteConfirmEmail.trim().toLowerCase() !== email.toLowerCase()) {
+      toast({
+        variant: "destructive",
+        title: "Confirmation mismatch",
+        description: "Type your account email to confirm deletion.",
+      });
+      return;
+    }
+    setDeletingAccount(true);
+    try {
+      const res = await fetch("/api/v1/account/delete", { method: "POST" });
+      const payload = (await res.json()) as Record<string, unknown>;
+      if (!res.ok || !asBool(payload.ok, false)) {
+        throw new Error(asString(payload.error, "Delete failed"));
+      }
+      if (isSupabaseConfigured) await supabase.auth.signOut();
+      router.replace("/");
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Delete failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const regenerateKey = async () => {
+    setRegeneratingApiKey(true);
+    try {
+      const res = await fetch("/api/v1/account/api-key", { method: "POST" });
+      const payload = (await res.json()) as Record<string, unknown>;
+      if (!res.ok) throw new Error(asString(payload.error, "Failed to regenerate API key"));
+      setApiKey(asString(payload.key, apiKey));
+      setApiUsage({ used: asNum(payload.used, apiUsage.used), limit: asNum(payload.limit, apiUsage.limit) });
+      setApiDialogOpen(false);
+      toast({ title: "API key regenerated", description: "Old key is no longer active." });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Regenerate failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setRegeneratingApiKey(false);
+    }
+  };
+
+  const saveIntegrations = useCallback(
+    async (next: IntegrationPreferences, message: string) => {
+      const ok = await saveMetadataPatch({ ...next }, message);
+      if (ok) setIntegrations(next);
+    },
+    [saveMetadataPatch],
+  );
+
+  if (loading) {
+    return (
+      <DashboardShell>
+        <div className="space-y-6">
+          <Skeleton className="h-10 w-44" />
+          <Skeleton className="h-9 w-full" />
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-4 w-64" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-36" />
+            </CardContent>
+          </Card>
+        </div>
+      </DashboardShell>
+    );
+  }
+
+  const notificationRows = {
+    email: [
+      { key: "replyReceived", label: "Reply received" },
+      { key: "sequenceCompleted", label: "Sequence completed" },
+      { key: "contactBounced", label: "Contact bounced" },
+      { key: "sequencePaused", label: "Sequence paused (auto-pause triggered)" },
+    ] as const,
+    inApp: [
+      { key: "replyReceived", label: "Reply received" },
+      { key: "sequenceCompleted", label: "Sequence completed" },
+      { key: "contactBounced", label: "Contact bounced" },
+      { key: "sequencePaused", label: "Sequence paused (auto-pause triggered)" },
+      { key: "newTemplateSuggestions", label: "New template suggestions" },
+    ] as const,
   };
 
   return (
@@ -119,7 +717,7 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-7">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
             <TabsTrigger value="profile"><User className="mr-2 h-4 w-4 hidden sm:inline" />Profile</TabsTrigger>
             <TabsTrigger value="email"><Mail className="mr-2 h-4 w-4 hidden sm:inline" />Email</TabsTrigger>
             <TabsTrigger value="sequences"><Zap className="mr-2 h-4 w-4 hidden sm:inline" />Sequences</TabsTrigger>
@@ -128,7 +726,6 @@ export default function SettingsPage() {
             <TabsTrigger value="api"><Key className="mr-2 h-4 w-4 hidden sm:inline" />API</TabsTrigger>
             <TabsTrigger value="integrations"><LinkIcon className="mr-2 h-4 w-4 hidden sm:inline" />Integrations</TabsTrigger>
           </TabsList>
-
           <TabsContent value="profile">
             <Card>
               <CardHeader>
@@ -136,126 +733,222 @@ export default function SettingsPage() {
                 <CardDescription>Update your personal information</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div><Label htmlFor="firstName">First Name</Label><Input id="firstName" defaultValue="John" className="mt-2" /></div>
-                  <div><Label htmlFor="lastName">Last Name</Label><Input id="lastName" defaultValue="Doe" className="mt-2" /></div>
+                <div className="rounded-lg border p-4 flex flex-wrap items-center gap-4">
+                  <Avatar className="h-16 w-16 border">
+                    <AvatarImage src={avatarUrl || undefined} alt={nameForAvatar} />
+                    <AvatarFallback>{initials(nameForAvatar)}</AvatarFallback>
+                  </Avatar>
+                  <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={onAvatarFileChange} />
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={() => avatarInputRef.current?.click()} disabled={avatarLoading}>
+                      <Upload className="h-4 w-4" />{avatarLoading ? "Uploading..." : "Upload Photo"}
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={removeAvatar} disabled={!avatarUrl || avatarLoading}>
+                      <Trash2 className="h-4 w-4" />Remove Photo
+                    </Button>
+                  </div>
                 </div>
-                <div><Label htmlFor="email">Email</Label><Input id="email" type="email" defaultValue="john.doe@example.com" className="mt-2" /></div>
-                <div><Label htmlFor="role">Role/Title</Label><Input id="role" defaultValue="Software Engineer" className="mt-2" /></div>
-                <div><Label htmlFor="company">Company/School</Label><Input id="company" defaultValue="Stanford University" className="mt-2" /></div>
-                <div><Label htmlFor="bio">Bio</Label><Textarea id="bio" placeholder="Tell us about yourself..." className="mt-2 min-h-[100px]" /></div>
-                <Button onClick={handleSave} disabled={isSaving}><Save className="mr-2 h-4 w-4" />{isSaving ? "Saving..." : "Save Changes"}</Button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><Label htmlFor="firstName">First Name</Label><Input id="firstName" className="mt-2" value={firstName} onChange={(e) => setFirstName(e.target.value)} /></div>
+                  <div><Label htmlFor="lastName">Last Name</Label><Input id="lastName" className="mt-2" value={lastName} onChange={(e) => setLastName(e.target.value)} /></div>
+                </div>
+                <div>
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" className="mt-2" value={email} readOnly />
+                  <p className="text-xs text-muted-foreground mt-1">To change your email, contact support.</p>
+                </div>
+                <div><Label htmlFor="role">Role</Label><Input id="role" className="mt-2" value={role} onChange={(e) => setRole(e.target.value)} /></div>
+                <div><Label htmlFor="company">Company</Label><Input id="company" className="mt-2" value={company} onChange={(e) => setCompany(e.target.value)} /></div>
+                <div><Label htmlFor="bio">Bio</Label><Textarea id="bio" className="mt-2 min-h-[100px]" value={bio} onChange={(e) => setBio(e.target.value)} /></div>
+                <Button onClick={saveProfile} disabled={saveProfileLoading}><Save className="mr-2 h-4 w-4" />{saveProfileLoading ? "Saving..." : "Save Changes"}</Button>
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="email">
             <Card>
-              <CardHeader><CardTitle>Email Preferences</CardTitle><CardDescription>Configure email settings</CardDescription></CardHeader>
-              <CardContent className="space-y-6">
-                <div><Label>Default Email Client</Label><Select defaultValue="gmail"><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="gmail">Gmail</SelectItem><SelectItem value="outlook">Outlook</SelectItem></SelectContent></Select></div>
-                <div><Label htmlFor="signature">Email Signature</Label><Textarea id="signature" placeholder="Best regards,&#10;John Doe" className="mt-2 min-h-[100px] font-mono text-sm" /></div>
-                <div className="flex items-center justify-between"><div className="space-y-0.5"><Label>Enable Email Tracking</Label><p className="text-sm text-muted-foreground">Track when emails are opened</p></div><Switch defaultChecked /></div>
-                <Button onClick={handleSave} disabled={isSaving}><Save className="mr-2 h-4 w-4" />{isSaving ? "Saving..." : "Save Changes"}</Button>
+              <CardHeader>
+                <CardTitle>Outreach Preferences</CardTitle>
+                <CardDescription>Configure outreach defaults</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div><Label>From Name</Label><Input className="mt-2" value={emailPrefs.fromName} onChange={(e) => setEmailPrefs((p) => ({ ...p, fromName: e.target.value }))} /></div>
+                <div className="space-y-2">
+                  <Label>Default Email Provider</Label>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {(["gmail", "outlook", "smtp"] as EmailProvider[]).map((provider) => (
+                      <label key={provider} className="flex items-center gap-2 border rounded-md px-3 py-2 text-sm cursor-pointer">
+                        <input type="radio" name="provider" value={provider} checked={emailPrefs.provider === provider} onChange={() => setEmailPrefs((p) => ({ ...p, provider }))} />
+                        {provider === "smtp" ? "SMTP" : provider === "gmail" ? "Gmail" : "Outlook"}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {emailPrefs.provider === "smtp" && (
+                  <div className="rounded-lg border p-4 space-y-3">
+                    <h3 className="font-medium">SMTP Settings</h3>
+                    <div className="grid md:grid-cols-2 gap-3">
+                      <div><Label>SMTP Host</Label><Input className="mt-1" value={emailPrefs.smtp.host} onChange={(e) => setEmailPrefs((p) => ({ ...p, smtp: { ...p.smtp, host: e.target.value } }))} /></div>
+                      <div><Label>Port</Label><Input className="mt-1" type="number" value={String(emailPrefs.smtp.port)} onChange={(e) => setEmailPrefs((p) => ({ ...p, smtp: { ...p.smtp, port: Math.max(1, Number(e.target.value) || 1) } }))} /></div>
+                      <div><Label>Username</Label><Input className="mt-1" value={emailPrefs.smtp.username} onChange={(e) => setEmailPrefs((p) => ({ ...p, smtp: { ...p.smtp, username: e.target.value } }))} /></div>
+                      <div><Label>Password</Label><Input className="mt-1" type="password" value={emailPrefs.smtp.password} onChange={(e) => setEmailPrefs((p) => ({ ...p, smtp: { ...p.smtp, password: e.target.value } }))} /></div>
+                    </div>
+                    <div>
+                      <Label>Encryption</Label>
+                      <Select value={emailPrefs.smtp.encryption} onValueChange={(value) => setEmailPrefs((p) => ({ ...p, smtp: { ...p.smtp, encryption: value as SmtpEncryption } }))}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="tls">TLS</SelectItem><SelectItem value="ssl">SSL</SelectItem><SelectItem value="none">None</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button type="button" variant="outline" onClick={testSmtp} disabled={smtpTesting}>{smtpTesting ? "Testing..." : "Test Connection"}</Button>
+                  </div>
+                )}
+                <div><Label>Signature (plain text; HTML coming soon)</Label><Textarea className="mt-2 min-h-[100px]" value={emailPrefs.signature} onChange={(e) => setEmailPrefs((p) => ({ ...p, signature: e.target.value }))} /></div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div><Label>Default Send Time</Label><Input className="mt-1" type="time" value={emailPrefs.defaultSendTime} onChange={(e) => setEmailPrefs((p) => ({ ...p, defaultSendTime: e.target.value }))} /></div>
+                  <div>
+                    <Label>Timezone</Label>
+                    <Select value={emailPrefs.timezone} onValueChange={(value) => setEmailPrefs((p) => ({ ...p, timezone: value }))}>
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>{TIMEZONES.map((zone) => <SelectItem key={zone} value={zone}>{zone}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="border rounded-lg p-4 flex items-center justify-between">
+                  <div><Label>Unsubscribe Footer</Label><p className="text-sm text-muted-foreground">Include one-click unsubscribe footer in outreach emails.</p></div>
+                  <Switch checked={emailPrefs.includeUnsubscribeFooter} onCheckedChange={(checked) => setEmailPrefs((p) => ({ ...p, includeUnsubscribeFooter: checked }))} />
+                </div>
+                <Button onClick={saveEmail} disabled={saveEmailLoading}><Save className="mr-2 h-4 w-4" />{saveEmailLoading ? "Saving..." : "Save Email Preferences"}</Button>
               </CardContent>
             </Card>
           </TabsContent>
-
           <TabsContent value="sequences">
             <Card>
-              <CardHeader><CardTitle>Sequence Defaults</CardTitle><CardDescription>Set default values</CardDescription></CardHeader>
-              <CardContent className="space-y-6">
-                <div><Label>Default Delay Between Steps (days)</Label><Input type="number" defaultValue="3" min="1" className="mt-2" /></div>
-                <div className="flex items-center justify-between"><div className="space-y-0.5"><Label>Auto-stop on Reply</Label><p className="text-sm text-muted-foreground">Pause sequence when contact replies</p></div><Switch defaultChecked /></div>
-                <Button onClick={handleSave} disabled={isSaving}><Save className="mr-2 h-4 w-4" />{isSaving ? "Saving..." : "Save Changes"}</Button>
+              <CardHeader><CardTitle>Sequence Defaults</CardTitle><CardDescription>Set sequence behavior</CardDescription></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div><Label>Default Follow-up Interval (days)</Label><Input type="number" className="mt-1" value={String(sequencePrefs.followUpIntervalDays)} onChange={(e) => setSequencePrefs((p) => ({ ...p, followUpIntervalDays: Math.max(1, Number(e.target.value) || 1) }))} /></div>
+                  <div><Label>Max Follow-ups per Contact</Label><Input type="number" className="mt-1" value={String(sequencePrefs.maxFollowUpsPerContact)} onChange={(e) => setSequencePrefs((p) => ({ ...p, maxFollowUpsPerContact: Math.max(1, Number(e.target.value) || 1) }))} /></div>
+                </div>
+                <div className="border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between"><div><Label>Auto-pause on Reply</Label><p className="text-sm text-muted-foreground">Pause when contact replies.</p></div><Switch checked={sequencePrefs.autoPauseOnReply} onCheckedChange={(checked) => setSequencePrefs((p) => ({ ...p, autoPauseOnReply: checked }))} /></div>
+                  <div className="flex items-center justify-between"><div><Label>Auto-pause on OOO Detection</Label><p className="text-sm text-muted-foreground">Pause when out-of-office replies are detected.</p></div><Switch checked={sequencePrefs.autoPauseOnOoo} onCheckedChange={(checked) => setSequencePrefs((p) => ({ ...p, autoPauseOnOoo: checked }))} /></div>
+                </div>
+                <div>
+                  <Label>Daily Send Limit</Label>
+                  <Input type="number" max={200} className="mt-1" value={String(sequencePrefs.dailySendLimit)} onChange={(e) => setSequencePrefs((p) => ({ ...p, dailySendLimit: Math.min(200, Math.max(1, Number(e.target.value) || 1)) }))} />
+                  {sequencePrefs.dailySendLimit > 100 && <p className="text-sm text-amber-700 mt-1">Warning: daily limits above 100 can impact deliverability.</p>}
+                </div>
+                <div className="border rounded-lg p-4 space-y-3">
+                  <h3 className="font-medium">Sending Window</h3>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div><Label>Start Time</Label><Input type="time" className="mt-1" value={sequencePrefs.sendingWindowStart} onChange={(e) => setSequencePrefs((p) => ({ ...p, sendingWindowStart: e.target.value }))} /></div>
+                    <div><Label>End Time</Label><Input type="time" className="mt-1" value={sequencePrefs.sendingWindowEnd} onChange={(e) => setSequencePrefs((p) => ({ ...p, sendingWindowEnd: e.target.value }))} /></div>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                    {DAYS.map((day) => (
+                      <label key={day.value} className="border rounded-md px-2 py-2 text-sm flex items-center gap-2">
+                        <Checkbox checked={sequencePrefs.sendingDays.includes(day.value)} onCheckedChange={(checked: boolean | "indeterminate") => setSequencePrefs((p) => ({ ...p, sendingDays: checked === true ? Array.from(new Set([...p.sendingDays, day.value])) : p.sendingDays.filter((d) => d !== day.value) }))} />
+                        {day.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="border rounded-lg p-4 space-y-2">
+                  <h3 className="font-medium">Blackout Dates</h3>
+                  <div className="flex gap-2">
+                    <Input placeholder="YYYY-MM-DD" value={blackoutInput} onChange={(e) => setBlackoutInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addBlackout(); } }} />
+                    <Button type="button" variant="outline" onClick={addBlackout}>Add</Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {sequencePrefs.blackoutDates.length === 0 && <p className="text-sm text-muted-foreground">No blackout dates added.</p>}
+                    {sequencePrefs.blackoutDates.map((date) => (
+                      <Badge key={date} variant="outline" className="gap-2 pr-1">{date}<button type="button" className="px-1 rounded hover:bg-muted text-xs" onClick={() => setSequencePrefs((p) => ({ ...p, blackoutDates: p.blackoutDates.filter((d) => d !== date) }))}>x</button></Badge>
+                    ))}
+                  </div>
+                </div>
+                <Button onClick={saveSequences} disabled={saveSequenceLoading}><Save className="mr-2 h-4 w-4" />{saveSequenceLoading ? "Saving..." : "Save Sequence Preferences"}</Button>
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="notifications">
             <Card>
-              <CardHeader><CardTitle>Notification Preferences</CardTitle></CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between"><div className="space-y-0.5"><Label>New Replies</Label><p className="text-sm text-muted-foreground">Get notified when someone replies</p></div><Switch defaultChecked /></div>
-                <div className="flex items-center justify-between"><div className="space-y-0.5"><Label>Sequence Completed</Label><p className="text-sm text-muted-foreground">Notify when sequence finishes</p></div><Switch defaultChecked /></div>
-                <Button onClick={handleSave} disabled={isSaving}><Save className="mr-2 h-4 w-4" />{isSaving ? "Saving..." : "Save Changes"}</Button>
+              <CardHeader><CardTitle>Notification Preferences</CardTitle><CardDescription>Control alerts and channels</CardDescription></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="border rounded-lg p-4 space-y-3">
+                  <h3 className="font-medium">Email Notifications</h3>
+                  {notificationRows.email.map((row) => (
+                    <div className="flex items-center justify-between" key={row.key}>
+                      <Label>{row.label}</Label>
+                      <Switch checked={notificationPrefs.email[row.key]} onCheckedChange={(checked) => setNotificationPrefs((p) => ({ ...p, email: { ...p.email, [row.key]: checked } }))} />
+                    </div>
+                  ))}
+                </div>
+                <div className="border rounded-lg p-4 space-y-3">
+                  <h3 className="font-medium">In-App Notifications</h3>
+                  {notificationRows.inApp.map((row) => (
+                    <div className="flex items-center justify-between" key={row.key}>
+                      <Label>{row.label}</Label>
+                      <Switch checked={notificationPrefs.inApp[row.key]} onCheckedChange={(checked) => setNotificationPrefs((p) => ({ ...p, inApp: { ...p.inApp, [row.key]: checked } }))} />
+                    </div>
+                  ))}
+                </div>
+                <div className="border rounded-lg p-4 flex items-center justify-between">
+                  <div><h3 className="font-medium">Weekly Digest</h3><p className="text-sm text-muted-foreground">Weekly performance summary (email only)</p></div>
+                  <Switch checked={notificationPrefs.weeklyDigest.weeklyPerformanceSummary} onCheckedChange={(checked) => setNotificationPrefs((p) => ({ ...p, weeklyDigest: { weeklyPerformanceSummary: checked } }))} />
+                </div>
+                <Button onClick={saveNotifications} disabled={saveNotificationLoading}><Save className="mr-2 h-4 w-4" />{saveNotificationLoading ? "Saving..." : "Save Notification Preferences"}</Button>
               </CardContent>
             </Card>
           </TabsContent>
-
           <TabsContent value="privacy">
             <Card>
-              <CardHeader><CardTitle>Data & Privacy</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Data & Privacy</CardTitle><CardDescription>Security and account controls</CardDescription></CardHeader>
               <CardContent className="space-y-6">
-                <div><h3 className="font-medium mb-2">Export Data</h3><p className="text-sm text-muted-foreground mb-3">Download all your data</p><Button variant="outline">Export All Data</Button></div>
+                <div><h3 className="font-medium mb-2">Export Data</h3><p className="text-sm text-muted-foreground mb-2">Download all your data from Ellyn.</p><Button variant="outline">Export All Data</Button></div>
+                <div className="border rounded-lg p-4 space-y-3">
+                  <h3 className="font-medium">Data Retention</h3>
+                  <Select value={privacyPrefs.retention} onValueChange={(value) => setPrivacyPrefs((p) => ({ ...p, retention: value as PrivacyPreferences["retention"] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="6_months">Keep data for 6 months</SelectItem>
+                      <SelectItem value="1_year">Keep data for 1 year</SelectItem>
+                      <SelectItem value="2_years">Keep data for 2 years</SelectItem>
+                      <SelectItem value="forever">Keep data forever</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="border rounded-lg p-4 flex items-start justify-between gap-4">
+                  <div><Label>Allow Ellyn to use anonymised data to improve AI suggestions</Label><p className="text-sm text-muted-foreground mt-1">Helps improve quality while removing personally identifiable details.</p></div>
+                  <Switch checked={privacyPrefs.allowAnonymizedAi} onCheckedChange={(checked) => setPrivacyPrefs((p) => ({ ...p, allowAnonymizedAi: checked }))} />
+                </div>
+                <Button onClick={savePrivacy} disabled={savePrivacyLoading}><Save className="mr-2 h-4 w-4" />{savePrivacyLoading ? "Saving..." : "Save Privacy Preferences"}</Button>
 
                 <div className="border-t pt-6">
-                  <h3 className="font-medium mb-2 flex items-center gap-2">
-                    <Lock className="h-4 w-4" />
-                    Change Password
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Use a strong password to keep your account secure.
-                  </p>
-
-                  <form onSubmit={handleChangePassword} className="space-y-4 max-w-xl">
-                    <div>
-                      <Label htmlFor="currentPassword">Current Password</Label>
-                      <Input
-                        id="currentPassword"
-                        type="password"
-                        className="mt-2"
-                        value={currentPassword}
-                        onChange={(event) => setCurrentPassword(event.target.value)}
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="newPassword">New Password</Label>
-                      <Input
-                        id="newPassword"
-                        type="password"
-                        className="mt-2"
-                        value={newPassword}
-                        onChange={(event) => setNewPassword(event.target.value)}
-                        required
-                      />
-                    </div>
-
+                  <h3 className="font-medium mb-2 flex items-center gap-2"><Lock className="h-4 w-4" />Change Password</h3>
+                  <form onSubmit={changePassword} className="space-y-4 max-w-xl">
+                    <div><Label htmlFor="currentPassword">Current Password</Label><Input id="currentPassword" type="password" className="mt-2" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required /></div>
+                    <div><Label htmlFor="newPassword">New Password</Label><Input id="newPassword" type="password" className="mt-2" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required /></div>
                     <PasswordStrengthIndicator result={passwordStrength} />
-
-                    <div>
-                      <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
-                      <Input
-                        id="confirmNewPassword"
-                        type="password"
-                        className="mt-2"
-                        value={confirmNewPassword}
-                        onChange={(event) => setConfirmNewPassword(event.target.value)}
-                        required
-                      />
-                    </div>
-
-                    {passwordUpdateError && (
-                      <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        {passwordUpdateError}
-                      </p>
-                    )}
-
-                    {passwordUpdateSuccess && (
-                      <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                        {passwordUpdateSuccess}
-                      </p>
-                    )}
-
-                    <Button
-                      type="submit"
-                      disabled={isUpdatingPassword || !passwordStrength.isValid}
-                    >
-                      {isUpdatingPassword ? "Updating Password..." : "Update Password"}
-                    </Button>
+                    <div><Label htmlFor="confirmNewPassword">Confirm New Password</Label><Input id="confirmNewPassword" type="password" className="mt-2" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} required /></div>
+                    {passwordUpdateError && <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{passwordUpdateError}</p>}
+                    {passwordUpdateSuccess && <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{passwordUpdateSuccess}</p>}
+                    <Button type="submit" disabled={passwordUpdating || !passwordStrength.isValid}>{passwordUpdating ? "Updating Password..." : "Update Password"}</Button>
                   </form>
+                </div>
+
+                <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                    <div className="space-y-2">
+                      <h3 className="font-medium text-red-700">Delete Account</h3>
+                      <p className="text-sm text-red-700/90">This action is permanent and cannot be undone.</p>
+                      <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>Delete Account</Button>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -263,36 +956,72 @@ export default function SettingsPage() {
 
           <TabsContent value="api">
             <Card>
-              <CardHeader><CardTitle>API Keys</CardTitle></CardHeader>
+              <CardHeader><CardTitle>API Access</CardTitle><CardDescription>Manage API key and usage</CardDescription></CardHeader>
               <CardContent className="space-y-4">
-                <div><Label>Anthropic API Key (Optional)</Label><Input type="password" placeholder="sk-ant-..." className="mt-2" /><p className="text-xs text-muted-foreground mt-1">For AI-powered email drafts</p></div>
-                <Button onClick={handleSave} disabled={isSaving}><Save className="mr-2 h-4 w-4" />{isSaving ? "Saving..." : "Save Changes"}</Button>
+                <div className="border rounded-lg p-4 space-y-3">
+                  <Label>Your API Key</Label>
+                  {apiLoading ? <Skeleton className="h-10 w-full" /> : (
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Input readOnly value={showApiKey ? apiKey : maskApiKey(apiKey)} className="font-mono" />
+                      <Button type="button" variant="outline" onClick={() => setShowApiKey((prev) => !prev)}>{showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{showApiKey ? "Hide" : "Reveal"}</Button>
+                      <Button type="button" variant="outline" onClick={async () => { await navigator.clipboard.writeText(apiKey); toast({ title: "Copied", description: "API key copied to clipboard." }); }}><Copy className="h-4 w-4" />Copy</Button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="outline" onClick={() => setApiDialogOpen(true)}><RefreshCw className="h-4 w-4" />Regenerate API Key</Button>
+                  <a href="https://docs.ellyn.app/api" target="_blank" rel="noreferrer" className="inline-flex items-center text-sm text-primary hover:underline">API Documentation<ExternalLink className="h-3.5 w-3.5 ml-1" /></a>
+                </div>
+                <div className="rounded-lg border p-4 flex items-center justify-between text-sm"><span className="text-muted-foreground">API Usage This Month</span><span className="font-medium">{apiUsage.used} / {apiUsage.limit}</span></div>
+                <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">Default rate limits apply per workspace and API key.</div>
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="integrations">
             <Card>
-              <CardHeader><CardTitle>Integrations</CardTitle></CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center"><LinkIcon className="h-5 w-5 text-primary" /></div><div><p className="font-medium">Chrome Extension</p><p className="text-sm text-muted-foreground">Add contacts from LinkedIn</p></div></div>
-                  <Button variant="outline">Install</Button>
+              <CardHeader><CardTitle>Integrations</CardTitle><CardDescription>Connect your tools</CardDescription></CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-lg border p-4 space-y-2">
+                  <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-red-100 text-red-700 font-semibold flex items-center justify-center">G</div><div><p className="font-medium">Gmail</p><p className="text-sm text-muted-foreground">Connect Gmail for send and reply sync.</p></div></div>{integrations.gmail_connected ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Connected</Badge> : <Badge variant="outline">Not Connected</Badge>}</div>
+                  {integrations.gmail_connected ? <Button variant="outline" onClick={() => void saveIntegrations({ ...integrations, gmail_connected: false }, "Gmail disconnected.")}>Disconnect</Button> : <Button asChild><Link href="/api/v1/auth/gmail">Connect Gmail</Link></Button>}
                 </div>
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <p className="font-medium">Onboarding Tour</p>
-                    <p className="text-sm text-muted-foreground">Replay the guided dashboard tour</p>
-                  </div>
-                  <Button variant="outline" onClick={handleRestartTour} disabled={isRestartingTour}>
-                    {isRestartingTour ? "Restarting..." : "Restart Tour"}
-                  </Button>
+                <div className="rounded-lg border p-4 space-y-2">
+                  <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-blue-100 text-blue-700 font-semibold flex items-center justify-center">O</div><div><p className="font-medium">Outlook / Microsoft 365</p><p className="text-sm text-muted-foreground">Connect Outlook for send and scheduling.</p></div></div>{integrations.outlook_connected ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Connected</Badge> : <Badge variant="outline">Not Connected</Badge>}</div>
+                  {integrations.outlook_connected ? <Button variant="outline" onClick={() => void saveIntegrations({ ...integrations, outlook_connected: false }, "Outlook disconnected.")}>Disconnect</Button> : <Button asChild><Link href="/api/v1/auth/outlook">Connect Outlook</Link></Button>}
+                </div>
+                <div className="rounded-lg border p-4 space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-slate-100 text-slate-700 font-semibold flex items-center justify-center">L</div><div><p className="font-medium">LinkedIn</p><p className="text-sm text-muted-foreground">Sync LinkedIn activity.</p></div></div><Badge variant="secondary">Coming Soon</Badge></div><Button variant="outline" disabled>Coming Soon</Button></div>
+                <div className="rounded-lg border p-4 space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-violet-100 text-violet-700 font-semibold flex items-center justify-center">S</div><div><p className="font-medium">Slack</p><p className="text-sm text-muted-foreground">Get in-app alerts in Slack.</p></div></div><Badge variant="secondary">Coming Soon</Badge></div><Button variant="outline" disabled>Coming Soon</Button></div>
+                <div className="rounded-lg border p-4 space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-orange-100 text-orange-700 font-semibold flex items-center justify-center">Z</div><div><p className="font-medium">Zapier</p><p className="text-sm text-muted-foreground">Trigger workflows in 5000+ apps.</p></div></div><Badge variant="outline">Available</Badge></div><Button variant="outline" asChild><a href="https://zapier.com/apps/ellyn" target="_blank" rel="noreferrer">Open Zapier<ExternalLink className="h-3.5 w-3.5" /></a></Button></div>
+                <div className="rounded-lg border p-4 space-y-2">
+                  <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-emerald-100 text-emerald-700 font-semibold flex items-center justify-center">C</div><div><p className="font-medium">Chrome Extension</p><p className="text-sm text-muted-foreground">Link extension to your account.</p></div></div>{integrations.extension_linked ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Linked</Badge> : <Badge variant="outline">Not Linked</Badge>}</div>
+                  {integrations.extension_linked ? <p className="text-sm text-muted-foreground">Extension linked successfully.</p> : <div className="space-y-2"><Button variant="outline" onClick={async () => { await navigator.clipboard.writeText(extensionCode(userId, email)); toast({ title: "Extension code copied", description: "Paste this in the extension to link your account." }); }}>Link Extension</Button><p className="text-xs text-muted-foreground">Link code: {extensionCode(userId, email)}</p></div>}
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Delete Account</DialogTitle><DialogDescription>Type your account email to confirm permanent deletion.</DialogDescription></DialogHeader>
+          <div className="space-y-2"><Label htmlFor="deleteAccountConfirmEmail">Confirm Email</Label><Input id="deleteAccountConfirmEmail" value={deleteConfirmEmail} onChange={(e) => setDeleteConfirmEmail(e.target.value)} placeholder={email || "you@example.com"} /></div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteDialogOpen(false); setDeleteConfirmEmail(""); }} disabled={deletingAccount}>Cancel</Button>
+            <Button variant="destructive" onClick={deleteAccount} disabled={deletingAccount}>{deletingAccount ? "Deleting..." : "Delete Account"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={apiDialogOpen} onOpenChange={setApiDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Regenerate API Key?</DialogTitle><DialogDescription>Your old API key will stop working immediately.</DialogDescription></DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApiDialogOpen(false)} disabled={regeneratingApiKey}>Cancel</Button>
+            <Button onClick={regenerateKey} disabled={regeneratingApiKey}>{regeneratingApiKey ? "Regenerating..." : "Regenerate"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardShell>
   );
 }

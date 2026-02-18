@@ -3,10 +3,9 @@ import {
   Users,
   Send,
   FileText,
-  BarChart2,
-  Gauge,
   Settings,
   CreditCard,
+  Layers,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,34 +24,34 @@ export const mainNavItems: NavItem[] = [
     icon: Home,
   },
   {
-    name: "Sent Emails",
-    href: "/dashboard/sent",
-    icon: Send,
-  },
-  {
     name: "Contacts",
     href: "/dashboard/contacts",
     icon: Users,
+  },
+  {
+    name: "Sequences",
+    href: "/dashboard/sequences",
+    icon: Layers,
   },
   {
     name: "Templates",
     href: "/dashboard/templates",
     icon: FileText,
   },
+  {
+    name: "Sent Emails",
+    href: "/dashboard/sent",
+    icon: Send,
+  },
+  {
+    name: "Settings",
+    href: "/dashboard/settings",
+    icon: Settings,
+  },
 ];
 
 // Secondary items to be tucked away in the profile menu
 export const secondaryNavItems: NavItem[] = [
-  {
-    name: "Analytics",
-    href: "/dashboard/analytics",
-    icon: BarChart2,
-  },
-  {
-    name: "Performance",
-    href: "/dashboard/performance",
-    icon: Gauge,
-  },
   {
     name: "Settings",
     href: "/dashboard/settings",

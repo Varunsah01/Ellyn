@@ -93,6 +93,24 @@ main {
   transform: translateY(0);
 }
 
+.secondary-btn {
+  width: 100%;
+  padding: 10px 24px;
+  background: #fff;
+  color: #667eea;
+  border: 1.5px solid #667eea;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  margin-top: 8px;
+}
+
+.secondary-btn:hover {
+  background: #f0f0ff;
+}
+
 .hidden {
   display: none !important;
 }
@@ -147,4 +165,15 @@ footer {
   font-size: 12px;
   color: #78350f;
   text-align: center;
+}
+
+.profile-type-badge {
+  font-size: 11px;
+  color: #3b82f6;
+  font-weight: 600;
+  margin-top: 4px;
+  padding: 2px 8px;
+  background: #eff6ff;
+  border-radius: 4px;
+  display: inline-block;
 }

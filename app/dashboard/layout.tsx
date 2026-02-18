@@ -12,6 +12,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { cn } from "@/lib/utils";
 import { SubscriptionProvider } from "@/context/SubscriptionContext";
 import { QuotaWarningBanner } from "@/components/subscription/QuotaWarningBanner";
+import { AppRefreshProvider } from "@/lib/context/AppRefreshContext";
 
 export default function DashboardLayout({
   children,
@@ -109,6 +110,7 @@ export default function DashboardLayout({
 
   return (
     <DashboardWrapper>
+      <AppRefreshProvider>
       <SubscriptionProvider>
         <div className="flex h-screen overflow-hidden bg-background">
           {/* Sidebar - Hidden on mobile, shown on tablet/desktop */}
@@ -141,6 +143,7 @@ export default function DashboardLayout({
           <DashboardTour />
         </div>
       </SubscriptionProvider>
+      </AppRefreshProvider>
     </DashboardWrapper>
   );
 }

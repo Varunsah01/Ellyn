@@ -9,19 +9,19 @@ interface PasswordStrengthIndicatorProps {
 }
 
 const SCORE_SEGMENT_CLASSES: Record<number, string> = {
-  0: "bg-red-500",
-  1: "bg-red-500",
-  2: "bg-yellow-500",
-  3: "bg-emerald-500",
-  4: "bg-emerald-600",
+  0: "bg-red-400",
+  1: "bg-red-400",
+  2: "bg-amber-400",
+  3: "bg-[#4B9C8E]",
+  4: "bg-[#FF6B6B]",
 };
 
 const LABEL_CLASSES: Record<PasswordStrengthResult["label"], string> = {
-  "Very Weak": "text-red-600",
-  Weak: "text-red-600",
-  Fair: "text-yellow-600",
-  Strong: "text-emerald-600",
-  "Very Strong": "text-emerald-700",
+  "Very Weak": "text-red-500",
+  Weak: "text-red-500",
+  Fair: "text-amber-500",
+  Strong: "text-[#4B9C8E]",
+  "Very Strong": "text-[#FF6B6B]",
 };
 
 /**
@@ -39,9 +39,9 @@ export function PasswordStrengthIndicator({
   const barColorClass = SCORE_SEGMENT_CLASSES[result.score];
 
   return (
-    <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+    <div className="space-y-3 rounded-lg border border-[#E2E2E8] bg-[#FAFAFA] p-3 font-dm-sans">
       <div className="flex items-center justify-between text-xs">
-        <span className="font-medium text-slate-700">Password strength</span>
+        <span className="font-medium text-[#6B6982]">Password strength</span>
         <span className={`font-semibold ${LABEL_CLASSES[result.label]}`}>{result.label}</span>
       </div>
 
@@ -51,8 +51,8 @@ export function PasswordStrengthIndicator({
           return (
             <div
               key={`segment-${index}`}
-              className={`h-1.5 rounded-full transition-colors ${
-                isFilled ? barColorClass : "bg-slate-200"
+              className={`h-1.5 rounded-full transition-colors duration-200 ${
+                isFilled ? barColorClass : "bg-[#E2E2E8]"
               }`}
             />
           );
@@ -65,7 +65,7 @@ export function PasswordStrengthIndicator({
             <li
               key={requirement.id}
               className={`flex items-center gap-2 ${
-                requirement.met ? "text-emerald-700" : "text-slate-600"
+                requirement.met ? "text-[#4B9C8E]" : "text-[#6B6982]"
               }`}
             >
               {requirement.met ? (
@@ -81,4 +81,3 @@ export function PasswordStrengthIndicator({
     </div>
   );
 }
-

@@ -19,6 +19,12 @@ try {
   console.warn('[Extension] Failed to load AI email predictor utility script:', error);
 }
 
+try {
+  importScripts('utils/safety.js');
+} catch (e) {
+  console.warn('[Extension] safety.js load failed:', e);
+}
+
 // Configuration
 const CONFIG = {
   API_BASE_URL: 'https://www.useellyn.com',
@@ -253,6 +259,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== 'object') return;
 
+  if (message.type === 'WEBAPP_AUTH_SYNC') {
+    setAuthenticatedState(message.payload || null, sendResponse);
+    return true;
+  }
+
   if (message.type === 'AUTH_SUCCESS') {
     setAuthenticatedState(message.payload || null, sendResponse);
     return true;
@@ -386,6 +397,9 @@ function normalizeExtractorPayload(extracted) {
   const role = String(extracted?.role?.title || '').trim();
   const profileUrl = String(extracted?.profileUrl || '').trim();
 
+  const education = extracted?.education || null;
+  const profileType = extracted?.profileType || null;
+
   const normalized = {
     firstName,
     lastName,
@@ -393,6 +407,8 @@ function normalizeExtractorPayload(extracted) {
     company,
     role,
     profileUrl,
+    education,
+    profileType,
   };
 
   console.log('[Background] Normalized payload:', normalized);
@@ -400,7 +416,11 @@ function normalizeExtractorPayload(extracted) {
 }
 
 function hasEssentialIdentity(payload) {
-  return Boolean(String(payload?.fullName || '').trim()) && Boolean(String(payload?.company || '').trim());
+  const hasName = Boolean(String(payload?.fullName || '').trim());
+  const hasCompany = Boolean(String(payload?.company || '').trim());
+  const isStudent = payload?.profileType?.type === 'STUDENT';
+  const hasEducation = Boolean(payload?.education?.institution);
+  return hasName && (hasCompany || (isStudent && hasEducation));
 }
 
 function isMissingReceiverError(error) {
@@ -1498,12 +1518,26 @@ async function extractProfileFromTab(tabId) {
     throw new Error(extractorResponse?.error || 'Failed to extract LinkedIn profile data');
   }
 
+  // Scan for public emails in profile text (via email-scanner.js content script)
+  let scannedEmails = [];
+  try {
+    const scanResult = await chrome.tabs.sendMessage(tabId, { type: 'SCAN_EMAILS' });
+    if (Array.isArray(scanResult?.emails)) {
+      scannedEmails = scanResult.emails;
+    }
+  } catch (_) {
+    // email-scanner may not respond; non-critical
+  }
+
   return {
     firstName: normalized.firstName || '',
     lastName: normalized.lastName || '',
     company: normalized.company || '',
     role: normalized.role || '',
     profileUrl: normalized.profileUrl || '',
+    education: normalized.education || null,
+    profileType: normalized.profileType || null,
+    scannedEmails,
   };
 }
 
@@ -1513,14 +1547,33 @@ async function normalizePipelineInput(data, senderTabId) {
     throw new Error('Missing active LinkedIn tab id');
   }
 
-  const firstName = String(data?.firstName || '').trim();
-  const lastName = String(data?.lastName || '').trim();
-  const company = String(data?.company || '').trim();
-  const role = typeof data?.role === 'string' ? data.role.trim() : '';
-  const profileUrl = typeof data?.profileUrl === 'string' ? data.profileUrl.trim() : '';
+  let firstName = String(data?.firstName || '').trim();
+  let lastName = String(data?.lastName || '').trim();
+  let company = String(data?.company || '').trim();
+  let role = typeof data?.role === 'string' ? data.role.trim() : '';
+  let profileUrl = typeof data?.profileUrl === 'string' ? data.profileUrl.trim() : '';
   const companyPageUrl = typeof data?.companyPageUrl === 'string' ? data.companyPageUrl.trim() : '';
+  let profileType = data?.profileType || null;
+  let education = data?.education || null;
+  let scannedEmails = Array.isArray(data?.scannedEmails) ? data.scannedEmails : [];
 
-  if (!firstName || !company) {
+  // If profile fields are missing (e.g. popup sends only tabId), extract from the tab
+  if (!firstName) {
+    const extracted = await extractProfileFromTab(tabId);
+    firstName = extracted.firstName || firstName;
+    lastName = extracted.lastName || lastName;
+    company = extracted.company || company;
+    role = extracted.role || role;
+    profileUrl = extracted.profileUrl || profileUrl;
+    profileType = extracted.profileType || profileType;
+    education = extracted.education || education;
+    scannedEmails = extracted.scannedEmails?.length ? extracted.scannedEmails : scannedEmails;
+  }
+
+  const isStudent = profileType?.type === 'STUDENT';
+  const hasEducation = Boolean(education?.institution);
+
+  if (!firstName || (!company && !(isStudent && hasEducation))) {
     throw new Error('Profile context incomplete. Refresh and confirm name + company before finding email.');
   }
 
@@ -1532,7 +1585,37 @@ async function normalizePipelineInput(data, senderTabId) {
     profileUrl,
     companyPageUrl,
     tabId,
+    profileType,
+    education,
+    scannedEmails,
   };
+}
+
+async function lookupUniversityDomain(institution) {
+  try {
+    const url = chrome.runtime.getURL('data/university-domains.json');
+    const res = await fetch(url);
+    const db = await res.json();
+    const key = institution.toLowerCase().trim();
+    if (db[key]) return db[key];
+    for (const [name, domain] of Object.entries(db)) {
+      if (key.includes(name) || name.includes(key)) return domain;
+    }
+  } catch (e) {
+    console.warn('[Extension] University domain lookup failed:', e);
+  }
+  return null;
+}
+
+function generateStudentEmailCandidates(firstName, lastName, domain) {
+  const f = (firstName || '').toLowerCase().replace(/[^a-z]/g, '');
+  const l = (lastName || '').toLowerCase().replace(/[^a-z]/g, '');
+  return [
+    l ? `${f}.${l}@${domain}` : null,
+    l ? `${f}${l}@${domain}` : null,
+    `${f}@${domain}`,
+    l ? `${f[0]}${l}@${domain}` : null,
+  ].filter(Boolean);
 }
 
 async function resolveDomain(companyName, authToken, companyPageUrl = '') {
@@ -1865,9 +1948,6 @@ async function handleFindEmail(data, sender, sendResponse) {
 
     const input = await normalizePipelineInput(data || {}, senderTabId);
     normalizedInput = input;
-    if (!input.firstName || !input.company) {
-      throw new Error('Insufficient profile data. Missing first name or company.');
-    }
 
     const authToken = await getAuthToken();
     if (!authToken) {
@@ -1890,6 +1970,12 @@ async function handleFindEmail(data, sender, sendResponse) {
       quotaError.code = isUnauthorized ? 'UNAUTHORIZED' : 'QUOTA_EXCEEDED';
       quotaError.resetDate = quota?.resetDate || null;
       throw quotaError;
+    }
+
+    // Rate-limit safety check
+    const safetyCheck = globalThis.safetyGuard?.isRateLimited?.() || { limited: false };
+    if (safetyCheck.limited) {
+      throw Object.assign(new Error('Rate limit exceeded'), { code: 'RATE_LIMITED', retryAfterMs: safetyCheck.retryAfterMs });
     }
 
     let totalCost = 0;
@@ -1937,6 +2023,53 @@ async function handleFindEmail(data, sender, sendResponse) {
         data: resultPayload,
       });
       return;
+    }
+
+    // STAGE 0.5: Student routing
+    if (input.profileType?.type === 'STUDENT') {
+      stage = 'student_routing';
+      await updateOperation(operationId, { stage });
+      console.log('[Extension] STAGE 0.5 - Student routing');
+
+      const institution = input.education?.institution;
+      if (institution) {
+        const univDomain = await lookupUniversityDomain(institution);
+        if (univDomain) {
+          const candidates = generateStudentEmailCandidates(input.firstName, input.lastName, univDomain);
+          if (candidates.length > 0) {
+            const result = {
+              email: candidates[0],
+              pattern: 'firstname.lastname@university',
+              confidence: 0.65,
+              source: 'student_university',
+              alternativeEmails: candidates.slice(1),
+              cost: 0,
+              institution,
+              universityDomain: univDomain,
+            };
+            await notifyEmailFound(input.tabId, result);
+            sendResponse({ success: true, type: 'EMAIL_FOUND', data: result });
+            return;
+          }
+        }
+      }
+
+      // Fallback: scanned public emails from profile text
+      if (Array.isArray(input.scannedEmails) && input.scannedEmails.length > 0) {
+        const result = {
+          email: input.scannedEmails[0],
+          confidence: 0.8,
+          source: 'profile_scan',
+          alternativeEmails: input.scannedEmails.slice(1),
+          cost: 0,
+        };
+        await notifyEmailFound(input.tabId, result);
+        sendResponse({ success: true, type: 'EMAIL_FOUND', data: result });
+        return;
+      }
+
+      // No university domain match — fall through to professional pipeline
+      console.log('[Extension] Student routing: no university match, falling through to professional pipeline');
     }
 
     // STAGE 1: Domain resolution

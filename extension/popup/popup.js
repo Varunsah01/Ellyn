@@ -10,9 +10,11 @@ const elements = {
   authSection: document.getElementById('authSection'),
   finderSection: document.getElementById('finderSection'),
   signInBtn: document.getElementById('signInBtn'),
+  connectAppBtn: document.getElementById('connectAppBtn'),
   findEmailBtn: document.getElementById('findEmailBtn'),
   loadingState: document.getElementById('loadingState'),
   resultsSection: document.getElementById('resultsSection'),
+  profileTypeBadge: document.getElementById('profileTypeBadge'),
   quotaText: document.getElementById('quotaText'),
   upgradeBanner: document.getElementById('upgradeBanner'),
   upgradeMessage: document.getElementById('upgradeMessage'),
@@ -38,6 +40,7 @@ async function init() {
   }
 
   elements.signInBtn?.addEventListener('click', handleSignIn);
+  elements.connectAppBtn?.addEventListener('click', handleConnectApp);
   elements.findEmailBtn?.addEventListener('click', handleFindEmail);
 }
 
@@ -61,6 +64,13 @@ function handleSignIn() {
   const authBase = String(CONFIG.AUTH_BASE_URL || '').replace(/\/+$/, '');
   const authUrl = `${authBase}/auth/login?source=extension&extensionId=${chrome.runtime.id}`;
   chrome.tabs.create({ url: authUrl });
+  window.close();
+}
+
+function handleConnectApp() {
+  const authBase = String(CONFIG.AUTH_BASE_URL || '').replace(/\/+$/, '');
+  const url = `${authBase}/extension-auth?extensionId=${chrome.runtime.id}`;
+  chrome.tabs.create({ url });
   window.close();
 }
 
@@ -161,6 +171,14 @@ async function handleFindEmail() {
 
     if (response?.success) {
       elements.resultsSection?.classList.remove('hidden');
+      const source = response?.data?.source;
+      if (source === 'student_university') {
+        showProfileTypeBadge('Student · Academic email');
+      } else if (source === 'profile_scan') {
+        showProfileTypeBadge('Public email · Found in profile');
+      } else {
+        hideProfileTypeBadge();
+      }
     } else {
       if (response?.code === 'QUOTA_EXCEEDED' || response?.resetDate) {
         showUpgradeBanner({
@@ -209,6 +227,16 @@ function showUpgradeBanner({ resetDate, upgradeUrl } = {}) {
 
 function hideUpgradeBanner() {
   elements.upgradeBanner?.classList.add('hidden');
+}
+
+function showProfileTypeBadge(label) {
+  if (!elements.profileTypeBadge) return;
+  elements.profileTypeBadge.textContent = label;
+  elements.profileTypeBadge.classList.remove('hidden');
+}
+
+function hideProfileTypeBadge() {
+  elements.profileTypeBadge?.classList.add('hidden');
 }
 
 function formatResetDate(value) {
