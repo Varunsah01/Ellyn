@@ -140,6 +140,11 @@ const elements = {
   // Issue 5 — Dynamic error state
   errorTitle: null,
   enterManuallyBtn: null,
+  // Draft view
+  dashNavDraft: null,
+  draftViewContainer: null,
+  // Stats / settings panel
+  statsViewContainer: null,
 };
 
 function getDefaultProfileContext() {
@@ -150,6 +155,7 @@ function getDefaultProfileContext() {
     firstName: "",
     lastName: "",
     company: "",
+    companyPageUrl: "",
     role: "",
     lastUpdatedAt: 0,
     sourceSummary: "",
@@ -256,6 +262,10 @@ function cacheElements() {
   // Issue 5 — Dynamic error state
   elements.errorTitle = document.getElementById("errorTitle");
   elements.enterManuallyBtn = document.getElementById("enterManuallyBtn");
+  // Draft view
+  elements.dashNavDraft       = document.getElementById("dashNavDraft");
+  elements.draftViewContainer = document.getElementById("draftViewContainer");
+  elements.statsViewContainer = document.getElementById("statsViewContainer");
 }
 
 function bindEvents() {
@@ -362,6 +372,28 @@ function bindEvents() {
   // ── Issue 5: "Enter manually" link in error state ─────────────────────────
   elements.enterManuallyBtn?.addEventListener("click", () => {
     expandManualEntryForm();
+  });
+
+  // ── Draft view tab ─────────────────────────────────────────────────────────
+  elements.dashNavDraft?.addEventListener("click", () => {
+    if (elements.draftViewContainer?.classList.contains("hidden")) {
+      void switchToDraftView();
+    } else {
+      switchToFinderView();
+    }
+  });
+
+  // Events bubbled up from the draft view's own header buttons
+  // Settings button → show local draft analytics (not web-app settings)
+  elements.draftViewContainer?.addEventListener("dv-settings-clicked", () => {
+    void switchToStatsView();
+  });
+  elements.draftViewContainer?.addEventListener("dv-profile-clicked", () => {
+    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard` });
+  });
+  elements.draftViewContainer?.addEventListener("dv-sent", (e) => {
+    console.log("[Sidepanel] Draft sent via Gmail:", e.detail);
+    // The draft view and gmail-action-button handle storage and toast internally
   });
 }
 
@@ -478,6 +510,9 @@ function renderAuthState() {
     stopLoadingCycle();
     hideResultAndError();
     resetQuotaUI();
+    // Tear down draft + stats views so they re-render fresh on next login
+    _hideDraftView();
+    _hideStatsView();
   } else {
     hideSessionExpiredBanner();
   }
@@ -597,6 +632,7 @@ async function refreshProfileContext(reason = "auto") {
       firstName,
       lastName,
       company,
+      companyPageUrl: normalized.companyPageUrl || "",
       role,
       lastUpdatedAt: Date.now(),
       sourceSummary,
@@ -658,6 +694,12 @@ function normalizeProfileResponseData(response, fallbackUrl = "") {
     role = String(data.role.title).trim();
   }
   const profileUrl = String(normalized.profileUrl || data?.profileUrl || fallbackUrl || "").trim();
+  const companyPageUrl = String(
+    normalized.companyPageUrl ||
+      data?.company?.pageUrl ||
+      data?.companyPageUrl ||
+      ""
+  ).trim();
   const nameSource = String(data?.name?.source || "").trim();
   const companySource = String(data?.company?.source || "").trim();
   const roleSource = String(data?.role?.source || "").trim();
@@ -667,6 +709,7 @@ function normalizeProfileResponseData(response, fallbackUrl = "") {
     lastName,
     fullName,
     company,
+    companyPageUrl,
     role,
     profileUrl,
     nameSource,
@@ -863,6 +906,7 @@ function getFreshCompleteProfileContextPayload(tabId) {
     firstName,
     lastName,
     company,
+    companyPageUrl: context.companyPageUrl || "",
     role: context.role || "",
     profileUrl: context.profileUrl || "",
   };
@@ -1082,6 +1126,10 @@ function displayResults(data) {
   elements.errorState?.classList.add("hidden");
 
   setStatus("Email found successfully.", "success");
+
+  // A new email was found — invalidate the draft view's contact key so it
+  // re-renders with the correct email the next time the user switches to it.
+  _dvLastContactKey = "";
 }
 
 function renderAlternatives(items) {
@@ -1985,3 +2033,195 @@ function expandManualEntryForm() {
   setTimeout(() => elements.firstName?.focus(), 300);
 }
 
+// ── Draft view ────────────────────────────────────────────────────────────────
+//
+// State for the draft view panel. Module-level (not inside emailFinderState)
+// since these are implementation details of the view layer, not UI model state.
+
+let _dvHandle          = null;   // { destroy() } from initDraftView()
+let _dvLastContactKey  = "";     // tracks which contact the draft was built for
+
+/**
+ * Builds a contact object from the current profile context + email result.
+ * This is passed into renderDraftView / initDraftView.
+ *
+ * @returns {{ name: string, company: string, role: string, email: string }}
+ */
+function _buildDraftContact() {
+  const ctx     = emailFinderState.profileContext || {};
+  const company = typeof ctx.company === "string"
+    ? ctx.company
+    : String(ctx.company?.name ?? "");
+  const role    = typeof ctx.role === "string"
+    ? ctx.role
+    : String(ctx.role?.title ?? "");
+  return {
+    name:    String(ctx.fullName  ?? "").trim(),
+    company: company.trim(),
+    role:    role.trim(),
+    email:   String(emailFinderState.currentResult?.email ?? "").trim(),
+  };
+}
+
+/**
+ * Returns a cache key for a contact — used to detect when a re-render
+ * is needed because the user has moved to a different LinkedIn profile
+ * or a new email result has been found.
+ *
+ * @param {{ name: string, company: string, email: string }} contact
+ * @returns {string}
+ */
+function _dvContactKey(contact) {
+  return [contact.email, contact.name, contact.company]
+    .map((v) => String(v ?? "").toLowerCase().trim())
+    .join("|") || "unknown";
+}
+
+/**
+ * Sets the active-tab highlight on the footer nav.
+ * Pass null to clear all highlights (used when showing external-app tabs).
+ *
+ * @param {HTMLElement | null} activeBtn
+ */
+function _setFooterActiveTab(activeBtn) {
+  [
+    elements.dashNavContacts,
+    elements.dashNavAnalytics,
+    elements.dashNavSettings,
+    elements.dashNavDraft,
+  ].forEach((btn) => btn?.classList.remove("is-active"));
+  activeBtn?.classList.add("is-active");
+}
+
+/**
+ * Switches the panel into Draft Generator mode:
+ *   - Hides <main> (the email-finder content)
+ *   - Shows #draftViewContainer
+ *   - Renders/re-renders the draft view if the contact has changed
+ */
+async function switchToDraftView() {
+  if (!emailFinderState.isAuthenticated) return;
+  if (!elements.draftViewContainer) return;
+
+  const contact    = _buildDraftContact();
+  const contactKey = _dvContactKey(contact);
+  const needsRender =
+    contactKey !== _dvLastContactKey ||
+    elements.draftViewContainer.childElementCount === 0;
+
+  // Show the draft container; hide the finder scroll area
+  document.querySelector("main")?.classList.add("hidden");
+  elements.draftViewContainer.classList.remove("hidden");
+  _setFooterActiveTab(elements.dashNavDraft);
+
+  if (!needsRender) return;  // same contact, view already rendered — just show it
+
+  // Destroy previous instance so its storage listeners don't fire redundantly
+  _dvHandle?.destroy();
+  _dvHandle = null;
+
+  // Render the HTML shell
+  if (typeof renderDraftView === "function") {
+    elements.draftViewContainer.innerHTML = renderDraftView(contact);
+  } else {
+    // Draft view scripts not loaded — show a friendly fallback
+    elements.draftViewContainer.innerHTML = `
+      <div style="padding:32px 20px;text-align:center;color:#64748b;font-family:inherit">
+        <p style="font-size:22px;margin:0 0 8px">✉️</p>
+        <p style="font-size:14px;margin:0">Draft Generator is unavailable.<br>Reload the panel to try again.</p>
+      </div>`;
+    return;
+  }
+
+  // Wire all inter-component events
+  if (typeof initDraftView === "function") {
+    _dvHandle = await initDraftView(elements.draftViewContainer, contact);
+  }
+
+  _dvLastContactKey = contactKey;
+}
+
+/**
+ * Switches the panel back to the email-finder (main) view.
+ */
+function switchToFinderView() {
+  document.querySelector("main")?.classList.remove("hidden");
+  elements.draftViewContainer?.classList.add("hidden");
+  _setFooterActiveTab(null);  // no tab highlighted — footer buttons open web app
+}
+
+/**
+ * Tears down the draft view entirely (called on logout or when auth state resets).
+ * The next call to switchToDraftView() will re-render from scratch.
+ */
+function _hideDraftView() {
+  if (!elements.draftViewContainer) return;
+  // Destroy component listeners first to prevent orphan timers/handlers
+  _dvHandle?.destroy();
+  _dvHandle = null;
+  _dvLastContactKey = "";
+  elements.draftViewContainer.innerHTML = "";
+  elements.draftViewContainer.classList.add("hidden");
+  document.querySelector("main")?.classList.remove("hidden");
+  elements.dashNavDraft?.classList.remove("is-active");
+}
+
+// ── Stats / Settings panel ────────────────────────────────────────────────────
+//
+// The gear icon inside the Draft Generator opens a local analytics panel
+// instead of navigating to the web app settings page.
+
+let _statsHandle = null;  // { refresh(), destroy() } from initDraftStatsPanelListeners()
+
+/**
+ * Renders and displays the draft analytics (stats) panel as a fixed overlay.
+ * Hides the draft view while stats are shown.
+ */
+async function switchToStatsView() {
+  if (!elements.statsViewContainer) return;
+
+  // Hide the draft view container (keep its state — just visually hide it)
+  elements.draftViewContainer?.classList.add("hidden");
+
+  // Render the stats panel HTML shell
+  if (typeof renderDraftStatsPanel === "function") {
+    elements.statsViewContainer.innerHTML = renderDraftStatsPanel();
+  } else {
+    elements.statsViewContainer.innerHTML = `
+      <div style="padding:40px 20px;text-align:center;color:#64748b;font-family:inherit">
+        <p style="font-size:22px;margin:0 0 8px">📊</p>
+        <p style="font-size:14px;margin:0">Analytics unavailable. Reload the panel to try again.</p>
+      </div>`;
+    elements.statsViewContainer.classList.remove("hidden");
+    return;
+  }
+
+  elements.statsViewContainer.classList.remove("hidden");
+
+  // Destroy any previous stats handle
+  _statsHandle?.destroy();
+  _statsHandle = null;
+
+  // Wire listeners; listen for the close event to return to the draft view
+  if (typeof initDraftStatsPanelListeners === "function") {
+    _statsHandle = await initDraftStatsPanelListeners(elements.statsViewContainer);
+  }
+
+  // Close the stats panel and return to the draft view when "dsp-close" fires
+  elements.statsViewContainer.addEventListener(
+    "dsp-close",
+    () => { _hideStatsView(); elements.draftViewContainer?.classList.remove("hidden"); },
+    { once: true }
+  );
+}
+
+/**
+ * Tears down the stats panel (called on logout or draft view teardown).
+ */
+function _hideStatsView() {
+  if (!elements.statsViewContainer) return;
+  _statsHandle?.destroy();
+  _statsHandle = null;
+  elements.statsViewContainer.innerHTML = "";
+  elements.statsViewContainer.classList.add("hidden");
+}

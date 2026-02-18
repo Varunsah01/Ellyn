@@ -32,7 +32,7 @@ class LinkedInCompanyExtractor {
     this.log('Starting company website extraction', { companyName: safeCompanyName });
 
     try {
-      const fromExperience = this.extractFromExperienceSection();
+      const fromExperience = this.extractFromExperienceSection(safeCompanyName);
       if (fromExperience?.companyPageUrl) {
         return fromExperience;
       }
@@ -41,7 +41,7 @@ class LinkedInCompanyExtractor {
     }
 
     try {
-      const fromTopCard = this.extractFromTopCard();
+      const fromTopCard = this.extractFromTopCard(safeCompanyName);
       if (fromTopCard?.companyPageUrl) {
         return fromTopCard;
       }
@@ -50,7 +50,7 @@ class LinkedInCompanyExtractor {
     }
 
     try {
-      const fromFeatured = this.extractFromFeaturedSection();
+      const fromFeatured = this.extractFromFeaturedSection(safeCompanyName);
       if (fromFeatured?.companyPageUrl) {
         return fromFeatured;
       }
@@ -72,8 +72,8 @@ class LinkedInCompanyExtractor {
    * Strategy 1: scan Experience section for company links.
    * @returns {{companyName: string, companyPageUrl: string|null, extractionMethod: string, confidence: number, isCurrent: boolean}|null}
    */
-  extractFromExperienceSection() {
-    const experienceSection = document.querySelector('#experience');
+  extractFromExperienceSection(companyName = '') {
+    const experienceSection = this.getExperienceSection();
     if (!experienceSection) {
       this.log('Experience section not found');
       return null;
@@ -85,39 +85,57 @@ class LinkedInCompanyExtractor {
       return null;
     }
 
-    let selected = links[0] || null;
-    let isCurrent = false;
-
+    const candidates = [];
     for (const link of links) {
-      const current = this.isCurrentPosition(link);
-      if (current) {
-        selected = link;
-        isCurrent = true;
-        break;
-      }
+      const companyPageUrl = this.normalizeLinkedInCompanyUrl(link.getAttribute('href'));
+      if (!companyPageUrl) continue;
+
+      const extractedName = this.cleanText(link.textContent || '');
+      const slug = this.getCompanySlugFromUrl(companyPageUrl);
+      const matchScore = this.getCompanyMatchScore(companyName, `${extractedName} ${slug}`.trim());
+      const isCurrent = this.isCurrentPosition(link);
+      const score = (isCurrent ? 4 : 2) + matchScore;
+
+      candidates.push({
+        companyPageUrl,
+        extractedName,
+        isCurrent,
+        matchScore,
+        score,
+      });
     }
 
-    if (!selected) {
+    if (candidates.length === 0) {
       return null;
     }
 
-    const companyPageUrl = this.normalizeLinkedInCompanyUrl(selected.getAttribute('href'));
-    const extractedName = this.cleanText(selected.textContent || '');
-    const confidence = isCurrent ? 0.9 : 0.85;
+    candidates.sort((a, b) => b.score - a.score);
+    const selected = candidates[0];
+
+    if (String(companyName || '').trim() && Number(selected?.matchScore || 0) < 2) {
+      this.log('Experience candidates did not match company name strongly', {
+        companyName,
+        topCandidate: selected,
+      });
+      return null;
+    }
+
+    const confidence = selected.isCurrent ? 0.92 : 0.84;
 
     this.log('Found company link in experience section', {
-      companyPageUrl,
-      extractedName,
-      isCurrent,
+      companyPageUrl: selected.companyPageUrl,
+      extractedName: selected.extractedName,
+      isCurrent: selected.isCurrent,
+      matchScore: selected.matchScore,
       confidence,
     });
 
     return {
-      companyName: extractedName || '',
-      companyPageUrl,
+      companyName: selected.extractedName || companyName || '',
+      companyPageUrl: selected.companyPageUrl,
       extractionMethod: 'experience-section',
       confidence,
-      isCurrent,
+      isCurrent: selected.isCurrent,
     };
   }
 
@@ -125,32 +143,59 @@ class LinkedInCompanyExtractor {
    * Strategy 2: scan top card right panel for company links.
    * @returns {{companyName: string, companyPageUrl: string|null, extractionMethod: string, confidence: number, isCurrent: boolean}|null}
    */
-  extractFromTopCard() {
-    const topCardPanel =
-      document.querySelector('.pv-text-details__right-panel') ||
-      document.querySelector('[class*="pv-text-details__right-panel"]');
-
-    if (!topCardPanel) {
-      this.log('Top-card right panel not found');
+  extractFromTopCard(companyName = '') {
+    const introRoot = this.getProfileIntroRoot();
+    if (!introRoot) {
+      this.log('Top-card root not found');
       return null;
     }
 
-    const link = topCardPanel.querySelector('a[href*="/company/"]');
-    if (!link) {
+    const links = Array.from(introRoot.querySelectorAll('a[href*="/company/"]'));
+    if (links.length === 0) {
       this.log('No company link found in top card');
       return null;
     }
 
-    const companyPageUrl = this.normalizeLinkedInCompanyUrl(link.getAttribute('href'));
-    const extractedName = this.cleanText(link.textContent || '');
+    const candidates = [];
+    for (const link of links) {
+      const companyPageUrl = this.normalizeLinkedInCompanyUrl(link.getAttribute('href'));
+      if (!companyPageUrl) continue;
+      const extractedName = this.cleanText(link.textContent || '');
+      const slug = this.getCompanySlugFromUrl(companyPageUrl);
+      const matchScore = this.getCompanyMatchScore(companyName, `${extractedName} ${slug}`.trim());
+      candidates.push({
+        companyPageUrl,
+        extractedName,
+        matchScore,
+        score: 2 + matchScore,
+      });
+    }
 
-    this.log('Found company link in top card', { companyPageUrl, extractedName });
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    candidates.sort((a, b) => b.score - a.score);
+    const selected = candidates[0];
+    if (String(companyName || '').trim() && Number(selected?.matchScore || 0) < 2) {
+      this.log('Top-card candidates did not match company name strongly', {
+        companyName,
+        topCandidate: selected,
+      });
+      return null;
+    }
+
+    this.log('Found company link in top card', {
+      companyPageUrl: selected.companyPageUrl,
+      extractedName: selected.extractedName,
+      matchScore: selected.matchScore,
+    });
 
     return {
-      companyName: extractedName || '',
-      companyPageUrl,
+      companyName: selected.extractedName || companyName || '',
+      companyPageUrl: selected.companyPageUrl,
       extractionMethod: 'top-card',
-      confidence: 0.92,
+      confidence: 0.9,
       isCurrent: true,
     };
   }
@@ -159,14 +204,19 @@ class LinkedInCompanyExtractor {
    * Strategy 3: scan about/featured section for company links.
    * @returns {{companyName: string, companyPageUrl: string|null, extractionMethod: string, confidence: number, isCurrent: boolean}|null}
    */
-  extractFromFeaturedSection() {
-    const aboutSection = document.querySelector('#about');
+  extractFromFeaturedSection(companyName = '') {
+    const aboutSection =
+      document.querySelector('#about') ||
+      document.querySelector('section[id*="about"]') ||
+      document.querySelector('section[aria-label*="About"]');
     if (!aboutSection) {
       this.log('About section not found');
       return null;
     }
 
-    const link = aboutSection.querySelector('a[href*="/company/"]');
+    const link =
+      aboutSection.querySelector('a[href*="/company/"]') ||
+      aboutSection.querySelector('a[href*="linkedin.com/company/"]');
     if (!link) {
       this.log('No company link found in about section');
       return null;
@@ -174,14 +224,24 @@ class LinkedInCompanyExtractor {
 
     const companyPageUrl = this.normalizeLinkedInCompanyUrl(link.getAttribute('href'));
     const extractedName = this.cleanText(link.textContent || '');
+    const slug = this.getCompanySlugFromUrl(companyPageUrl);
+    const matchScore = this.getCompanyMatchScore(companyName, `${extractedName} ${slug}`.trim());
+    if (String(companyName || '').trim() && matchScore < 2) {
+      this.log('About-section link did not match requested company name', {
+        companyName,
+        extractedName,
+        companyPageUrl,
+      });
+      return null;
+    }
 
-    this.log('Found company link in about section', { companyPageUrl, extractedName });
+    this.log('Found company link in about section', { companyPageUrl, extractedName, matchScore });
 
     return {
-      companyName: extractedName || '',
+      companyName: extractedName || companyName || '',
       companyPageUrl,
       extractionMethod: 'about-section',
-      confidence: 0.8,
+      confidence: 0.78,
       isCurrent: false,
     };
   }
@@ -204,12 +264,101 @@ class LinkedInCompanyExtractor {
     }
   }
 
+  getExperienceSection() {
+    const selectors = [
+      '#experience',
+      'section[id*="experience"]',
+      'section[aria-label*="Experience"]',
+      'main section:has(a[href*="/company/"])',
+    ];
+
+    for (const selector of selectors) {
+      try {
+        const section = document.querySelector(selector);
+        if (section) return section;
+      } catch {
+        // Skip invalid selector variants.
+      }
+    }
+
+    return null;
+  }
+
+  getProfileIntroRoot() {
+    const main = document.querySelector('main');
+    if (!main) return null;
+
+    const nameNode =
+      main.querySelector('h1.text-heading-xlarge') ||
+      main.querySelector('section:first-of-type h1') ||
+      main.querySelector('h1');
+
+    if (nameNode) {
+      const introCard =
+        nameNode.closest('section') ||
+        nameNode.closest('div[class*="pv-top-card"]') ||
+        nameNode.closest('div[class*="top-card"]');
+      if (introCard) return introCard;
+    }
+
+    return main.querySelector('section:first-of-type') || main;
+  }
+
   cleanText(value) {
     return String(value || '')
       .replace(/\u00a0/g, ' ')
       .replace(/\u200B/g, '')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  normalizeCompanyKey(value) {
+    return this.cleanText(value)
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(
+        /\b(inc|incorporated|llc|ltd|limited|corp|corporation|company|co|plc|gmbh|ag|sa|bv|pty|private|pvt|holdings|group)\b/g,
+        ' '
+      )
+      .replace(/[^a-z0-9]+/g, '');
+  }
+
+  getCompanySlugFromUrl(companyUrl) {
+    const value = String(companyUrl || '').trim();
+    if (!value) return '';
+    const match = value.match(/\/company\/([^/?#]+)/i);
+    if (!match?.[1]) return '';
+    return String(match[1] || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '');
+  }
+
+  getCompanyMatchScore(requestedCompanyName, candidateText) {
+    const requested = this.normalizeCompanyKey(requestedCompanyName);
+    if (!requested) return 0;
+
+    const candidate = this.normalizeCompanyKey(candidateText);
+    if (!candidate) return 0;
+    if (candidate === requested) return 5;
+    if (requested.length >= 6 && (candidate.includes(requested) || requested.includes(candidate))) return 4;
+
+    const requestedTokens = String(requestedCompanyName || '')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/g)
+      .filter((token) => token.length >= 3);
+    let tokenHits = 0;
+    for (const token of requestedTokens) {
+      if (candidate.includes(token)) tokenHits += 1;
+    }
+
+    if (requestedTokens.length >= 2) {
+      if (tokenHits >= 2) return 3;
+      if (tokenHits === 1) return 1;
+      return 0;
+    }
+
+    if (tokenHits === 1) return 2;
+    return 0;
   }
 
   normalizeLinkedInCompanyUrl(href) {
@@ -219,8 +368,18 @@ class LinkedInCompanyExtractor {
     try {
       const absolute = raw.startsWith('http') ? raw : new URL(raw, window.location.origin).toString();
       const parsed = new URL(absolute);
+      const host = String(parsed.hostname || '').toLowerCase();
+      if (!host.includes('linkedin.com')) {
+        return null;
+      }
+      if (!/\/company\//i.test(parsed.pathname || '')) {
+        return null;
+      }
       parsed.search = '';
       parsed.hash = '';
+      const slugMatch = parsed.pathname.match(/\/company\/([^/]+)/i);
+      if (!slugMatch?.[1]) return null;
+      parsed.pathname = `/company/${slugMatch[1]}/`;
       return parsed.toString();
     } catch {
       return null;

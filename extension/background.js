@@ -401,6 +401,7 @@ function normalizeExtractorPayload(extracted) {
   const firstName = String(extracted?.name?.firstName || split.firstName || '').trim();
   const lastName = String(extracted?.name?.lastName || split.lastName || '').trim();
   const company = String(extracted?.company?.name || '').trim();
+  const companyPageUrl = String(extracted?.company?.pageUrl || extracted?.companyPageUrl || '').trim();
   const role = String(extracted?.role?.title || '').trim();
   const profileUrl = String(extracted?.profileUrl || '').trim();
 
@@ -412,6 +413,7 @@ function normalizeExtractorPayload(extracted) {
     lastName,
     fullName: String(`${firstName} ${lastName}`).trim() || fullName,
     company,
+    companyPageUrl,
     role,
     profileUrl,
     education,
@@ -521,7 +523,30 @@ async function extractProfileReadOnlyFromPage(tabId) {
           /^(he\/him|she\/her|they\/them)$/i,
           /^[\u00B7\u2022]\s/i,
         ];
-        return !suspiciousPatterns.some((pattern) => pattern.test(text));
+        if (suspiciousPatterns.some((pattern) => pattern.test(text))) return false;
+        if (/^(building|helping|working|creating|driving|leading|enabling|empowering)\b/i.test(text)) {
+          return false;
+        }
+
+        const genericSingleWord = new Set([
+          'investments',
+          'operations',
+          'consulting',
+          'marketing',
+          'sales',
+          'finance',
+          'platform',
+          'logistics',
+          'analytics',
+          'engineering',
+          'support',
+        ]);
+        const tokens = text.split(/\s+/).filter(Boolean);
+        if (tokens.length === 1 && genericSingleWord.has(tokens[0].toLowerCase())) {
+          return false;
+        }
+
+        return true;
       };
 
       const parseCompanyFromHeadline = (headline) => {
@@ -539,6 +564,19 @@ async function extractProfileReadOnlyFromPage(tabId) {
           if (!match?.[1]) continue;
           const candidate = clean(match[1]);
           if (candidate && isLikelyCompany(candidate)) return candidate;
+        }
+
+        const segments = text
+          .split(/[\|\u00B7\u2022]/)
+          .map((segment) => clean(segment))
+          .filter(Boolean);
+        if (segments.length > 1) {
+          for (let i = 1; i < segments.length; i += 1) {
+            const candidate = clean(segments[i].replace(/\([^)]*\)/g, ' '));
+            if (candidate && isLikelyCompany(candidate)) {
+              return candidate;
+            }
+          }
         }
 
         return '';
@@ -702,19 +740,6 @@ async function extractProfileReadOnlyFromPage(tabId) {
       let role = parseRoleFromHeadline(headline);
 
       if (!company) {
-        const companyLink = document.querySelector(
-          [
-            'main section:first-of-type a[href*="/company/"]',
-            'section#experience a[href*="/company/"]',
-            'section[id*="experience"] a[href*="/company/"]',
-          ].join(', ')
-        );
-        const fromText = clean(companyLink?.textContent || '');
-        const fromUrl = parseCompanyFromUrl(companyLink?.href || '');
-        company = isLikelyCompany(fromText) ? fromText : isLikelyCompany(fromUrl) ? fromUrl : '';
-      }
-
-      if (!company) {
         const experienceSection = document.querySelector('section#experience, section[id*="experience"]');
         const firstExperienceRow = experienceSection?.querySelector('li, div[class*="pvs-list__item"]');
         const rowText = clean(firstExperienceRow?.innerText || '');
@@ -741,6 +766,18 @@ async function extractProfileReadOnlyFromPage(tabId) {
             }
           }
         }
+      }
+
+      if (!company) {
+        const companyLink = document.querySelector(
+          [
+            'main section:first-of-type a[href*="/company/"]',
+            'main a[href*="/company/"]',
+          ].join(', ')
+        );
+        const fromText = clean(companyLink?.textContent || '');
+        const fromUrl = parseCompanyFromUrl(companyLink?.href || '');
+        company = isLikelyCompany(fromText) ? fromText : isLikelyCompany(fromUrl) ? fromUrl : '';
       }
 
       if (!fullName || !company) {
@@ -1152,6 +1189,169 @@ function normalizeCompanyKey(companyName) {
     .replace(/[^a-z0-9]/g, '');
 }
 
+function getRegistrableDomainLabel(domain) {
+  const normalized = normalizeDomain(domain);
+  if (!normalized) return '';
+
+  const parts = normalized.split('.').filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0];
+
+  const secondLevelSuffixes = new Set(['co', 'com', 'org', 'net', 'gov', 'edu', 'ac']);
+  if (parts.length >= 3) {
+    const secondLast = parts[parts.length - 2];
+    if (secondLevelSuffixes.has(secondLast)) {
+      return parts[parts.length - 3] || '';
+    }
+  }
+
+  return parts[parts.length - 2] || parts[0] || '';
+}
+
+function extractLinkedInCompanySlug(companyPageUrl) {
+  const value = String(companyPageUrl || '').trim();
+  if (!value) return '';
+
+  const match = value.match(/\/company\/([^/?#]+)/i);
+  if (!match?.[1]) return '';
+
+  return String(match[1] || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '')
+    .trim();
+}
+
+function tokenizeCompanyName(companyName) {
+  const stopwords = new Set([
+    'inc',
+    'incorporated',
+    'llc',
+    'ltd',
+    'limited',
+    'corp',
+    'corporation',
+    'company',
+    'co',
+    'plc',
+    'gmbh',
+    'ag',
+    'sa',
+    'bv',
+    'pty',
+    'private',
+    'pvt',
+    'holdings',
+    'group',
+    'technologies',
+    'technology',
+    'solutions',
+    'services',
+  ]);
+
+  return String(companyName || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .split(/[^a-z0-9]+/g)
+    .map((token) => token.trim())
+    .filter((token) => token && token.length >= 2 && !stopwords.has(token));
+}
+
+function domainMatchesCompany(domain, companyName, companyPageUrl = '') {
+  const label = getRegistrableDomainLabel(domain);
+  if (!label) return false;
+
+  const companyKey = normalizeCompanyKey(companyName);
+  if (!companyKey) return true;
+
+  if (label.includes(companyKey) || companyKey.includes(label)) {
+    return true;
+  }
+
+  const companyTokens = tokenizeCompanyName(companyName);
+  let tokenHits = 0;
+  for (const token of companyTokens) {
+    if (token.length >= 3 && (label.includes(token) || token.includes(label))) {
+      tokenHits += 1;
+    }
+  }
+  if (companyTokens.length >= 2 && tokenHits >= 2) {
+    return true;
+  }
+  if (companyTokens.length === 1 && tokenHits >= 1) {
+    return true;
+  }
+
+  const slug = extractLinkedInCompanySlug(companyPageUrl);
+  if (slug) {
+    const slugCompact = slug.replace(/-/g, '');
+    if (slugCompact && (label.includes(slugCompact) || slugCompact.includes(label))) {
+      return true;
+    }
+
+    for (const token of slug.split('-').filter(Boolean)) {
+      if (token.length >= 3 && label.includes(token)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function generateDomainGuessCandidates(companyName, companyPageUrl = '') {
+  const out = new Set();
+  const add = (value) => {
+    const normalized = normalizeDomain(value);
+    if (normalized && /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(normalized)) {
+      out.add(normalized);
+    }
+  };
+
+  const slug = extractLinkedInCompanySlug(companyPageUrl);
+  if (slug) {
+    add(`${slug}.com`);
+    add(`${slug}.in`);
+    add(`${slug.replace(/-/g, '')}.com`);
+    add(`${slug.replace(/-/g, '')}.in`);
+  }
+
+  const primaryGuess = guessDomainFromCompanyName(companyName);
+  add(primaryGuess);
+
+  const tokens = tokenizeCompanyName(companyName);
+  if (tokens.length > 0) {
+    const compact = tokens.join('');
+    add(`${compact}.com`);
+    add(`${compact}.in`);
+    add(`${tokens[0]}.com`);
+    add(`${tokens[0]}.in`);
+  }
+
+  return Array.from(out);
+}
+
+async function recoverDomainForMismatch(companyName, resolvedDomain, companyPageUrl = '') {
+  const candidates = generateDomainGuessCandidates(companyName, companyPageUrl).filter(
+    (candidate) => candidate && candidate !== resolvedDomain && domainMatchesCompany(candidate, companyName, companyPageUrl)
+  );
+  const limitedCandidates = candidates.slice(0, 6);
+
+  for (const candidate of limitedCandidates) {
+    try {
+      const mx = await verifyDomainMx(candidate);
+      if (mx?.hasMx) {
+        return candidate;
+      }
+    } catch {
+      // Continue trying candidates.
+    }
+  }
+
+  return '';
+}
+
 function toRoundedMoney(value) {
   return Math.round(value * 10000) / 10000;
 }
@@ -1426,6 +1626,14 @@ function classifyApiError(error) {
     };
   }
 
+  if (code === 'DOMAIN_COMPANY_MISMATCH') {
+    return {
+      isRecoverable: false,
+      code: 'DOMAIN_COMPANY_MISMATCH',
+      message: 'Resolved domain does not match the detected company. Refresh profile and retry.',
+    };
+  }
+
   const isCsrf = code === 'CSRF_INVALID' || message.includes('csrf');
   if (isCsrf) {
     return {
@@ -1646,6 +1854,7 @@ async function extractProfileFromTab(tabId) {
     firstName: normalized.firstName || '',
     lastName: normalized.lastName || '',
     company: normalized.company || '',
+    companyPageUrl: normalized.companyPageUrl || '',
     role: normalized.role || '',
     profileUrl: normalized.profileUrl || '',
     education: normalized.education || null,
@@ -1665,7 +1874,7 @@ async function normalizePipelineInput(data, senderTabId) {
   let company = String(data?.company || '').trim();
   let role = typeof data?.role === 'string' ? data.role.trim() : '';
   let profileUrl = typeof data?.profileUrl === 'string' ? data.profileUrl.trim() : '';
-  const companyPageUrl = typeof data?.companyPageUrl === 'string' ? data.companyPageUrl.trim() : '';
+  let companyPageUrl = typeof data?.companyPageUrl === 'string' ? data.companyPageUrl.trim() : '';
   let profileType = data?.profileType || null;
   let education = data?.education || null;
   let scannedEmails = Array.isArray(data?.scannedEmails) ? data.scannedEmails : [];
@@ -1676,6 +1885,7 @@ async function normalizePipelineInput(data, senderTabId) {
     firstName = extracted.firstName || firstName;
     lastName = extracted.lastName || lastName;
     company = extracted.company || company;
+    companyPageUrl = extracted.companyPageUrl || companyPageUrl;
     role = extracted.role || role;
     profileUrl = extracted.profileUrl || profileUrl;
     profileType = extracted.profileType || profileType;
@@ -2100,7 +2310,18 @@ async function handleFindEmail(data, sender, sendResponse) {
     console.log('[Extension] STAGE 0 - Cache lookup');
 
     const cachedHit = await getCachedPatternHit(input.company, input.firstName, input.lastName);
-    if (cachedHit) {
+    const shouldUseCachedHit =
+      cachedHit &&
+      domainMatchesCompany(cachedHit.domain, input.company, String(input.companyPageUrl || ''));
+
+    if (cachedHit && !shouldUseCachedHit) {
+      console.warn('[Extension] Ignoring cached email due domain/company mismatch.', {
+        company: input.company,
+        cachedDomain: cachedHit.domain,
+      });
+    }
+
+    if (shouldUseCachedHit) {
       const resultPayload = {
         email: cachedHit.email,
         pattern: cachedHit.pattern,
@@ -2292,6 +2513,22 @@ async function handleFindEmail(data, sender, sendResponse) {
 
     if (!domain) {
       throw new Error('Domain resolution failed.');
+    }
+
+    if (!domainMatchesCompany(domain, input.company, companyPageUrl)) {
+      const recoveredDomain = await recoverDomainForMismatch(input.company, domain, companyPageUrl);
+      if (recoveredDomain) {
+        domainWarnings.push(
+          `Resolved domain ${domain} mismatched company ${input.company}. Recovered using safer domain ${recoveredDomain}.`
+        );
+        domain = recoveredDomain;
+      } else {
+        throw buildPipelineError(
+          'DOMAIN_COMPANY_MISMATCH',
+          `Resolved domain ${domain} does not match company ${input.company}.`,
+          { isRecoverable: false }
+        );
+      }
     }
 
     await cacheResolvedDomain(

@@ -22,10 +22,10 @@ const CONFIDENCE = {
     slug: 0.6,
   },
   company: {
-    jsonLd: 0.95,
-    topCard: 0.9,
-    headline: 0.75,
-    experience: 0.7,
+    jsonLd: 0.62,
+    topCard: 0.84,
+    headline: 0.9,
+    experience: 0.88,
     notFound: 0,
   },
   role: {
@@ -672,53 +672,62 @@ class LinkedInExtractor {
   async extractCompany() {
     this.log('=== COMPANY EXTRACTION START ===');
 
-    this.log('TIER 1: Attempting JSON-LD extraction');
-    const jsonLd = this.extractFromJsonLd();
-    if (jsonLd?.company && this.isLikelyCompany(jsonLd.company)) {
-      this.log('Company from JSON-LD', { company: jsonLd.company });
-      return {
-        name: jsonLd.company,
-        source: 'json-ld',
-        confidence: CONFIDENCE.company.jsonLd,
+    const candidates = [];
+    const addCandidate = (rawName, source, confidence) => {
+      const normalized = this.cleanCompanyCandidate(rawName);
+      if (!normalized || !this.isLikelyCompany(normalized)) return;
+
+      const candidate = {
+        name: normalized,
+        source,
+        confidence,
+        score: this.scoreCompanyCandidate(normalized, source),
       };
+      candidates.push(candidate);
+      this.log('Company candidate captured', candidate);
+    };
+
+    this.log('TIER 1: Attempting headline parsing');
+    const headlineCompany = this.extractCompanyFromHeadline();
+    if (headlineCompany) {
+      addCandidate(headlineCompany, 'headline', CONFIDENCE.company.headline);
+    } else {
+      this.log('Headline did not return a valid company');
     }
-    this.log('JSON-LD did not return a valid company');
 
     this.log('TIER 2: Attempting top-card extraction');
     const topCardCompany = this.extractCompanyFromTopCard();
-    if (topCardCompany && this.isLikelyCompany(topCardCompany)) {
-      this.log('Company from top-card', { company: topCardCompany });
-      return {
-        name: topCardCompany,
-        source: 'top-card',
-        confidence: CONFIDENCE.company.topCard,
-      };
+    if (topCardCompany) {
+      addCandidate(topCardCompany, 'top-card', CONFIDENCE.company.topCard);
+    } else {
+      this.log('Top-card did not return a valid company');
     }
-    this.log('Top-card did not return a valid company');
 
-    this.log('TIER 3: Attempting headline parsing');
-    const headlineCompany = this.extractCompanyFromHeadline();
-    if (headlineCompany && this.isLikelyCompany(headlineCompany)) {
-      this.log('Company from headline', { company: headlineCompany });
-      return {
-        name: headlineCompany,
-        source: 'headline',
-        confidence: CONFIDENCE.company.headline,
-      };
-    }
-    this.log('Headline did not return a valid company');
-
-    this.log('TIER 4: Attempting experience section (current only)');
+    this.log('TIER 3: Attempting experience section (current only)');
     const currentExperience = this.extractCurrentCompanyFromExperience();
-    if (currentExperience && this.isLikelyCompany(currentExperience)) {
-      this.log('Company from current experience', { company: currentExperience });
+    if (currentExperience) {
+      addCandidate(currentExperience, 'experience-current', CONFIDENCE.company.experience);
+    } else {
+      this.log('Experience section did not return a valid current company');
+    }
+
+    this.log('TIER 4: Attempting JSON-LD extraction');
+    const jsonLd = this.extractFromJsonLd();
+    if (jsonLd?.company) {
+      addCandidate(jsonLd.company, 'json-ld', CONFIDENCE.company.jsonLd);
+    } else {
+      this.log('JSON-LD did not return a valid company');
+    }
+
+    const selected = this.selectBestCompanyCandidate(candidates);
+    if (selected) {
+      this.log('Selected best company candidate', selected);
       return {
-        name: currentExperience,
-        source: 'experience-current',
-        confidence: CONFIDENCE.company.experience,
+        name: selected.name,
+        source: selected.source,
+        confidence: selected.confidence,
       };
     }
-    this.log('Experience section did not return a valid current company');
 
     this.log('=== COMPANY EXTRACTION FAILED ===');
     return {
@@ -731,49 +740,48 @@ class LinkedInExtractor {
   extractCompanyFromTopCard() {
     this.log('Scanning top-card for company name');
 
+    const introRoot = this.getProfileIntroRoot();
+    if (!introRoot) {
+      this.log('Top-card intro root not found');
+      return null;
+    }
+
     const topCardSelectors = [
-      // company link text
-      'main section:first-of-type a[href*="/company/"] span[aria-hidden="true"]',
-      'div[class*="pv-text-details"] a[href*="/company/"] span[aria-hidden="true"]',
-      // 2024–2025 LinkedIn — primary spans
-      'div.mt2.relative span.text-body-medium[aria-hidden="true"]',
-      'main section:first-of-type span.text-body-medium[aria-hidden="true"]',
-      // legacy selectors (keep as fallback)
-      'div[class*="pv-text-details"] div.text-body-medium:not(.break-words)',
-      'div.pv-text-details__left-panel div.text-body-medium span[aria-hidden="true"]',
-      'div.mt2.relative div.text-body-medium span[aria-hidden="true"]',
-      'section.pv-top-card div.text-body-medium:not(.break-words)',
-      'div[class*="top-card-layout__entity-info"] div.text-body-medium',
+      // Company links are strongest when present.
+      'a[href*="/company/"] span[aria-hidden="true"]',
+      'a[href*="/company/"]',
+      // Headline-adjacent affiliation text.
+      'div.text-body-medium:not(.break-words) span[aria-hidden="true"]',
+      'div.text-body-medium:not(.break-words)',
+      'span.text-body-medium[aria-hidden="true"]',
+      'span.text-body-medium',
     ];
 
     for (const selector of topCardSelectors) {
       try {
-        const element = document.querySelector(selector);
-        if (!element) continue;
-
-        const rawText = this.cleanText(element.textContent || '');
-        const text = this.extractCompanyFromMixedText(rawText) || this.cleanCompanyCandidate(rawText);
-        if (text && !this.looksLikeRole(text)) {
-          this.log('Top-card company candidate found', { selector, text });
-          return text;
+        const elements = introRoot.querySelectorAll(selector);
+        for (const element of elements) {
+          const rawText = this.cleanText(element.textContent || '');
+          const text = this.extractCompanyFromMixedText(rawText) || this.cleanCompanyCandidate(rawText);
+          if (text && !this.looksLikeRole(text)) {
+            this.log('Top-card company candidate found', { selector, text });
+            return text;
+          }
         }
       } catch (error) {
         this.log('Top-card selector failed', { selector, error: error?.message || 'Unknown selector failure' });
       }
     }
 
-    // Fallback: company links visible in top portion of the page
+    // Strict fallback: only company links under intro root.
     try {
-      const companyLinks = document.querySelectorAll('a[href*="/company/"]');
+      const companyLinks = introRoot.querySelectorAll('a[href*="/company/"]');
       for (const link of companyLinks) {
-        const rect = link.getBoundingClientRect();
-        if (rect.top >= 0 && rect.top < 400) {
-          const span = link.querySelector('span[aria-hidden="true"]') || link;
-          const text = this.cleanCompanyCandidate(span.textContent || '');
-          if (text && !this.looksLikeRole(text)) {
-            this.log('Top-card company found via company link fallback', { text });
-            return text;
-          }
+        const span = link.querySelector('span[aria-hidden="true"]') || link;
+        const text = this.cleanCompanyCandidate(span.textContent || '');
+        if (text && !this.looksLikeRole(text)) {
+          this.log('Top-card company found via company link fallback', { text });
+          return text;
         }
       }
     } catch (error) {
@@ -782,6 +790,26 @@ class LinkedInExtractor {
 
     this.log('No valid company found in top-card');
     return null;
+  }
+
+  getProfileIntroRoot() {
+    const main = document.querySelector('main');
+    if (!main) return null;
+
+    const nameNode =
+      main.querySelector('h1.text-heading-xlarge') ||
+      main.querySelector('section:first-of-type h1') ||
+      main.querySelector('h1');
+
+    if (nameNode) {
+      const introCard =
+        nameNode.closest('section') ||
+        nameNode.closest('div[class*="pv-top-card"]') ||
+        nameNode.closest('div[class*="top-card"]');
+      if (introCard) return introCard;
+    }
+
+    return main.querySelector('section:first-of-type') || main;
   }
 
   extractCurrentCompanyFromExperience() {
@@ -795,10 +823,12 @@ class LinkedInExtractor {
       }
 
       const experienceItems = experienceSection.querySelectorAll('li');
-      for (const item of experienceItems) {
+      const rankedCandidates = [];
+
+      experienceItems.forEach((item, itemIndex) => {
         const itemText = item.textContent || '';
         const isCurrent = /\b(current|present)\b/i.test(itemText);
-        if (!isCurrent) continue;
+        if (!isCurrent) return;
 
         const companyLink = item.querySelector('a[href*="/company/"]');
         const linkedCompany = this.cleanCompanyCandidate(
@@ -807,8 +837,12 @@ class LinkedInExtractor {
             ''
         );
         if (linkedCompany && !this.looksLikeRole(linkedCompany)) {
-          this.log('Current company found in experience link', { text: linkedCompany });
-          return linkedCompany;
+          rankedCandidates.push({
+            name: linkedCompany,
+            score: 3,
+            itemIndex,
+            source: 'link',
+          });
         }
 
         const companySpans = item.querySelectorAll('span[aria-hidden="true"]');
@@ -817,9 +851,24 @@ class LinkedInExtractor {
           const text = this.extractCompanyFromMixedText(rawText) || this.cleanCompanyCandidate(rawText);
           if (!text || this.looksLikeRole(text)) continue;
 
-          this.log('Current company found in experience', { text });
-          return text;
+          rankedCandidates.push({
+            name: text,
+            score: 2,
+            itemIndex,
+            source: 'span',
+          });
+          break;
         }
+      });
+
+      if (rankedCandidates.length > 0) {
+        rankedCandidates.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return a.itemIndex - b.itemIndex;
+        });
+        const winner = rankedCandidates[0];
+        this.log('Current company found in experience', winner);
+        return winner.name;
       }
 
       this.log('No current company found in experience section');
@@ -837,10 +886,10 @@ class LinkedInExtractor {
     if (!headline) return null;
 
     const patterns = [
-      /\b(?:at|@)\s+([^|,\n]+?)(?:\s*(?:\||,|$))/i,
+      /\b(?:at|@)\s+([^|,\n\u00B7\u2022]+?)(?:\s*(?:\||,|\u00B7|\u2022|$))/i,
       /\b(?:at|@)\s+(.+)$/i,
-      /^(?:co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|consultant)\s*,\s*([^|,\n]+?)(?:\s*(?:\||$))/i,
-      /^[^|,\n]+,\s*([^|,\n]+?)(?:\s*(?:\||$))/i,
+      /^(?:co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|consultant)\s*,\s*([^|,\n\u00B7\u2022]+?)(?:\s*(?:\||\u00B7|\u2022|$))/i,
+      /^[^|,\n\u00B7\u2022]+,\s*([^|,\n\u00B7\u2022]+?)(?:\s*(?:\||\u00B7|\u2022|$))/i,
     ];
 
     for (const pattern of patterns) {
@@ -848,6 +897,20 @@ class LinkedInExtractor {
       if (!match?.[1]) continue;
       const candidate = this.cleanCompanyCandidate(match[1]);
       if (candidate) return candidate;
+    }
+
+    // Support headlines like: "Role | Company | extra context"
+    const segments = headline
+      .split(/[\|\u00B7\u2022]/)
+      .map((segment) => this.cleanText(segment))
+      .filter(Boolean);
+
+    for (let i = 1; i < segments.length; i += 1) {
+      const withoutParen = this.cleanText(segments[i].replace(/\([^)]*\)/g, ' '));
+      const candidate = this.cleanCompanyCandidate(withoutParen);
+      if (!candidate) continue;
+      if (this.looksLikeEducation(candidate) || this.looksLikeRole(candidate)) continue;
+      return candidate;
     }
 
     return null;
@@ -872,6 +935,19 @@ class LinkedInExtractor {
 
       const candidate = this.cleanCompanyCandidate(match[1]);
       if (candidate) return candidate;
+    }
+
+    const segments = text
+      .split(/[\|\u00B7\u2022]/)
+      .map((segment) => this.cleanText(segment))
+      .filter(Boolean);
+    if (segments.length > 1) {
+      for (let i = 1; i < segments.length; i += 1) {
+        const candidate = this.cleanCompanyCandidate(segments[i].replace(/\([^)]*\)/g, ' '));
+        if (!candidate) continue;
+        if (this.looksLikeEducation(candidate) || this.looksLikeRole(candidate)) continue;
+        return candidate;
+      }
     }
 
     return '';
@@ -1260,10 +1336,6 @@ class LinkedInExtractor {
   // Normalization / Validation ----------------------------------------------
 
   getHeadlineText() {
-    const og = this.extractFromOpenGraph();
-    if (og?.headline) return og.headline;
-    if (og?.description) return og.description;
-
     const selectors = [
       'main section:first-of-type div.text-body-medium.break-words span[aria-hidden="true"]',
       'div.ph5.pb5 div.text-body-medium.break-words span[aria-hidden="true"]',
@@ -1278,6 +1350,10 @@ class LinkedInExtractor {
       const text = this.cleanText(document.querySelector(selector)?.textContent || '');
       if (text) return text;
     }
+
+    const og = this.extractFromOpenGraph();
+    if (og?.headline) return og.headline;
+    if (og?.description) return og.description;
 
     return '';
   }
@@ -1312,6 +1388,9 @@ class LinkedInExtractor {
     let text = this.cleanText(value)
       .replace(/\s*[\u00B7\u2022]\s*(full-time|part-time|contract|self-employed).*$/i, '')
       .replace(/\|\s*LinkedIn.*$/i, '')
+      .replace(/^https?:\/\//i, '')
+      .replace(/^www\./i, '')
+      .replace(/\/.*$/i, '')
       .replace(/^(?:co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|consultant)\s*,\s*/i, '')
       .trim();
 
@@ -1327,6 +1406,93 @@ class LinkedInExtractor {
     }
 
     return this.isLikelyCompany(text) ? text : '';
+  }
+
+  normalizeCompanyKey(value) {
+    return this.cleanText(value)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '');
+  }
+
+  looksLikeWebsiteDomain(value) {
+    const text = this.cleanText(value).toLowerCase();
+    if (!text) return false;
+    if (text.includes(' ')) return false;
+    if (!text.includes('.')) return false;
+    return /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i.test(text);
+  }
+
+  scoreCompanyCandidate(name, source) {
+    const base = {
+      headline: 1.0,
+      'experience-current': 0.95,
+      'top-card': 0.84,
+      'json-ld': 0.62,
+    };
+    let score = Number(base[source] || 0.6);
+
+    if (this.looksLikeWebsiteDomain(name)) {
+      score -= 0.35;
+    }
+    if (this.looksLikeEducation(name)) {
+      score -= 0.4;
+    }
+    if (this.looksLikeRole(name)) {
+      score -= 0.4;
+    }
+
+    return score;
+  }
+
+  selectBestCompanyCandidate(candidates) {
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return null;
+    }
+
+    const grouped = new Map();
+    for (const candidate of candidates) {
+      const key = this.normalizeCompanyKey(candidate?.name || '');
+      if (!key) continue;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          key,
+          totalScore: 0,
+          bestScore: Number.NEGATIVE_INFINITY,
+          best: null,
+          hits: 0,
+        });
+      }
+
+      const bucket = grouped.get(key);
+      const score = Number(candidate?.score || 0);
+      bucket.totalScore += score;
+      bucket.hits += 1;
+      if (score > bucket.bestScore) {
+        bucket.bestScore = score;
+        bucket.best = candidate;
+      }
+    }
+
+    const ranked = Array.from(grouped.values())
+      .filter((entry) => entry.best && entry.totalScore > 0.25)
+      .sort((a, b) => {
+        if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+        if (b.hits !== a.hits) return b.hits - a.hits;
+        return b.bestScore - a.bestScore;
+      });
+
+    if (ranked.length === 0) {
+      return null;
+    }
+
+    const winner = ranked[0].best;
+    return {
+      name: winner.name,
+      source: winner.source,
+      confidence: winner.confidence,
+      score: ranked[0].totalScore,
+    };
   }
 
   extractNameFromProfileSlug() {
@@ -1408,6 +1574,28 @@ class LinkedInExtractor {
     ];
     for (const pattern of suspiciousPatterns) {
       if (pattern.test(text)) return false;
+    }
+
+    if (/^(building|helping|working|creating|driving|leading|enabling|empowering)\b/i.test(text)) {
+      return false;
+    }
+
+    const genericSingleWord = new Set([
+      'investments',
+      'operations',
+      'consulting',
+      'marketing',
+      'sales',
+      'finance',
+      'platform',
+      'logistics',
+      'analytics',
+      'engineering',
+      'support',
+    ]);
+    const tokens = text.split(/\s+/).filter(Boolean);
+    if (tokens.length === 1 && genericSingleWord.has(tokens[0].toLowerCase())) {
+      return false;
     }
 
     return true;
@@ -1723,3 +1911,4 @@ function handleCompanyPageUrlExtraction(message, sendResponse) {
 }
 
 console.log('[LinkedInExtractor] Ready');
+
