@@ -5,6 +5,7 @@ export const CACHE_TAGS = {
   domainLookup: 'domain-lookup',
   mxVerification: 'mx-verification',
   userAnalytics: 'user-analytics',
+  emailVerification: 'email-address-verification',
 }
 
 function normalizeCompanyLookupTagValue(companyName: string): string {
@@ -48,4 +49,12 @@ export async function invalidateMxVerificationCache(domain: string): Promise<num
 
 export async function invalidateUserAnalyticsCache(userId: string): Promise<number> {
   return clearByTag(userAnalyticsTag(userId))
+}
+
+export function emailVerificationTag(email: string): string {
+  return `${CACHE_TAGS.emailVerification}:${normalizeCacheToken(email)}`
+}
+
+export async function invalidateEmailVerificationCache(email: string): Promise<number> {
+  return clearByTag(emailVerificationTag(email))
 }

@@ -46,6 +46,7 @@ import {
 import { Label } from "@/components/ui/Label";
 import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { supabaseAuthedFetch } from "@/lib/auth/client-fetch";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -227,7 +228,7 @@ export default function ContactDetailPage() {
     async function load() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/v1/contacts/${id}`);
+        const res = await supabaseAuthedFetch(`/api/v1/contacts/${id}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as { success: boolean; contact: ApiContact };
         if (!data.success) throw new Error("Failed to load contact");
@@ -246,7 +247,7 @@ export default function ContactDetailPage() {
 
   const patch = useCallback(
     async (fields: Record<string, unknown>) => {
-      const res = await fetch(`/api/v1/contacts/${id}`, {
+      const res = await supabaseAuthedFetch(`/api/v1/contacts/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(fields),
@@ -341,7 +342,7 @@ export default function ContactDetailPage() {
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/v1/contacts/${id}`, { method: "DELETE" });
+      const res = await supabaseAuthedFetch(`/api/v1/contacts/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete contact");
       showToast.success("Contact deleted");
       router.push("/dashboard/contacts");
@@ -359,7 +360,7 @@ export default function ContactDetailPage() {
     if (sequences.length > 0) return;
     setSequencesLoading(true);
     try {
-      const res = await fetch("/api/v1/sequences");
+      const res = await supabaseAuthedFetch("/api/v1/sequences");
       if (!res.ok) throw new Error("Failed to load sequences");
       const data = (await res.json()) as { sequences: Array<{ id: string; name: string }> };
       const list = data.sequences ?? [];
@@ -376,7 +377,7 @@ export default function ContactDetailPage() {
     if (!selectedSeqId || !contact) return;
     setIsEnrolling(true);
     try {
-      const res = await fetch(`/api/v1/sequences/${selectedSeqId}/enroll`, {
+      const res = await supabaseAuthedFetch(`/api/v1/sequences/${selectedSeqId}/enroll`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contactIds: [id], startDate: enrollStartDate }),
@@ -394,7 +395,7 @@ export default function ContactDetailPage() {
         "Unknown";
 
       // Log activity (fire-and-forget)
-      void fetch("/api/activity", {
+      void supabaseAuthedFetch("/api/activity", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

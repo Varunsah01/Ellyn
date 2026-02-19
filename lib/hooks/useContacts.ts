@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRefreshListener } from '@/lib/context/AppRefreshContext';
 import { createClient } from '@/lib/supabase/client';
+import { supabaseAuthedFetch } from '@/lib/auth/client-fetch';
 
 export interface Contact {
   id: string;
@@ -82,7 +83,7 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
       if (status) params.append('status', status);
       if (source) params.append('source', source);
 
-      const response = await fetch(`/api/v1/contacts?${params.toString()}`);
+      const response = await supabaseAuthedFetch(`/api/v1/contacts?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: Failed to fetch contacts`);
@@ -180,7 +181,7 @@ export function useContactStats() {
       setError(null);
 
       // Fetch all contacts to calculate stats
-      const response = await fetch('/api/v1/contacts?limit=1000');
+      const response = await supabaseAuthedFetch('/api/v1/contacts?limit=1000');
 
       if (!response.ok) {
         throw new Error('Failed to fetch contact stats');
@@ -214,4 +215,3 @@ export function useContactStats() {
 
   return { stats, loading, error, refresh: fetchStats };
 }
-

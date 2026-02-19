@@ -11,39 +11,44 @@ import { fadeInUp } from "@/lib/animations";
 
 const faqs = [
   {
-    question: "Will I get banned from LinkedIn?",
+    question: "How quickly can I start reaching hiring managers and decision-makers?",
     answer:
-      "No. We don't automate anything on LinkedIn—no connection requests, no messages, no scraping. You click to save a profile, that's it. 2,000+ users have used this safely for months. LinkedIn can't ban you for clicking and reading public profiles.",
+      "Install the Chrome extension in under 30 seconds, open any LinkedIn profile, and Ellyn surfaces a verified professional email instantly. Add a personalised AI-drafted message and you're in someone's inbox — all in under two minutes. Most users send their first outreach email the same day they install.",
   },
   {
-    question: "How accurate are the email addresses?",
+    question: "What kind of results do Ellyn users actually see?",
     answer:
-      "Our pattern database is built from 50,000+ verified professional emails. For tech companies, first.last@company.com is correct 85% of the time. We show you 3-5 patterns ranked by confidence so you can try the most likely ones first. Users report 40% response rates.",
+      "Our users consistently land referral calls and interview opportunities within days of their first outreach — not weeks. Direct email outreach to the right person gets 3–5× higher response rates than LinkedIn connection requests, and our AI-crafted templates are built specifically to get replies, not get ignored.",
   },
   {
-    question: "What's the actual catch? Why is this free?",
+    question: "How does the AI email drafting work?",
     answer:
-      "There's no catch. We don't use expensive APIs like Hunter.io ($49/month) or ZoomInfo ($15K/year). Our pattern-matching runs locally in your browser—zero cost to us. When we add optional AI features later, those will cost money. But finding emails and tracking outreach stays free forever.",
+      "Ellyn reads the person's role and company, then generates a fully personalised outreach email tailored to your goal — whether that's requesting a referral, setting up an informational interview, or making a direct introduction. Every draft is concise, professional, and written to feel human, not templated. Pro users get unlimited AI drafts.",
   },
   {
-    question: "Isn't cold emailing creepy or spammy?",
+    question: "How is this different from doing outreach manually?",
     answer:
-      "It's way less spammy than LinkedIn DMs. Professionals expect work emails to be findable—that's why they're on company websites. Our templates are respectful, short (50-75 words), and focused on asking for advice, not demanding favors. People respond because you're showing initiative, not desperation.",
+      "Researching one contact manually — hunting for contact details, piecing together a message, wondering if it'll land — takes 20–30 minutes per person. Ellyn does all of that in seconds, lets you track every email you send, and surfaces the right follow-up at the right time. It's not just faster; it's a completely different standard of outreach.",
   },
   {
-    question: "How is this different from Hunter.io or Apollo?",
+    question: "Can I use Ellyn for networking beyond just job searching?",
     answer:
-      "Hunter.io and Apollo are built for sales teams with big budgets ($49-99/month). They're expensive and often overkill for job seekers. We're 100% free, focused on referrals not sales, and we never risk your LinkedIn account with automation. Plus our templates are proven to work for job seekers specifically.",
+      "Absolutely. Ellyn works for anyone who wants to reach professionals directly — mentors, collaborators, clients, investors, or industry leaders you're trying to connect with. Wherever you need to cut through the noise and reach someone who matters, Ellyn gets you there.",
   },
   {
-    question: "Do I need to know how to code?",
+    question: "What does the Pro plan unlock?",
     answer:
-      "Nope. It's a Chrome extension—install it in 30 seconds like any other browser extension. Click the icon while on a LinkedIn profile, and it does the rest. If you can use Gmail, you can use this.",
+      "Pro gives you unlimited AI-generated drafts tailored to every contact, advanced pipeline tracking so you always know who to follow up with and when, and priority access to new features as we ship them. If you're running a serious job search or outreach campaign, Pro pays for itself with the first interview it helps you land.",
   },
   {
-    question: "What if the email bounces?",
+    question: "Is my information private and secure?",
     answer:
-      "Try the next pattern we suggested. If all 3-5 bounce, we show you how to search for the person's email on the company website or GitHub. About 15% of people require this extra step, but it's still way faster than doing it all manually.",
+      "Yes, completely. Ellyn only stores what's needed to manage your outreach — saved contacts, draft emails, and status updates. We never sell your data or share it with third parties, and you can delete everything from your settings at any time. Your job search stays entirely yours.",
+  },
+  {
+    question: "Can I try it before upgrading to Pro?",
+    answer:
+      "Yes — start free with no credit card required. The free plan gives you real email discovery and proven outreach templates with no time limit. When you're ready to scale up, upgrading to Pro takes one click. There's genuinely no risk in getting started today.",
   },
 ];
 
@@ -66,11 +71,11 @@ export function FAQ() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-foreground mb-4">
-            Your{" "}
-            <span className="text-primary">Burning Questions</span>, Answered
+            Everything You Need to{" "}
+            <span className="text-primary">Know</span>
           </h2>
           <p className="text-xl font-dm-sans text-muted-foreground">
-            The honest answers to what you're really wondering.
+            Your questions answered — so nothing stands between you and your next opportunity.
           </p>
         </motion.div>
 
@@ -103,13 +108,13 @@ export function FAQ() {
           transition={{ delay: 0.4 }}
           className="text-center mt-12"
         >
-          <p className="font-dm-sans text-foreground font-semibold mb-2">Still not convinced?</p>
-          <p className="font-dm-sans text-muted-foreground mb-4">Try it free. No credit card. Takes 30 seconds to install.</p>
+          <p className="font-dm-sans text-foreground font-semibold mb-2">Ready to get started?</p>
+          <p className="font-dm-sans text-muted-foreground mb-4">Free to install. No credit card. Your first outreach email in under two minutes.</p>
           <a
             href="mailto:support@ellyn.app"
             className="text-primary hover:underline font-dm-sans font-medium"
           >
-            Or email us your questions →
+            Have a specific question? Reach us here →
           </a>
         </motion.div>
       </div>

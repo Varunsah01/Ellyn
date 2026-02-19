@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { get as cacheGet, set as cacheSet } from '@/lib/cache/redis'
+import { CACHE_TAGS, emailVerificationTag } from '@/lib/cache/tags'
 import { withApiRouteSpan } from '@/lib/monitoring/sentry'
 import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { VerifyEmailSchema, formatZodError } from '@/lib/validation/schemas'
+import { getDailyVerificationQuota } from '@/lib/verification-quota'
 
 type VerifyEmailResponse = {
   email: string
@@ -58,6 +61,41 @@ const RATE_LIMIT_MAX = 50
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000
 const RATE_LIMIT_ENDPOINT = 'verify-email'
 
+// ─── Verification cache ───────────────────────────────────────────────────────
+
+/** 7 days — verification results are stable; Abstract themselves cache per address */
+const VERIFICATION_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
+
+function buildVerificationCacheKey(email: string): string {
+  // Keep the key human-readable in Redis; @ is valid in a KV key string
+  return `email:verification:${email.trim().toLowerCase()}`
+}
+
+async function getCachedVerification(email: string): Promise<VerifyEmailResponse | null> {
+  try {
+    const result = await cacheGet<VerifyEmailResponse>(buildVerificationCacheKey(email))
+    return result ?? null
+  } catch (error) {
+    // Cache read failure is non-fatal — fall through to API call
+    console.warn('[verify-email] Cache read error:', sanitizeErrorForLog(error))
+    return null
+  }
+}
+
+async function setCachedVerification(email: string, result: VerifyEmailResponse): Promise<void> {
+  try {
+    await cacheSet(
+      buildVerificationCacheKey(email),
+      result,
+      VERIFICATION_CACHE_TTL_SECONDS,
+      { tags: [CACHE_TAGS.emailVerification, emailVerificationTag(email)] }
+    )
+  } catch (error) {
+    // Cache write failure is non-fatal — the API result is still returned to the caller
+    console.warn('[verify-email] Cache write error:', sanitizeErrorForLog(error))
+  }
+}
+
 /**
  * Handle POST requests for `/api/verify-email`.
  * @param {NextRequest} request - Request input.
@@ -92,6 +130,49 @@ export async function POST(request: NextRequest) {
           )
         }
         email = parsed.data.email
+
+        // ── Cache check (before quota/rate-limit so hits consume neither) ───
+        const cachedResult = await getCachedVerification(email)
+        if (cachedResult) {
+          console.log(`[verify-email] Cache hit: ${email}`)
+          // Fire-and-forget: log the cache hit with $0 cost for hit-rate tracking
+          void trackVerificationCost({
+            userId: user.id,
+            email,
+            costUsd: 0,
+            abstractStatus: null,
+            deliverability: cachedResult.deliverable ? 'DELIVERABLE' : null,
+            source: 'cache',
+            warning: null,
+          })
+          return NextResponse.json({
+            ...cachedResult,
+            cached: true,
+            rateLimit: {
+              remaining: RATE_LIMIT_MAX,
+              limit: RATE_LIMIT_MAX,
+              source: 'cache' as const,
+            },
+          })
+        }
+        console.log(`[verify-email] Cache miss: ${email}`)
+
+        // ── Daily verification quota (only applies to real API calls) ────────
+        const quota = await getDailyVerificationQuota(user.id)
+        if (!quota.allowed) {
+          return NextResponse.json(
+            {
+              error: 'quota_exceeded',
+              feature: 'email_verification',
+              used: quota.used,
+              limit: quota.limit,
+              plan_type: quota.planType,
+              reset_at: quota.resetAt,
+              upgrade_url: '/dashboard/upgrade',
+            },
+            { status: 402 }
+          )
+        }
 
         const rateLimit = await checkAndIncrementRateLimit(user.id)
         if (!rateLimit.allowed) {
@@ -130,6 +211,11 @@ export async function POST(request: NextRequest) {
           ? mapAbstractResponseToOutput(email, abstractResult.data)
           : fallback
 
+        // Only cache real API responses, never fallback/error responses
+        if (abstractResult.data) {
+          await setCachedVerification(email, mappedResult)
+        }
+
         await trackVerificationCost({
           userId: user.id,
           email,
@@ -142,6 +228,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
           ...mappedResult,
+          cached: false,
           rateLimit: {
             remaining: rateLimit.remaining,
             limit: RATE_LIMIT_MAX,
@@ -528,13 +615,16 @@ async function trackVerificationCost(params: {
   costUsd: number
   abstractStatus: number | null
   deliverability: string | null
-  source: 'abstract' | 'fallback'
+  /** 'abstract' = live API call ($0.001); 'cache' = served from cache ($0); 'fallback' = API error */
+  source: 'abstract' | 'fallback' | 'cache'
   warning: string | null
 }) {
   try {
     const serviceClient = await createServiceRoleClient()
     const tableReady = await ensureApiCostsTableExists(serviceClient)
     if (!tableReady) return
+
+    const domain = params.email.split('@')[1]?.toLowerCase() ?? 'unknown'
 
     const { error } = await serviceClient.from('api_costs').insert({
       user_id: params.userId,
@@ -543,6 +633,7 @@ async function trackVerificationCost(params: {
       metadata: {
         endpoint: RATE_LIMIT_ENDPOINT,
         email: params.email,
+        domain,
         providerStatus: params.abstractStatus,
         deliverability: params.deliverability,
         source: params.source,

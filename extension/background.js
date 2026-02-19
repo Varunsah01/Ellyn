@@ -30,6 +30,7 @@ const CONFIG = {
   API_BASE_URL: 'https://www.useellyn.com',
   CACHE_DURATION_MS: 30 * 24 * 60 * 60 * 1000, // 30 days
   COST_WINDOW_MS: 30 * 24 * 60 * 60 * 1000, // 30 days rolling cost window
+  DISABLE_CREDIT_LIMITS: true,
   HEURISTIC_FALLBACK: {
     enabled: true,
     allowOnNoMx: false,
@@ -339,11 +340,28 @@ async function checkQuota() {
       warning: 'Quota manager unavailable',
     };
   }
-
-  return quotaManager.getStatus();
+  const status = await quotaManager.getStatus();
+  if (!CONFIG.DISABLE_CREDIT_LIMITS) {
+    return status;
+  }
+  return {
+    ...status,
+    allowed: true,
+    warning: status?.warning || 'Credit limits disabled',
+  };
 }
 
 async function canPerformLookup() {
+  if (CONFIG.DISABLE_CREDIT_LIMITS) {
+    const status = await checkQuota().catch(() => null);
+    return {
+      allowed: true,
+      remaining: Number.isFinite(Number(status?.remaining)) ? Number(status.remaining) : null,
+      resetDate: status?.resetDate || null,
+      warning: 'Credit limits disabled',
+    };
+  }
+
   if (!quotaManager) {
     return {
       allowed: true,
@@ -589,6 +607,44 @@ async function extractProfileReadOnlyFromPage(tabId) {
         return clean(match?.[1] || '');
       };
 
+      const parseRoleFromExperience = () => {
+        const experienceSection = document.querySelector('section#experience, section[id*="experience"]');
+        if (!experienceSection) return '';
+
+        const rows = experienceSection.querySelectorAll('li, div[class*="pvs-list__item"]');
+        for (const row of rows) {
+          const rowText = clean(row?.innerText || '');
+          if (!rowText) continue;
+
+          const isCurrent = /\b(current|present|now)\b/i.test(rowText);
+          if (!isCurrent) continue;
+
+          const lines = rowText
+            .split('\n')
+            .map((line) => clean(line))
+            .filter(Boolean);
+          if (lines.length === 0) continue;
+
+          // In LinkedIn experience rows, line 1 is typically the designation.
+          const primary = clean(lines[0] || '');
+          if (
+            primary &&
+            !isLikelyCompany(primary) &&
+            !/\b(full[- ]?time|part[- ]?time|self[- ]?employed|internship|contract)\b/i.test(primary)
+          ) {
+            return primary;
+          }
+
+          for (const line of lines) {
+            if (!line || isLikelyCompany(line)) continue;
+            if (/\b(current|present|yrs?|mos?|full[- ]?time|part[- ]?time|contract)\b/i.test(line)) continue;
+            if (looksLikeRole(line)) return line;
+          }
+        }
+
+        return '';
+      };
+
       const parseCompanyFromUrl = (href) => {
         const match = String(href || '').match(/\/company\/([^/?#]+)/i);
         if (!match?.[1]) return '';
@@ -737,7 +793,7 @@ async function extractProfileReadOnlyFromPage(tabId) {
       }
 
       let company = parseCompanyFromHeadline(headline);
-      let role = parseRoleFromHeadline(headline);
+      let role = parseRoleFromExperience() || parseRoleFromHeadline(headline);
 
       if (!company) {
         const experienceSection = document.querySelector('section#experience, section[id*="experience"]');
@@ -1352,6 +1408,86 @@ async function recoverDomainForMismatch(companyName, resolvedDomain, companyPage
   return '';
 }
 
+function extractDomainFromEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  if (!value || !value.includes('@')) return '';
+  const parts = value.split('@');
+  return normalizeDomain(parts[parts.length - 1] || '');
+}
+
+function mergeMxMaps(target, source) {
+  if (!(target instanceof Map) || !(source instanceof Map)) return target;
+  for (const [domain, hasMx] of source.entries()) {
+    target.set(domain, hasMx === true);
+  }
+  return target;
+}
+
+async function selectMxBackedCandidate(candidates, preferredDomain = '', maxCandidates = 8, checkAll = false) {
+  const safeCandidates = Array.isArray(candidates) ? candidates.filter(Boolean) : [];
+  if (safeCandidates.length === 0) {
+    return {
+      candidate: null,
+      domain: '',
+      mxByDomain: new Map(),
+    };
+  }
+
+  const max = Math.max(1, Math.min(Number(maxCandidates) || 8, safeCandidates.length));
+  const searchPool = safeCandidates.slice(0, max);
+  const mxByDomain = new Map();
+
+  const hasMxForDomain = async (domain) => {
+    const normalizedDomain = normalizeDomain(domain);
+    if (!normalizedDomain) return false;
+
+    if (mxByDomain.has(normalizedDomain)) {
+      return mxByDomain.get(normalizedDomain) === true;
+    }
+
+    try {
+      const mx = await verifyDomainMx(normalizedDomain);
+      const hasMx = mx?.hasMx === true;
+      mxByDomain.set(normalizedDomain, hasMx);
+      return hasMx;
+    } catch {
+      mxByDomain.set(normalizedDomain, false);
+      return false;
+    }
+  };
+
+  const normalizedPreferred = normalizeDomain(preferredDomain);
+  if (normalizedPreferred) {
+    await hasMxForDomain(normalizedPreferred);
+  }
+
+  let selected = null;
+  for (const candidate of searchPool) {
+    const domain = extractDomainFromEmail(candidate?.email);
+    if (!domain) continue;
+
+    const hasMx = await hasMxForDomain(domain);
+    if (hasMx) {
+      if (!selected) {
+        selected = { candidate, domain };
+      }
+      if (checkAll !== true) {
+        return {
+          candidate,
+          domain,
+          mxByDomain,
+        };
+      }
+    }
+  }
+
+  return {
+    candidate: selected?.candidate || null,
+    domain: selected?.domain || '',
+    mxByDomain,
+  };
+}
+
 function toRoundedMoney(value) {
   return Math.round(value * 10000) / 10000;
 }
@@ -1750,11 +1886,11 @@ async function runLegacyGenerateEmailsPipeline(input, authToken) {
 
   candidates.sort((a, b) => b.confidence - a.confidence);
 
-  const topCandidate = candidates[0];
+  const initialTopCandidate = candidates[0];
   const domainFromPayload = normalizeDomain(legacyResponse?.domain);
-  const domainFromEmail = normalizeDomain(topCandidate.email.split('@')[1] || '');
-  const domain = domainFromPayload || domainFromEmail;
-  if (!domain) {
+  const initialTopDomain = extractDomainFromEmail(initialTopCandidate?.email || '');
+  const hintedDomain = domainFromPayload || initialTopDomain;
+  if (!hintedDomain) {
     throw buildPipelineError(
       'INVALID_DOMAIN',
       'Legacy /api/v1/generate-emails response did not include a valid domain.',
@@ -1762,20 +1898,31 @@ async function runLegacyGenerateEmailsPipeline(input, authToken) {
     );
   }
 
-  const mxVerification = await verifyDomainMx(domain);
-  if (!mxVerification?.hasMx) {
+  const mxSelection = await selectMxBackedCandidate(candidates, hintedDomain, 10, true);
+  if (!mxSelection?.candidate) {
     throw buildPipelineError(
       'NO_MX_RECORDS',
-      `Domain ${domain} has no mail exchange (MX) records.`,
+      'None of the legacy email candidate domains has mail exchange (MX) records.',
       { isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true }
     );
   }
 
+  const topCandidate = mxSelection.candidate;
+  const domain = mxSelection.domain || extractDomainFromEmail(topCandidate.email) || hintedDomain;
+  const mxByDomain = mxSelection.mxByDomain instanceof Map ? mxSelection.mxByDomain : new Map();
+
   const warnings = ['Legacy fallback used. MX records were revalidated client-side.'];
-  if (domainFromPayload && domainFromEmail && domainFromPayload !== domainFromEmail) {
+  if (domainFromPayload && initialTopDomain && domainFromPayload !== initialTopDomain) {
     warnings.push(
-      `Legacy response domain mismatch detected: payload=${domainFromPayload}, email=${domainFromEmail}.`
+      `Legacy response domain mismatch detected: payload=${domainFromPayload}, email=${initialTopDomain}.`
     );
+  }
+  if (topCandidate.email !== initialTopCandidate.email) {
+    warnings.push(
+      `Primary legacy candidate domain ${initialTopDomain || 'unknown'} failed MX. Switched to alternative ${domain}.`
+    );
+  } else if (domainFromPayload && domainFromPayload !== domain) {
+    warnings.push(`Legacy payload domain ${domainFromPayload} failed MX. Switched to ${domain}.`);
   }
 
   const primaryConfidenceFloor = 0.72;
@@ -1785,11 +1932,18 @@ async function runLegacyGenerateEmailsPipeline(input, authToken) {
     pattern: topCandidate.pattern || 'unknown',
     confidence: Math.max(topCandidate.confidence, primaryConfidenceFloor),
     source: 'legacy_mx_reverified',
-    alternativeEmails: candidates.slice(1, 5).map((candidate) => ({
-      email: candidate.email,
-      pattern: candidate.pattern || 'unknown',
-      confidence: candidate.confidence,
-    })),
+    mxChecked: true,
+    mxSelectedHasMx: mxByDomain.get(domain) === true,
+    mxSelectedFromAlternative: topCandidate.email !== initialTopCandidate.email,
+    alternativeEmails: candidates
+      .filter((candidate) => candidate.email !== topCandidate.email)
+      .slice(0, 4)
+      .map((candidate) => ({
+        email: candidate.email,
+        pattern: candidate.pattern || 'unknown',
+        confidence: candidate.confidence,
+        hasMx: mxByDomain.get(extractDomainFromEmail(candidate.email)),
+      })),
     cost: toRoundedMoney(0),
     domain,
     verificationResults: [],
@@ -2111,10 +2265,14 @@ async function buildOfflineFallbackPayload(input, triggerMessage = '', context =
     pattern: top.pattern || 'first.last',
     confidence: effectiveConfidence,
     source: hasMx ? 'offline_heuristic_mx' : 'offline_heuristic',
+    mxChecked: true,
+    mxSelectedHasMx: hasMx,
+    mxSelectedFromAlternative: false,
     alternativeEmails: candidates.slice(1, 5).map((candidate) => ({
       email: candidate.email,
       pattern: candidate.pattern || 'unknown',
       confidence: candidate.confidence,
+      hasMx,
     })),
     cost: 0,
     domain: guessedDomain,
@@ -2322,11 +2480,28 @@ async function handleFindEmail(data, sender, sendResponse) {
     }
 
     if (shouldUseCachedHit) {
+      let cachedMxHasMx = false;
+      try {
+        const cachedMx = await verifyDomainMx(cachedHit.domain);
+        cachedMxHasMx = cachedMx?.hasMx === true;
+      } catch {
+        cachedMxHasMx = false;
+      }
+
+      if (!cachedMxHasMx) {
+        console.warn('[Extension] Ignoring cached email because cached domain has no MX records.', {
+          company: input.company,
+          cachedDomain: cachedHit.domain,
+        });
+      } else {
       const resultPayload = {
         email: cachedHit.email,
         pattern: cachedHit.pattern,
         confidence: Math.max(0.9, Number(cachedHit.confidence) || 0.9),
         source: 'cache_verified',
+        mxChecked: true,
+        mxSelectedHasMx: true,
+        mxSelectedFromAlternative: false,
         alternativeEmails: [],
         cost: toRoundedMoney(totalCost),
       };
@@ -2357,6 +2532,7 @@ async function handleFindEmail(data, sender, sendResponse) {
         data: resultPayload,
       });
       return;
+      }
     }
 
     // STAGE 0.5: Student routing
@@ -2577,7 +2753,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     await updateOperation(operationId, { stage });
     console.log('[Extension] STAGE 3 - Email generation');
 
-    const candidates = buildCandidates(
+    let candidates = buildCandidates(
       input.firstName,
       input.lastName,
       domain,
@@ -2593,13 +2769,33 @@ async function handleFindEmail(data, sender, sendResponse) {
     await updateOperation(operationId, { stage });
     console.log('[Extension] STAGE 4 - MX verification');
 
+    const mxByDomain = new Map();
     const mxResult = await verifyDomainMx(domain);
+    mxByDomain.set(domain, mxResult?.hasMx === true);
     if (!mxResult?.hasMx) {
-      throw buildPipelineError(
-        'NO_MX_RECORDS',
-        `Domain ${domain} has no mail exchange (MX) records.`,
-        { isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true }
-      );
+      const recoveredDomain = await recoverDomainForMismatch(input.company, domain, companyPageUrl);
+      if (recoveredDomain) {
+        domainWarnings.push(
+          `Resolved domain ${domain} has no MX records. Switched to alternative domain ${recoveredDomain}.`
+        );
+        domain = recoveredDomain;
+        mxByDomain.set(recoveredDomain, true);
+        candidates = buildCandidates(
+          input.firstName,
+          input.lastName,
+          domain,
+          predictedPatterns
+        );
+        if (candidates.length === 0) {
+          throw new Error('Failed to generate email candidates from predicted patterns.');
+        }
+      } else {
+        throw buildPipelineError(
+          'NO_MX_RECORDS',
+          `Domain ${domain} has no mail exchange (MX) records.`,
+          { isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true }
+        );
+      }
     }
 
     // STAGE 5: Abstract verification
@@ -2647,15 +2843,47 @@ async function handleFindEmail(data, sender, sendResponse) {
     await updateOperation(operationId, { stage });
     console.log('[Extension] STAGE 6 - Cache result');
 
+    const mxSelection = await selectMxBackedCandidate(candidates, domain, 8, true);
+    mergeMxMaps(mxByDomain, mxSelection.mxByDomain);
+
     let finalResult = selected;
     if (!finalResult) {
+      if (!mxSelection?.candidate) {
+        throw buildPipelineError(
+          'NO_MX_RECORDS',
+          'None of the generated email candidate domains has mail exchange (MX) records.',
+          { isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true }
+        );
+      }
+
       finalResult = {
-        ...candidates[0],
+        ...mxSelection.candidate,
         source: 'llm_best_guess',
       };
+
+      const primaryCandidate = candidates[0];
+      if (primaryCandidate && primaryCandidate.email !== finalResult.email) {
+        const primaryDomain = extractDomainFromEmail(primaryCandidate.email) || domain;
+        const selectedDomain = extractDomainFromEmail(finalResult.email) || domain;
+        domainWarnings.push(
+          `Primary AI best guess domain ${primaryDomain} failed MX. Switched to alternative ${selectedDomain}.`
+        );
+      }
     } else {
-      await cacheVerifiedPattern(domain, finalResult.pattern, finalResult.confidence);
+      const verifiedDomain = extractDomainFromEmail(finalResult.email) || domain;
+      await cacheVerifiedPattern(verifiedDomain, finalResult.pattern, finalResult.confidence);
     }
+
+    const finalDomain = extractDomainFromEmail(finalResult.email) || domain;
+    if (!mxByDomain.has(finalDomain)) {
+      try {
+        const finalMx = await verifyDomainMx(finalDomain);
+        mxByDomain.set(finalDomain, finalMx?.hasMx === true);
+      } catch {
+        mxByDomain.set(finalDomain, false);
+      }
+    }
+    const mxSelectedHasMx = mxByDomain.get(finalDomain) === true;
 
     const alternativeEmails = candidates
       .filter((c) => c.email !== finalResult.email)
@@ -2663,6 +2891,7 @@ async function handleFindEmail(data, sender, sendResponse) {
         email: c.email,
         pattern: c.pattern,
         confidence: c.confidence,
+        hasMx: mxByDomain.get(extractDomainFromEmail(c.email)),
       }));
 
     const payload = {
@@ -2670,9 +2899,15 @@ async function handleFindEmail(data, sender, sendResponse) {
       pattern: finalResult.pattern,
       confidence: Number(finalResult.confidence || 0),
       source: finalResult.source || 'llm_best_guess',
+      mxChecked: true,
+      mxSelectedHasMx,
+      mxSelectedFromAlternative:
+        finalResult.source === 'llm_best_guess' &&
+        Boolean(candidates[0]?.email) &&
+        candidates[0].email !== finalResult.email,
       alternativeEmails,
       cost: toRoundedMoney(totalCost),
-      domain,
+      domain: finalDomain,
       verificationResults,
       profileUrl: input.profileUrl || '',
       warnings: domainWarnings,

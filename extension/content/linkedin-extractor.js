@@ -29,10 +29,10 @@ const CONFIDENCE = {
     notFound: 0,
   },
   role: {
-    jsonLd: 0.95,
-    topCard: 0.9,
-    headline: 0.85,
-    experience: 0.8,
+    jsonLd: 0.7,
+    topCard: 0.75,
+    headline: 0.7,
+    experience: 0.92,
     notFound: 0,
   },
   location: {
@@ -956,14 +956,14 @@ class LinkedInExtractor {
   // Role Extraction ----------------------------------------------------------
 
   async extractRole() {
-    this.log('Extracting role - attempting JSON-LD');
-    const jsonLd = this.extractFromJsonLd();
-    if (jsonLd?.headline && this.isLikelyRole(jsonLd.headline)) {
-      this.log('Role extracted from JSON-LD', { role: jsonLd.headline });
+    this.log('Extracting role - attempting Experience section (current role first)');
+    const experience = this.extractCurrentExperienceEntry();
+    if (experience?.title && this.isLikelyRole(experience.title)) {
+      this.log('Role extracted from Experience section', { role: experience.title });
       return {
-        title: jsonLd.headline,
-        source: 'json-ld',
-        confidence: CONFIDENCE.role.jsonLd,
+        title: experience.title,
+        source: 'experience-section',
+        confidence: CONFIDENCE.role.experience,
       };
     }
 
@@ -978,14 +978,14 @@ class LinkedInExtractor {
       };
     }
 
-    this.log('Extracting role - attempting Experience section');
-    const experience = this.extractCurrentExperienceEntry();
-    if (experience?.title && this.isLikelyRole(experience.title)) {
-      this.log('Role extracted from Experience section', { role: experience.title });
+    this.log('Extracting role - attempting JSON-LD');
+    const jsonLd = this.extractFromJsonLd();
+    if (jsonLd?.headline && this.isLikelyRole(jsonLd.headline)) {
+      this.log('Role extracted from JSON-LD', { role: jsonLd.headline });
       return {
-        title: experience.title,
-        source: 'experience-section',
-        confidence: CONFIDENCE.role.experience,
+        title: jsonLd.headline,
+        source: 'json-ld',
+        confidence: CONFIDENCE.role.jsonLd,
       };
     }
 

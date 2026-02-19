@@ -366,7 +366,7 @@
         border-top: 1px solid #e2e8f0;
       }
 
-      .alternatives-list li:first-child {
+.alternatives-list li:first-child {
         border-top: 0;
       }
 
@@ -903,6 +903,13 @@
               </svg>
               Find Email
             </button>
+            <button id="draftMailBtn" type="button" class="finder-primary-btn hidden">
+              <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
+                <path d="M3 6.75A2.75 2.75 0 0 1 5.75 4h12.5A2.75 2.75 0 0 1 21 6.75v10.5A2.75 2.75 0 0 1 18.25 20H5.75A2.75 2.75 0 0 1 3 17.25V6.75Z" stroke="currentColor" stroke-width="1.5" />
+                <path d="m7 12 2.2 2.2L17 8.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              Draft Mail
+            </button>
 
             <div id="loadingState" class="hidden mt-4 text-center">
               <div class="spinner"></div>
@@ -919,8 +926,7 @@
                 </svg>
                 <span id="confidenceText">Email Found (98% confidence)</span>
               </div>
-
-              <div class="email-result">
+<div class="email-result">
                 <code id="resultEmail">john.doe@acme.com</code>
                 <div class="email-actions">
                   <button id="copyEmailBtn" type="button" class="secondary-btn">
@@ -936,21 +942,6 @@
                     </svg>
                     Save to Contacts
                   </button>
-                </div>
-              </div>
-
-              <div class="metadata">
-                <div class="meta-item">
-                  <span class="label">Pattern:</span>
-                  <span id="metaPattern" class="value">first.last@domain.com</span>
-                </div>
-                <div class="meta-item">
-                  <span class="label">Source:</span>
-                  <span id="metaSource" class="value">Verified via API</span>
-                </div>
-                <div class="meta-item">
-                  <span class="label">Cost:</span>
-                  <span id="metaCost" class="value">$0.0012</span>
                 </div>
               </div>
 
@@ -985,20 +976,6 @@
             </div>
           </article>
 
-          <article class="quota-bar" aria-label="Quota">
-            <div class="quota-label">
-              <span>Credits</span>
-              <span id="quotaCount">--/--</span>
-            </div>
-            <div class="quota-progress">
-              <div id="quotaFill" class="quota-fill" style="width: 0%"></div>
-            </div>
-            <p id="quotaWarning" class="quota-warning hidden"></p>
-            <div id="upgradeCta" class="upgrade-cta hidden">
-              <p id="upgradeText">Quota reached. Upgrade to continue.</p>
-              <button id="upgradeButton" type="button">Upgrade</button>
-            </div>
-          </article>
         </div>
 
         <div id="stage1" class="hidden space-y-5">
@@ -1155,6 +1132,21 @@
               <div id="queueContactsList" class="mt-4 space-y-2">
                 <!-- Contact rows rendered dynamically -->
               </div>
+            </div>
+          </article>
+
+          <article class="quota-bar" aria-label="Quota">
+            <div class="quota-label">
+              <span>Credits Used</span>
+              <span id="quotaCount">0/Unlimited</span>
+            </div>
+            <div class="quota-progress">
+              <div id="quotaFill" class="quota-fill" style="width: 0%"></div>
+            </div>
+            <p id="quotaWarning" class="quota-warning hidden"></p>
+            <div id="upgradeCta" class="upgrade-cta hidden">
+              <p id="upgradeText">Quota reached. Upgrade to continue.</p>
+              <button id="upgradeButton" type="button">Upgrade</button>
             </div>
           </article>
         </div>
@@ -1461,4 +1453,3 @@
     <script src="scripts/sidepanel.js"></script>
   </body>
 </html>
-

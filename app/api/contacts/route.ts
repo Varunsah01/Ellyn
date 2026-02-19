@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { getAuthenticatedUser } from '@/lib/auth/helpers';
+import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers';
 import { ContactCreateSchema, formatZodError } from '@/lib/validation/schemas';
 import { recordActivity } from '@/lib/utils/recordActivity';
 
@@ -17,7 +17,7 @@ import { recordActivity } from '@/lib/utils/recordActivity';
  */
 export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser();
+    const user = await getAuthenticatedUserFromRequest(request);
 
     // Parse query params
     const searchParams = request.nextUrl.searchParams;
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser();
+    const user = await getAuthenticatedUserFromRequest(request);
 
     const parsed = ContactCreateSchema.safeParse(await request.json());
     if (!parsed.success) {

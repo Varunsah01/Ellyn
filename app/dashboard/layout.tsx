@@ -25,9 +25,7 @@ export default function DashboardLayout({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-  const isContactsWorkspaceRoute =
-    pathname === "/dashboard/contacts" ||
-    pathname.startsWith("/dashboard/contacts/") ||
+  const isFullWidthWorkspaceRoute =
     pathname === "/tracker" ||
     pathname === "/dashboard/tracker" ||
     pathname.startsWith("/dashboard/tracker/");
@@ -149,7 +147,7 @@ export default function DashboardLayout({
             <main className="flex-1 overflow-y-auto">
               <div
                 className={cn(
-                  isContactsWorkspaceRoute
+                  isFullWidthWorkspaceRoute
                     ? "max-w-none p-0"
                     : "container mx-auto max-w-7xl p-3 sm:p-4 lg:p-5"
                 )}

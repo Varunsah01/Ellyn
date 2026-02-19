@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { getAuthenticatedUser } from "@/lib/auth/helpers";
+import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import {
   ContactUpdateSchema,
   formatZodError,
@@ -24,9 +24,9 @@ interface RouteContext {
  * // GET /api/contacts/[id]
  * fetch('/api/contacts/[id]')
  */
-export async function GET(_request: NextRequest, { params }: RouteContext) {
+export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
-    const user = await getAuthenticatedUser();
+    const user = await getAuthenticatedUserFromRequest(request);
     const { data: contact, error } = await supabase
       .from("contacts")
       .select("*")
@@ -136,7 +136,7 @@ async function updateContact(request: NextRequest, id: string, userId: string) {
  */
 export async function PUT(request: NextRequest, { params }: RouteContext) {
   try {
-    const user = await getAuthenticatedUser();
+    const user = await getAuthenticatedUserFromRequest(request);
     return updateContact(request, params.id, user.id);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
@@ -168,7 +168,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
  */
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
-    const user = await getAuthenticatedUser();
+    const user = await getAuthenticatedUserFromRequest(request);
     return updateContact(request, params.id, user.id);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
@@ -197,9 +197,9 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
  * // DELETE /api/contacts/[id]
  * fetch('/api/contacts/[id]', { method: 'DELETE' })
  */
-export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
-    const user = await getAuthenticatedUser();
+    const user = await getAuthenticatedUserFromRequest(request);
     const { error } = await supabase
       .from("contacts")
       .delete()

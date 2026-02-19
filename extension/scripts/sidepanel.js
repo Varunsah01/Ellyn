@@ -32,7 +32,7 @@ const emailFinderState = {
   user: null,
   isLoading: false,
   quotaKnown: false,
-  quotaAllowsLookup: false,
+  quotaAllowsLookup: true,
   currentResult: null,
   currentError: null,
   loadingTimer: null,
@@ -57,6 +57,7 @@ const elements = {
   createAccountButton: null,
   logoutButton: null,
   findEmailBtn: null,
+  draftMailBtn: null,
   loadingState: null,
   loadingStage: null,
   progressFill: null,
@@ -66,12 +67,9 @@ const elements = {
   retryBtn: null,
   confidenceBadge: null,
   confidenceText: null,
-  resultEmail: null,
+resultEmail: null,
   copyEmailBtn: null,
   saveToContactsBtn: null,
-  metaPattern: null,
-  metaSource: null,
-  metaCost: null,
   alternativesDetails: null,
   alternativesSummary: null,
   alternativesList: null,
@@ -176,6 +174,7 @@ function cacheElements() {
   elements.logoutButton = document.getElementById("logoutButton");
 
   elements.findEmailBtn = document.getElementById("findEmailBtn");
+  elements.draftMailBtn = document.getElementById("draftMailBtn");
   elements.loadingState = document.getElementById("loadingState");
   elements.loadingStage = document.getElementById("loadingStage");
   elements.progressFill = document.getElementById("progressFill");
@@ -186,12 +185,9 @@ function cacheElements() {
 
   elements.confidenceBadge = document.getElementById("confidenceBadge");
   elements.confidenceText = document.getElementById("confidenceText");
-  elements.resultEmail = document.getElementById("resultEmail");
+elements.resultEmail = document.getElementById("resultEmail");
   elements.copyEmailBtn = document.getElementById("copyEmailBtn");
   elements.saveToContactsBtn = document.getElementById("saveToContactsBtn");
-  elements.metaPattern = document.getElementById("metaPattern");
-  elements.metaSource = document.getElementById("metaSource");
-  elements.metaCost = document.getElementById("metaCost");
   elements.alternativesDetails = document.getElementById("alternativesDetails");
   elements.alternativesSummary = document.getElementById("alternativesSummary");
   elements.alternativesList = document.getElementById("alternativesList");
@@ -276,6 +272,9 @@ function bindEvents() {
   elements.createAccountButton?.addEventListener("click", () => openAuth("signup", elements.createAccountButton));
   elements.logoutButton?.addEventListener("click", signOut);
   elements.findEmailBtn?.addEventListener("click", findEmail);
+  elements.draftMailBtn?.addEventListener("click", () => {
+    void openDraftForCurrentResult();
+  });
   elements.retryBtn?.addEventListener("click", findEmail);
   elements.copyEmailBtn?.addEventListener("click", () => copyCurrentEmail());
   elements.saveToContactsBtn?.addEventListener("click", saveCurrentResultToContacts);
@@ -414,11 +413,8 @@ function bindRuntimeListeners() {
     }
 
     if (message.type === "SHOW_UPGRADE_MODAL") {
-      const resetText = formatResetDate(message?.data?.resetDate);
-      const copy = resetText
-        ? `Quota reached. Credits reset ${resetText}.`
-        : "Quota reached. Upgrade to continue finding emails.";
-      setUpgradeState(true, copy, message?.data?.upgradeUrl || PRICING_URL);
+      // Credit limits are currently disabled for the extension flow.
+      setUpgradeState(false, "", message?.data?.upgradeUrl || PRICING_URL);
     }
   });
 
@@ -856,12 +852,11 @@ function applyFindEmailAvailability() {
   if (!elements.findEmailBtn) return;
 
   const disabledByAuth = !emailFinderState.isAuthenticated;
-  const disabledByQuota = emailFinderState.isAuthenticated && emailFinderState.quotaKnown && !emailFinderState.quotaAllowsLookup;
   const gateStatus = getProfileContextGateStatus();
   const disabledByProfile = emailFinderState.isAuthenticated && !gateStatus.ready;
   const disabledByLoading = emailFinderState.isLoading;
 
-  const shouldDisable = disabledByAuth || disabledByQuota || disabledByProfile || disabledByLoading;
+  const shouldDisable = disabledByAuth || disabledByProfile || disabledByLoading;
   if (shouldDisable) {
     elements.findEmailBtn.setAttribute("disabled", "true");
   } else {
@@ -870,12 +865,41 @@ function applyFindEmailAvailability() {
 
   const reason = disabledByProfile
     ? gateStatus.message
-    : disabledByQuota
-    ? "No credits available right now."
     : disabledByAuth
     ? "Sign in to use email finder."
     : "";
   elements.findEmailBtn.title = reason;
+}
+
+function setPrimaryFinderAction(mode = "find") {
+  const showFind = mode === "find";
+  const showDraft = mode === "draft";
+
+  if (elements.findEmailBtn) {
+    elements.findEmailBtn.classList.toggle("hidden", !showFind);
+    if (!showFind) {
+      elements.findEmailBtn.setAttribute("disabled", "true");
+    }
+  }
+
+  if (elements.draftMailBtn) {
+    elements.draftMailBtn.classList.toggle("hidden", !showDraft);
+    elements.draftMailBtn.disabled = !showDraft;
+  }
+
+  if (showFind) {
+    applyFindEmailAvailability();
+  }
+}
+
+async function openDraftForCurrentResult() {
+  const email = String(emailFinderState.currentResult?.email || "").trim();
+  if (!email) {
+    setPrimaryFinderAction("find");
+    showToast("Find an email first.", "error");
+    return;
+  }
+  await switchToDraftView();
 }
 
 function getFreshCompleteProfileContextPayload(tabId) {
@@ -1028,8 +1052,7 @@ function startLoadingCycle() {
   emailFinderState.stageIndex = 0;
   elements.emailFinderSection?.classList.add("is-loading");
   elements.loadingState?.classList.remove("hidden");
-  elements.findEmailBtn?.setAttribute("disabled", "true");
-  elements.findEmailBtn?.classList.add("hidden");
+  setPrimaryFinderAction("none");
   updateLoadingStage(PIPELINE_STAGES[0].label, PIPELINE_STAGES[0].progress);
 
   stopStageTimerOnly();
@@ -1067,8 +1090,8 @@ function stopLoadingCycle() {
   stopStageTimerOnly();
   elements.loadingState?.classList.add("hidden");
   elements.emailFinderSection?.classList.remove("is-loading");
-  elements.findEmailBtn?.classList.remove("hidden");
-  applyFindEmailAvailability();
+  const hasFoundEmail = Boolean(String(emailFinderState.currentResult?.email || "").trim());
+  setPrimaryFinderAction(hasFoundEmail ? "draft" : "find");
 }
 
 function updateLoadingStage(label, progress) {
@@ -1087,6 +1110,7 @@ function updateLoadingStage(label, progress) {
 function hideResultAndError() {
   elements.resultsCard?.classList.add("hidden");
   elements.errorState?.classList.add("hidden");
+  setPrimaryFinderAction("find");
 }
 
 function displayResults(data) {
@@ -1108,22 +1132,12 @@ function displayResults(data) {
     elements.resultEmail.textContent = email || "No email returned";
   }
 
-  const domain = email.includes("@") ? email.split("@")[1] : "";
-  if (elements.metaPattern) {
-    elements.metaPattern.textContent = buildPatternDisplay(data?.pattern, domain);
-  }
-  if (elements.metaSource) {
-    elements.metaSource.textContent = formatSourceLabel(data?.source);
-  }
-  if (elements.metaCost) {
-    elements.metaCost.textContent = formatCost(data?.cost);
-  }
-
   renderAlternatives(alternatives);
 
   elements.feedbackSection?.classList.remove("hidden");
   elements.resultsCard?.classList.remove("hidden");
   elements.errorState?.classList.add("hidden");
+  setPrimaryFinderAction("draft");
 
   setStatus("Email found successfully.", "success");
 
@@ -1180,14 +1194,10 @@ function showError(message, code, resetDate) {
 
   elements.resultsCard?.classList.add("hidden");
   elements.errorState?.classList.remove("hidden");
+  setPrimaryFinderAction("find");
   setStatus(message || "Could not find email.", "error");
-
   if (code === "QUOTA_EXCEEDED") {
-    const resetText = formatResetDate(resetDate);
-    const warning = resetText
-      ? `Quota reached. Credits reset ${resetText}.`
-      : "Quota reached. Upgrade to continue.";
-    setUpgradeState(true, warning, PRICING_URL);
+    setUpgradeState(false, "", PRICING_URL);
   }
 }
 
@@ -1498,55 +1508,76 @@ async function submitFeedback(worked) {
 async function updateQuotaStatus() {
   try {
     const response = await sendRuntimeMessage({ type: "CHECK_QUOTA" });
+    const used = toFiniteNumber(response?.used);
     const remaining = toFiniteNumber(response?.remaining);
     const limit = toFiniteNumber(response?.limit);
-    const allowed = response?.allowed !== false;
 
-    if (!Number.isFinite(remaining) || !Number.isFinite(limit) || limit <= 0) {
-      emailFinderState.quotaKnown = false;
-      emailFinderState.quotaAllowsLookup = false;
-      resetQuotaUI();
-      return;
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.max(1, Math.round(limit)) : null;
+    let safeUsed = Number.isFinite(used) ? Math.max(0, Math.round(used)) : null;
+    let safeRemaining = Number.isFinite(remaining) ? Math.max(0, Math.round(remaining)) : null;
+
+    if (!Number.isFinite(safeUsed) && Number.isFinite(safeLimit) && Number.isFinite(safeRemaining)) {
+      safeUsed = Math.max(0, safeLimit - safeRemaining);
+    }
+    if (!Number.isFinite(safeRemaining) && Number.isFinite(safeLimit) && Number.isFinite(safeUsed)) {
+      safeRemaining = Math.max(0, safeLimit - safeUsed);
     }
 
-    const safeRemaining = Math.max(0, Math.round(remaining));
-    const safeLimit = Math.max(1, Math.round(limit));
-    const percent = Math.max(0, Math.min(100, (safeRemaining / safeLimit) * 100));
+    const unlimitedPlan = !Number.isFinite(safeLimit);
 
     if (elements.quotaCount) {
-      elements.quotaCount.textContent = `${safeRemaining}/${safeLimit}`;
-    }
-
-    if (elements.quotaFill) {
-      elements.quotaFill.style.width = `${percent}%`;
-      elements.quotaFill.classList.remove("warning", "danger");
-      if (safeRemaining <= 0) {
-        elements.quotaFill.classList.add("danger");
-      } else if (safeRemaining <= Math.max(3, Math.ceil(safeLimit * 0.15))) {
-        elements.quotaFill.classList.add("warning");
+      if (Number.isFinite(safeUsed) && Number.isFinite(safeLimit)) {
+        elements.quotaCount.textContent = `${safeUsed}/${safeLimit}`;
+      } else if (Number.isFinite(safeUsed) && unlimitedPlan) {
+        elements.quotaCount.textContent = `${safeUsed}/Unlimited`;
+      } else if (Number.isFinite(safeRemaining) && Number.isFinite(safeLimit)) {
+        const derivedUsed = Math.max(0, safeLimit - safeRemaining);
+        elements.quotaCount.textContent = `${derivedUsed}/${safeLimit}`;
+      } else {
+        elements.quotaCount.textContent = "0/Unlimited";
       }
     }
 
-    if (!allowed || safeRemaining <= 0) {
-      const resetText = formatResetDate(response?.resetDate);
-      const warning = resetText
-        ? `Quota reached. Credits reset ${resetText}.`
-        : "Quota reached. Upgrade to continue.";
-      setUpgradeState(true, warning, emailFinderState.upgradeUrl);
-      emailFinderState.quotaKnown = true;
-      emailFinderState.quotaAllowsLookup = false;
-      setQuotaWarning("No credits remaining.");
-      applyFindEmailAvailability();
-      return;
+    if (elements.quotaFill) {
+      let percent = 0;
+      if (Number.isFinite(safeLimit) && safeLimit > 0) {
+        const usedForBar = Number.isFinite(safeUsed)
+          ? safeUsed
+          : Number.isFinite(safeRemaining)
+          ? Math.max(0, safeLimit - safeRemaining)
+          : 0;
+        percent = Math.max(0, Math.min(100, (usedForBar / safeLimit) * 100));
+      }
+
+      elements.quotaFill.style.width = `${percent}%`;
+      elements.quotaFill.classList.remove("warning", "danger");
+      if (Number.isFinite(safeLimit) && Number.isFinite(safeRemaining)) {
+        if (safeRemaining <= 0) {
+          elements.quotaFill.classList.add("danger");
+        } else if (safeRemaining <= Math.max(3, Math.ceil(safeLimit * 0.15))) {
+          elements.quotaFill.classList.add("warning");
+        }
+      }
     }
 
+    // Credit limits are currently disabled: quota UI is informational only.
     emailFinderState.quotaKnown = true;
     emailFinderState.quotaAllowsLookup = true;
     setUpgradeState(false, "", emailFinderState.upgradeUrl);
 
-    const lowThreshold = Math.max(3, Math.ceil(safeLimit * 0.15));
-    if (safeRemaining <= lowThreshold) {
-      setQuotaWarning(`Low credits: ${safeRemaining} left this period.`);
+    if (unlimitedPlan) {
+      if (Number.isFinite(safeUsed)) {
+        setQuotaWarning(`Unlimited plan active. ${safeUsed} credits used.`);
+      } else {
+        setQuotaWarning("Unlimited plan active.");
+      }
+    } else if (Number.isFinite(safeRemaining)) {
+      const lowThreshold = Math.max(3, Math.ceil(safeLimit * 0.15));
+      if (safeRemaining <= lowThreshold) {
+        setQuotaWarning(`Low credits: ${safeRemaining} left this period.`);
+      } else {
+        setQuotaWarning("");
+      }
     } else {
       setQuotaWarning("");
     }
@@ -1555,14 +1586,23 @@ async function updateQuotaStatus() {
   } catch (error) {
     console.warn("[Sidepanel] Failed to update quota:", error);
     emailFinderState.quotaKnown = false;
-    emailFinderState.quotaAllowsLookup = false;
-    resetQuotaUI();
+    emailFinderState.quotaAllowsLookup = true;
+    if (elements.quotaCount) {
+      elements.quotaCount.textContent = "0/Unlimited";
+    }
+    if (elements.quotaFill) {
+      elements.quotaFill.style.width = "0%";
+      elements.quotaFill.classList.remove("warning", "danger");
+    }
+    setQuotaWarning("Unlimited plan active.");
+    setUpgradeState(false, "", emailFinderState.upgradeUrl);
+    applyFindEmailAvailability();
   }
 }
 
 function resetQuotaUI() {
   if (elements.quotaCount) {
-    elements.quotaCount.textContent = "--/--";
+    elements.quotaCount.textContent = "0/Unlimited";
   }
   if (elements.quotaFill) {
     elements.quotaFill.style.width = "0%";

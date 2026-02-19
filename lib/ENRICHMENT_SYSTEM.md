@@ -1,7 +1,7 @@
 # Zero-Cost Email Enrichment System
 
 ## Overview
-This system replaces expensive enrichment APIs (Bright Data: $1.50/1000, Hunter.io: $49/month) with a free cascade approach that combines multiple free services and smart heuristics.
+This system replaces expensive enrichment APIs (Bright Data: $1.50/1000, Hunter.io: $49/month) with a low-cost cascade approach that combines multiple free services, smart heuristics, and the Abstract Email Validation API for per-address deliverability checks.
 
 ## Cost Comparison
 
@@ -9,8 +9,8 @@ This system replaces expensive enrichment APIs (Bright Data: $1.50/1000, Hunter.
 |---------|------|----------|
 | **Bright Data** | $1.50 per 1000 | 95% |
 | **Hunter.io** | $49/month (1000 searches) | 90% |
-| **Our System** | $0 (100% free) | 85-95% |
-| **Abstract API** (optional) | $0.001 per verification | 98% |
+| **Our System (patterns only)** | $0 | 85% |
+| **Our System + Abstract API** | ~$0.001–$0.003 per lookup | 95–98% |
 
 ## Architecture
 
@@ -26,10 +26,10 @@ This system replaces expensive enrichment APIs (Bright Data: $1.50/1000, Hunter.
 ### 2. DNS MX Verification (ALWAYS ON, FREE)
 
 - Uses Node.js `dns/promises` module
-- Validates domain can receive emails
-- Detects email provider (Google Workspace, Microsoft 365, etc.)
-- Zero cost, instant results
-- Filters out invalid domains
+- Validates domain can receive emails (gate for address-level verification)
+- Detects email provider (Google Workspace, Microsoft 365, Custom)
+- Zero cost, results cached 24 h in Redis
+- If no MX records → address-level verification is skipped entirely
 
 ### 3. Smart Email Pattern Generation
 
@@ -44,16 +44,18 @@ This system replaces expensive enrichment APIs (Bright Data: $1.50/1000, Hunter.
 - **Engineers**: Boost `first.last@` pattern (+20% confidence)
 - **Sales/Marketing**: Boost `first@` pattern (+15% confidence)
 
-### 4. Optional Abstract Email Validation
+### 4. Abstract Email Verification (address-level)
 
-**Disabled by default** - Only runs if `ABSTRACT_EMAIL_VALIDATION_API_KEY` is set
+Runs automatically when `ABSTRACT_API_KEY` is set. Skipped gracefully if the key is absent.
 
-- Cost: $0.001 per verification (100x cheaper than Hunter.io)
-- Validates top 3 email patterns only
-- Provides deliverability score
-- Adjusts confidence based on validation results
+- Cost: $0.001 per address (100x cheaper than Hunter.io)
+- Verifies the top 3 highest-confidence patterns per request (in parallel)
+- Returns `DELIVERABLE | UNDELIVERABLE | RISKY | UNKNOWN` per address
+- Confidence mapping: DELIVERABLE → 95, UNDELIVERABLE → 5, RISKY → 35–45, UNKNOWN → base score
+- Results cached in Redis for 7 days — cache hits are free
+- Daily quota: 10 verifications/day (free plan), 100/day (pro)
 
-## API Endpoint: `/api/enrich`
+## API Endpoint: `POST /api/generate-emails`
 
 ### Request
 ```json
@@ -61,40 +63,46 @@ This system replaces expensive enrichment APIs (Bright Data: $1.50/1000, Hunter.
   "firstName": "John",
   "lastName": "Doe",
   "companyName": "Google",
-  "role": "Software Engineer" // optional
+  "companyDomain": "google.com",
+  "role": "Software Engineer"
 }
 ```
+`companyDomain` and `role` are optional. If `companyDomain` is omitted, domain is resolved via the cascade.
 
 ### Response
 ```json
 {
   "success": true,
-  "cost": 0.003, // Only if Abstract API enabled
-  "source": "known_database",
-  "enrichment": {
-    "domain": "google.com",
-    "companyName": "Google",
-    "size": "enterprise",
-    "emailProvider": "Google Workspace",
-    "mxRecords": 5,
-    "mxServers": ["smtp.gmail.com", "..."]
+  "domain": "google.com",
+  "domainSource": "known",
+  "companySize": "enterprise",
+  "verification": {
+    "verified": true,
+    "hasMxRecords": true,
+    "mxRecordCount": 5,
+    "emailProvider": "google",
+    "providerName": "Google Workspace",
+    "status": { "icon": "✓", "text": "Valid domain", "color": "text-green-600" }
+  },
+  "learning": {
+    "hasLearnedPatterns": false,
+    "learnedPatternCount": 0
   },
   "emails": [
     {
       "email": "john.doe@google.com",
       "pattern": "first.last",
-      "confidence": 95
-    },
-    // ... 7 more patterns
+      "confidence": 95,
+      "learned": false,
+      "verificationStatus": "verified",
+      "verification": {
+        "domainVerified": true,
+        "formatValid": true,
+        "emailProvider": "google"
+      }
+    }
   ],
-  "verification": {
-    "mxVerified": true,
-    "abstractEnabled": false,
-    "abstractValidated": 0
-  },
-  "confidence": {
-    "domainAccuracy": 95
-  }
+  "message": "Generated 8 email patterns with verification"
 }
 ```
 
@@ -102,12 +110,15 @@ This system replaces expensive enrichment APIs (Bright Data: $1.50/1000, Hunter.
 
 ### Core Libraries
 - `lib/domain-lookup.ts` - Clearbit, Brandfetch, Google Search integration
-- `lib/mx-verification.ts` - DNS MX record verification
+- `lib/email-verification.ts` - DNS MX verification, confidence scoring, deliverability helpers
 - `lib/enhanced-email-patterns.ts` - Smart pattern generation with 100+ known domains
-- `lib/abstract-email-validation.ts` - Optional Abstract API integration
+- `lib/pattern-learning.ts` - Learned pattern storage and boost application
+- `lib/verification-quota.ts` - Daily per-user Abstract API quota tracking
+- `lib/cache/redis.ts` - Redis/Vercel KV wrapper (MX cached 24h, address results cached 7d)
 
-### API Endpoint
-- `app/api/enrich/route.ts` - Main enrichment endpoint
+### API Endpoints
+- `app/api/generate-emails/route.ts` - Main discovery + verification endpoint
+- `app/api/verify-email/route.ts` - Standalone per-address verifier
 
 ### Configuration
 - `.env.example` - Environment variable documentation
@@ -129,7 +140,7 @@ This system replaces expensive enrichment APIs (Bright Data: $1.50/1000, Hunter.
 
 3. **Abstract Email Validation** (optional, $0.001 per verification)
    ```env
-   ABSTRACT_EMAIL_VALIDATION_API_KEY=your-key
+   ABSTRACT_API_KEY=your-key
    ```
    Sign up: https://www.abstractapi.com/email-verification-validation-api
 
@@ -137,7 +148,7 @@ This system replaces expensive enrichment APIs (Bright Data: $1.50/1000, Hunter.
 
 ### Basic Usage (100% Free)
 ```typescript
-const response = await fetch('/api/enrich', {
+const response = await fetch('/api/generate-emails', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -149,15 +160,19 @@ const response = await fetch('/api/enrich', {
 });
 
 const data = await response.json();
-// Returns 8 email patterns with 85-95% confidence
-// Cost: $0
+// Returns 8 email patterns, top 3 verified via Abstract API
+// Cost: $0 patterns only; $0.003 max if ABSTRACT_API_KEY is set
 ```
 
-### With Abstract Validation (Optional)
+### Standalone Address Verification
 ```typescript
-// Same request, but with ABSTRACT_EMAIL_VALIDATION_API_KEY set
-// Validates top 3 patterns
-// Cost: $0.003 (0.3 cents)
+const response = await fetch('/api/verify-email', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'satya@microsoft.com', baseConfidence: 80 })
+});
+// Returns deliverability label + adjusted confidence score
+// Cost: $0.001 (or $0 on cache hit)
 ```
 
 ## Known Domains Database
@@ -177,17 +192,18 @@ The system includes 100+ pre-configured domains for major companies:
 - **Clearbit lookup**: ~500ms
 - **Brandfetch lookup**: ~800ms
 - **Google Search**: ~2000ms
-- **MX verification**: ~100ms
-- **Abstract validation** (optional): ~1500ms per email
+- **MX verification**: ~100ms (cached 24h in Redis)
+- **Abstract verification** (top 3, parallel): ~1500ms per email
 
-**Total time (without Abstract)**: 500-3000ms
-**Total time (with Abstract)**: 2000-5000ms
+**Total time (patterns only)**: 500–3000ms
+**Total time (with Abstract)**: 2000–5000ms
+**Total time (cache hit)**: ~50ms
 
 ### Accuracy
-- **Known domains**: 95% accuracy
-- **Free APIs**: 85-90% accuracy
-- **With MX verification**: Eliminates 100% of invalid domains
-- **With Abstract validation**: 98% accuracy
+- **Known domains**: 95% pattern accuracy
+- **Free APIs**: 85–90% pattern accuracy
+- **MX verification**: Eliminates 100% of invalid domains before address-level checks
+- **Abstract verification**: Confirms or eliminates specific addresses → 95–98% overall accuracy
 
 ## Cost Analysis
 
@@ -205,32 +221,33 @@ The system includes 100+ pre-configured domains for major companies:
 
 ## Limitations
 
-1. **Heuristic guesses** have only 50% accuracy (but MX verification filters out most bad guesses)
-2. **No SMTP verification** - MX only verifies domain can receive email, not specific address
-3. **Free APIs may rate limit** - But we have cascading fallbacks
-4. **Known domains** need manual updates - Currently 100+ major companies
+1. **Heuristic guesses** have only 50% pattern accuracy (MX verification gates out non-existent domains)
+2. **Abstract API daily quotas** — Free plan: 10 verifications/day; Pro: 100/day. Patterns are still returned with base confidence when quota is exhausted.
+3. **Catch-all domains** — Some companies accept all addresses; Abstract returns `RISKY` (35–45 confidence). This is the correct signal, not a false positive.
+4. **Free domain APIs may rate limit** — Cascading fallbacks ensure a result is always returned.
+5. **Known domains** need manual updates — Currently 100+ major companies.
 
 ## Future Enhancements
 
-1. **Pattern learning** - Track successful emails and learn company patterns
-2. **Expand known domains** - Add more companies to database
-3. **Community contributions** - Allow users to confirm patterns
-4. **LinkedIn integration** - Parse LinkedIn profiles for role/company data
-5. **Caching layer** - Store verified domains in Supabase for faster lookups
+1. **Expand known domains** — Add more companies to database
+2. **Community contributions** — Allow users to confirm patterns
+3. **LinkedIn integration** — Parse LinkedIn profiles for role/company data
+4. **Pattern confidence learning** — Adjust base confidence as verified patterns accumulate
 
 ## Security & Privacy
 
-- No API keys required for core functionality
-- Optional APIs (Google, Abstract) use server-side keys only
-- No data shared with third parties (except optional APIs)
-- MX verification uses standard DNS protocols
+- No API keys required for core pattern generation
+- `ABSTRACT_API_KEY` and `GOOGLE_CUSTOM_SEARCH_API_KEY` are server-side only — never exposed to browsers
+- Address verification results are stored in Redis by email hash; the raw address appears only in the cache value
+- Cost records in `api_costs` store the email address for audit purposes; access is restricted to service-role clients
+- Daily quotas prevent runaway API spend
 - All enrichment data encrypted in Supabase
 
 ## Testing
 
-Test the enrichment endpoint:
+Test the main endpoint:
 ```bash
-curl -X POST http://localhost:3000/api/enrich \
+curl -X POST http://localhost:3000/api/generate-emails \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_SUPABASE_TOKEN" \
   -d '{
@@ -244,6 +261,11 @@ curl -X POST http://localhost:3000/api/enrich \
 Expected response:
 - Domain: `google.com` (from known database)
 - MX verified: ✓
-- 8 email patterns
-- Top pattern: `sundar@google.com` (95% confidence for CEO)
-- Cost: $0
+- 8 email patterns returned
+- Top pattern: `sundar@google.com` — confidence 95 (CEO boost + DELIVERABLE from Abstract API)
+- `verificationStatus: "verified"` on top 3 patterns (if `ABSTRACT_API_KEY` is set)
+
+Run the test suite:
+```bash
+npx jest tests/api/email-verification.test.ts tests/integration/email-discovery.test.ts
+```

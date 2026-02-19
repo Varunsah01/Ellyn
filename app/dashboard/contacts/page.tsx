@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/Dialog";
 import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { supabaseAuthedFetch } from "@/lib/auth/client-fetch";
 
 const STATUS_PILLS = [
   { label: "All", value: "" },
@@ -58,7 +59,7 @@ export default function ContactsPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch("/api/v1/contacts", {
+      const res = await supabaseAuthedFetch("/api/v1/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

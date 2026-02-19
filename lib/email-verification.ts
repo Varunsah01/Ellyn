@@ -185,8 +185,19 @@ export function getProviderPatternPreferences(
 }
 
 /**
- * Calculate enhanced confidence score
- * Factors in: domain verification, email provider, pattern, format validation
+ * Calculate pattern-based confidence score.
+ *
+ * Scoring philosophy:
+ *  - Pattern matching + provider preferences → honest "pattern probability" score (max 85).
+ *  - MX records only prove the domain has a mail server, not that THIS address exists.
+ *    A flat +20 MX bonus inflated every pattern equally and is therefore removed.
+ *  - For accurate per-address scoring call calculateDeliverabilityConfidence() after
+ *    running the Abstract Email Validation API.
+ *
+ * Factors applied here:
+ *  1. Provider pattern preferences (Google/Microsoft have different common formats).
+ *  2. A mild penalty when the domain cannot be resolved at all (hasMxRecords=false).
+ *  3. A hard penalty for malformed email addresses.
  */
 export function calculateEnhancedConfidence(
   baseConfidence: number,
@@ -197,15 +208,7 @@ export function calculateEnhancedConfidence(
 ): number {
   let confidence = baseConfidence;
 
-  // Domain verification bonus (+20 if verified)
-  if (domainVerified) {
-    confidence += 20;
-  } else {
-    // Penalize unverified domains
-    confidence = Math.max(10, confidence - 30);
-  }
-
-  // Email provider bonus
+  // Apply provider-specific pattern preferences (small signal, still useful without SMTP data)
   if (emailProvider) {
     const preferences = getProviderPatternPreferences(
       emailProvider as 'google' | 'microsoft' | 'custom'
@@ -213,13 +216,62 @@ export function calculateEnhancedConfidence(
     confidence += preferences[pattern] || 0;
   }
 
-  // Format validation
+  // If the domain is definitively unresolvable (no MX, domain doesn't exist) apply a
+  // mild penalty — the address is unlikely to work regardless of pattern.
+  // Note: we no longer reward verified domains with +20; that was misleading.
+  if (!domainVerified) {
+    confidence = Math.max(10, confidence - 15);
+  }
+
+  // Hard penalty for malformed address format
   if (!formatValid) {
     confidence = Math.max(5, confidence - 40);
   }
 
-  // Cap confidence at 95% (never 100% certain without verification)
-  return Math.min(95, Math.max(5, confidence));
+  // Cap at 85 for unverified patterns. 86-95 is reserved for Abstract-confirmed addresses.
+  return Math.min(85, Math.max(5, confidence));
+}
+
+/**
+ * Apply Abstract Email Validation API deliverability result to a confidence score.
+ *
+ * This is the definitive per-address scoring step and should be called after
+ * calculateEnhancedConfidence(), overriding its result for verified patterns.
+ *
+ * Score mapping:
+ *  DELIVERABLE   → 95  (SMTP confirmed the mailbox exists)
+ *  RISKY         → 40  (catch-all domain, grey-listed, or spam-trap risk — use with caution)
+ *  UNDELIVERABLE → 5   (SMTP confirmed the mailbox does not exist)
+ *  UNKNOWN       → baseConfidence (Abstract couldn't determine — keep pattern score)
+ *
+ * @param baseConfidence  Score produced by calculateEnhancedConfidence (0-100).
+ * @param deliverability  Deliverability label from the Abstract API response.
+ * @param smtpScore       Normalised SMTP quality score from Abstract (0-1).
+ */
+export function calculateDeliverabilityConfidence(
+  baseConfidence: number,
+  deliverability: 'DELIVERABLE' | 'UNDELIVERABLE' | 'RISKY' | 'UNKNOWN',
+  smtpScore: number,
+): number {
+  switch (deliverability) {
+    case 'DELIVERABLE':
+      // SMTP handshake confirmed this mailbox accepts mail.
+      return 95;
+
+    case 'UNDELIVERABLE':
+      // SMTP confirmed hard bounce — keep a floor of 5 (don't show 0%).
+      return 5;
+
+    case 'RISKY':
+      // Catch-all or spam-trap risk. Use smtpScore to fine-tune within 35-45.
+      // smtpScore is 0-1; contributes up to +10 pts.
+      return Math.round(35 + Math.min(1, Math.max(0, smtpScore)) * 10);
+
+    case 'UNKNOWN':
+    default:
+      // Abstract couldn't determine deliverability — fall back to pattern score.
+      return baseConfidence;
+  }
 }
 
 /**
