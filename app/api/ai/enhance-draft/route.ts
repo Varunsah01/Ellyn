@@ -6,6 +6,7 @@ import { buildPrompt, getPromptConfig, mapEnhanceAction } from '@/lib/template-p
 import { EnhanceDraftSchema, formatZodError } from '@/lib/validation/schemas'
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { incrementAIDraftGeneration, QuotaExceededError } from '@/lib/quota'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 interface EnhanceDraftResponse {
   success: boolean
@@ -147,6 +148,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<EnhanceDr
       error: toErrorMessage(error),
       durationMs: Date.now() - startedAt,
     })
+    captureApiException(error, { route: '/api/ai/enhance-draft', method: 'POST' })
 
     return NextResponse.json(
       {

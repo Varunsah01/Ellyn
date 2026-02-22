@@ -21,6 +21,7 @@ import {
   type DomainSource,
 } from '@/lib/domain-resolution-analytics';
 import { ApiCallError } from '@/lib/api-circuit-breaker';
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 function buildFailureSuggestion(layers: LayerAttempt[]): string {
   if (layers.some(l => l.errorType === 'circuit_open'))
@@ -287,6 +288,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Enrich] Error:', error);
+    captureApiException(error, { route: '/api/enrich', method: 'POST' })
     return NextResponse.json(
       { error: 'Enrichment failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

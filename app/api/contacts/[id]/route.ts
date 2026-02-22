@@ -8,6 +8,7 @@ import {
   type ContactUpdateInput,
 } from "@/lib/validation/schemas";
 import { recordActivity } from "@/lib/utils/recordActivity";
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 type ContactDbClient = Awaited<ReturnType<typeof createServerSupabaseClient>>;
 
@@ -152,6 +153,7 @@ async function updateContact(request: NextRequest, id: string, userId: string) {
     );
   } catch (error) {
     console.error("Update contact error:", error);
+    captureApiException(error, { route: '/api/contacts/[id]', method: 'GET' })
     return NextResponse.json(
       {
         error: "Failed to update contact",

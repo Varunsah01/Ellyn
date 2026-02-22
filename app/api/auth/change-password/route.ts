@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseJsClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { createClient } from '@/lib/supabase/server'
 import { validatePasswordStrength } from '@/lib/validation/password'
 
@@ -143,6 +144,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('[Auth] Change password error:', error)
+    captureApiException(error, { route: '/api/auth/change-password', method: 'POST' })
     return NextResponse.json(
       {
         success: false,
@@ -168,4 +170,3 @@ export async function GET() {
     { status: 405 }
   )
 }
-

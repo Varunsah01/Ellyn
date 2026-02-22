@@ -10,6 +10,7 @@ import Link from "next/link";
 
 type ActivityType =
   | "contact_added"
+  | "contact_updated"
   | "email_sent"
   | "reply_received"
   | "sequence_created"
@@ -52,6 +53,7 @@ export function ActivityFeed({
   const getActivityIcon = (type: ActivityItem["type"]) => {
     switch (type) {
       case "contact_added":
+      case "contact_updated":
         return <UserPlus className="h-4 w-4" />;
       case "email_sent":
         return <Mail className="h-4 w-4" />;
@@ -68,6 +70,7 @@ export function ActivityFeed({
   const getActivityColor = (type: ActivityItem["type"]) => {
     switch (type) {
       case "contact_added":
+      case "contact_updated":
         return "bg-blue-500/10 text-blue-500 border-blue-500/20";
       case "email_sent":
         return "bg-purple-500/10 text-purple-500 border-purple-500/20";

@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth/helpers'
 import { get as cacheGet, set as cacheSet } from '@/lib/cache/redis'
 import { CACHE_TAGS, emailVerificationTag } from '@/lib/cache/tags'
-import { withApiRouteSpan } from '@/lib/monitoring/sentry'
+import { captureApiException, withApiRouteSpan } from '@/lib/monitoring/sentry'
 import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { VerifyEmailSchema, formatZodError } from '@/lib/validation/schemas'
@@ -246,6 +246,7 @@ export async function POST(request: NextRequest) {
         }
 
         console.error('[verify-email] Internal error:', sanitizeErrorForLog(error))
+        captureApiException(error, { route: '/api/verify-email', method: 'POST' })
 
         if (email) {
           return NextResponse.json({
@@ -359,6 +360,16 @@ async function requestAbstractVerification(
       : 'Verification request failed. Returned partial data.'
 
     console.error('[verify-email] Abstract API request failed:', sanitizeErrorForLog(error))
+    captureApiException(error, {
+      route: '/api/verify-email',
+      method: 'POST',
+      tags: {
+        stage: 'abstract_request',
+      },
+      extras: {
+        email,
+      },
+    })
 
     const statusCode = Number((error as { status?: number })?.status)
     recordExternalApiUsage({
@@ -600,6 +611,16 @@ async function checkRateLimitViaApiCosts(
     }
   } catch (error) {
     console.error('[verify-email] Fallback rate limit exception:', sanitizeErrorForLog(error))
+    captureApiException(error, {
+      route: '/api/verify-email',
+      method: 'POST',
+      tags: {
+        stage: 'fallback_rate_limit',
+      },
+      extras: {
+        userId,
+      },
+    })
     return {
       allowed: true,
       remaining: RATE_LIMIT_MAX - 1,
@@ -653,6 +674,17 @@ async function trackVerificationCost(params: {
     }
   } catch (error) {
     console.error('[verify-email] Cost tracking exception:', sanitizeErrorForLog(error))
+    captureApiException(error, {
+      route: '/api/verify-email',
+      method: 'POST',
+      tags: {
+        stage: 'track_verification_cost',
+      },
+      extras: {
+        userId: params.userId,
+        email: params.email,
+      },
+    })
   }
 }
 
@@ -697,6 +729,13 @@ async function ensureRateLimitTableExists(
     return false
   } catch (error) {
     console.error('[verify-email] ensureRateLimitTableExists exception:', sanitizeErrorForLog(error))
+    captureApiException(error, {
+      route: '/api/verify-email',
+      method: 'POST',
+      tags: {
+        stage: 'ensure_rate_limit_table',
+      },
+    })
     return false
   }
 }
@@ -744,6 +783,13 @@ async function ensureApiCostsTableExists(
     return false
   } catch (error) {
     console.error('[verify-email] ensureApiCostsTableExists exception:', sanitizeErrorForLog(error))
+    captureApiException(error, {
+      route: '/api/verify-email',
+      method: 'POST',
+      tags: {
+        stage: 'ensure_api_costs_table',
+      },
+    })
     return false
   }
 }

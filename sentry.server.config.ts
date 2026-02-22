@@ -1,27 +1,18 @@
 import * as Sentry from '@sentry/nextjs'
 
-import { getSentryEnvironment, sanitizeSentryEvent } from './lib/monitoring/sentry-sanitize'
-
-const environment = getSentryEnvironment()
-const dsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN
-const isProduction = environment === 'production'
-
 Sentry.init({
-  dsn,
-  enabled: Boolean(dsn),
-  environment,
-  sampleRate: isProduction ? 0.9 : 1,
-  tracesSampleRate: isProduction ? 0.15 : 0.5,
+  dsn: process.env.SENTRY_DSN,
+
+  enabled: process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'preview',
+
+  // Lower sample rate on server to control costs
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.05 : 1.0,
+
+  // Don't send 4xx errors (client errors, not our bugs)
+  // Only capture 5xx server errors
   beforeSend(event) {
-    const sanitized = sanitizeSentryEvent(event)
-
-    if (sanitized.request?.url?.includes('supabase.co')) {
-      sanitized.tags = {
-        ...sanitized.tags,
-        integration: 'supabase',
-      }
-    }
-
-    return sanitized
+    const status = event.tags?.['http.status_code']
+    if (status && Number(status) < 500) return null
+    return event
   },
 })

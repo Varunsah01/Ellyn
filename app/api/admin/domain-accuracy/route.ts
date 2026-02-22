@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDomainResolutionStats } from '@/lib/domain-resolution-analytics'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: true, data: stats, windowDays: days })
   } catch (error) {
     console.error('[Admin/DomainAccuracy] Failed to fetch stats:', error)
+    captureApiException(error, { route: '/api/admin/domain-accuracy', method: 'GET' })
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

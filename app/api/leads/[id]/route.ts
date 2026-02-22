@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
 import { LeadUpdateSchema, formatZodError } from '@/lib/validation/schemas';
+import { captureApiException } from '@/lib/monitoring/sentry';
 
 // PATCH /api/leads/[id] - Update a lead
 /**
@@ -33,7 +34,9 @@ export async function PATCH(
     const { status, selectedEmail } = parsed.data;
 
     // Build update object
-    const updateData: Record<string, unknown> = {};
+    const updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
     if (status) updateData.status = status;
     if (selectedEmail !== undefined) updateData.selected_email = selectedEmail;
 
@@ -72,6 +75,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Error in PATCH /api/leads/[id]:', error);
+    captureApiException(error, { route: '/api/leads/[id]', method: 'PATCH' });
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -131,6 +135,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Error in DELETE /api/leads/[id]:', error);
+    captureApiException(error, { route: '/api/leads/[id]', method: 'DELETE' });
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -190,6 +195,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Error in GET /api/leads/[id]:', error);
+    captureApiException(error, { route: '/api/leads/[id]', method: 'GET' });
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

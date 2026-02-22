@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
@@ -8,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { AnimatedCard } from "@/components/ui/AnimatedCard";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Users, Mail, Zap, Plus, BarChart3, RefreshCw, CheckCircle2, Circle } from "lucide-react";
+import { Users, Mail, Zap, Plus, BarChart3, RefreshCw, CheckCircle2, Circle, Target } from "lucide-react";
 import Link from "next/link";
 import { useDashboardStats, useRecentActivity } from "@/lib/hooks/useAnalytics";
 import { useContacts } from "@/lib/hooks/useContacts";
@@ -18,6 +19,8 @@ import { SmartQuickActions } from "@/components/ContextualActions";
 export default function DashboardPage() {
   // Fetch real data
   const { stats: dashboardStats, loading: statsLoading, refresh: refreshStats } = useDashboardStats();
+  const [leadsCount, setLeadsCount] = useState(0);
+  const [leadsLoading, setLeadsLoading] = useState(true);
   const { activities, loading: activityLoading, refresh: refreshActivity } = useRecentActivity(10);
   const { contacts: recentContacts, loading: contactsLoading } = useContacts({ limit: 5 });
   const { stats: sequenceStats, loading: sequenceLoading } = useSequenceStats();
@@ -60,6 +63,17 @@ export default function DashboardPage() {
   ];
 
   const completedSteps = nextSteps.filter((step) => step.completed).length;
+
+  // Fetch total leads count
+  useEffect(() => {
+    fetch('/api/v1/leads?limit=1')
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d?.pagination?.total === 'number') setLeadsCount(d.pagination.total);
+      })
+      .catch(() => {})
+      .finally(() => setLeadsLoading(false));
+  }, []);
 
   // Handle refresh all data
   const handleRefreshAll = async () => {
@@ -172,7 +186,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Activity Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium text-muted-foreground">This Week&apos;s Progress</CardTitle>
@@ -221,6 +235,15 @@ export default function DashboardPage() {
             description={`${dashboardStats.newContactsThisWeek} added this week`}
             emptyMessage="Add contacts via the Chrome extension"
             loading={statsLoading}
+          />
+
+          <StatCard
+            title="Discovered Leads"
+            value={leadsLoading ? 0 : leadsCount}
+            icon={Target}
+            description="Leads with discovered emails"
+            emptyMessage="Discover leads via the extension"
+            loading={leadsLoading}
           />
 
           <StatCard

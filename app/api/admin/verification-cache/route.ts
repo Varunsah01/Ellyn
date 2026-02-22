@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { clear } from '@/lib/cache/redis'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +46,7 @@ export async function DELETE(request: NextRequest) {
     })
   } catch (err) {
     console.error('[verification-cache] Clear failed:', err)
+    captureApiException(err, { route: '/api/admin/verification-cache', method: 'DELETE' })
     return NextResponse.json({ error: 'Failed to clear cache' }, { status: 500 })
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 import {
   createQuotaClient,
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.error('[quota/status] Internal error:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/quota/status', method: 'GET' })
     return NextResponse.json(
       { error: 'Failed to get quota status' },
       { status: 500 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { validatePasswordStrength } from '@/lib/validation/password'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 const SignupSchema = z.object({
   name: z.string().min(1, 'Name is required.'),
@@ -88,6 +89,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Auth] Signup error:', error)
+    captureApiException(error, { route: '/api/auth/signup', method: 'POST' })
     return NextResponse.json(
       {
         success: false,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { validatePasswordStrength } from '@/lib/validation/password'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 const ValidatePasswordSchema = z.object({
   password: z.string(),
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Auth] Password validation error:', error)
+    captureApiException(error, { route: '/api/auth/validate-password', method: 'POST' })
     return NextResponse.json(
       {
         success: false,

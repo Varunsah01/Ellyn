@@ -18,13 +18,24 @@ const nextConfig = {
 module.exports = withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  silent: true,
-  telemetry: false,
-  webpack: {
-    automaticVercelMonitors: true,
+
+  // Suppress Sentry CLI output during builds
+  silent: !process.env.CI,
+
+  // Upload source maps to Sentry for readable stack traces
+  widenClientFileUpload: true,
+
+  // Automatically instrument React components for performance
+  reactComponentAnnotation: {
+    enabled: true,
   },
-  sourcemaps: {
-    disable: process.env.NODE_ENV !== 'production',
-  },
+
+  // Hide source maps from client bundle (security)
+  hideSourceMaps: true,
+
+  // Disable automatic Sentry release creation in local dev
+  disableLogger: true,
+
+  // Tree-shake Sentry debug code in production
+  automaticVercelMonitors: true,
 })

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient as createSupabaseJsClient } from '@supabase/supabase-js';
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers';
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { createClient as createServerSupabaseClient } from '@/lib/supabase/server';
 import { ContactCreateSchema, formatZodError } from '@/lib/validation/schemas';
 import { recordActivity } from '@/lib/utils/recordActivity';
@@ -156,6 +157,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Get contacts error:', error);
+    captureApiException(error, { route: '/api/contacts', method: 'GET' })
     return NextResponse.json(
       { error: 'Failed to fetch contacts', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -233,6 +235,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Create contact error:', error);
+    captureApiException(error, { route: '/api/contacts', method: 'POST' })
     return NextResponse.json(
       { error: 'Failed to create contact', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

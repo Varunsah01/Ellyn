@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { invalidateEmailPatternCache } from '@/lib/cache/tags'
 import { recordPatternFeedback } from '@/lib/learning-system';
 import { LearningRecordSchema, formatZodError } from '@/lib/validation/schemas';
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 /**
  * Handle POST requests for `/api/learning/record`.
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Learning API] Error:', error);
+    captureApiException(error, { route: '/api/learning/record', method: 'POST' })
     return NextResponse.json(
       { error: 'Failed to record feedback', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

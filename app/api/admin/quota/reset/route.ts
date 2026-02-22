@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { requireAdminEndpointAccess } from '@/lib/auth/admin-endpoint-guard'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { AdminQuotaSchema, formatZodError } from '@/lib/validation/schemas'
 
@@ -77,6 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('[admin/quota/reset] Internal error:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/admin/quota/reset', method: 'POST' })
     return NextResponse.json(
       { error: 'Failed to adjust quota' },
       { status: 500 }

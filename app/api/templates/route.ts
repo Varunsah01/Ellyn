@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
 import { TemplateCreateSchema, formatZodError } from '@/lib/validation/schemas';
+import { captureApiException } from '@/lib/monitoring/sentry';
 
 // GET /api/templates - Fetch all templates (default + custom)
 /**
@@ -94,6 +95,7 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Error in GET /api/templates:', error);
+    captureApiException(error, { route: '/api/templates', method: 'GET' });
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -207,6 +209,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Error in POST /api/templates:', error);
+    captureApiException(error, { route: '/api/templates', method: 'POST' });
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

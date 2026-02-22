@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     console.error('[subscription/status] Error:', error)
+    captureApiException(error, { route: '/api/v1/subscription/status', method: 'GET' })
     return NextResponse.json({ error: 'Failed to get subscription status' }, { status: 500 })
   }
 }

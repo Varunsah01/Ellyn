@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { buildCacheKey, getOrSet } from '@/lib/cache/redis'
 import { CACHE_TAGS, userAnalyticsTag } from '@/lib/cache/tags'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 import {
@@ -80,6 +81,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.error('[analytics/user] Internal error:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/analytics/user', method: 'GET' })
     return NextResponse.json(
       { success: false, error: 'Failed to load analytics' },
       { status: 500 }

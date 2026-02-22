@@ -716,6 +716,7 @@ async function logPrediction(params: {
     }
   } catch (error) {
     console.error('[API][predict-email] logPrediction exception:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/predict-email', method: 'GET' })
   }
 }
 

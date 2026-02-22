@@ -355,6 +355,7 @@ async function getQuotaSnapshot(userId: string): Promise<QuotaSnapshot> {
     }
   } catch (error) {
     console.error('[predict-patterns] Quota RPC exception:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/predict-patterns', method: 'GET' })
   }
 
   try {
@@ -373,6 +374,7 @@ async function getQuotaSnapshot(userId: string): Promise<QuotaSnapshot> {
     }
   } catch (error) {
     console.error('[predict-patterns] Quota snapshot fallback failed:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/predict-patterns', method: 'GET' })
     return {
       used: null,
       limit: null,
@@ -439,6 +441,7 @@ async function trackCost(params: {
     }
   } catch (error) {
     console.error('[predict-patterns] Cost tracking exception:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/predict-patterns', method: 'GET' })
   }
 }
 
@@ -483,6 +486,7 @@ async function ensureApiCostsTableExists(serviceClient: Awaited<ReturnType<typeo
     return false
   } catch (error) {
     console.error('[predict-patterns] api_costs ensure exception:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/predict-patterns', method: 'GET' })
     return false
   }
 }

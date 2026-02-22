@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { getDodoClient } from '@/lib/dodo'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 export const runtime = 'nodejs'
 
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
     }) as unknown as { type: string; data: Record<string, unknown> }
   } catch (err) {
     console.error('[dodo-webhook] Signature verification failed:', err)
+    captureApiException(err, { route: '/api/v1/dodo/webhook', method: 'POST' })
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (err) {
     console.error(`[dodo-webhook] Error handling ${event.type}:`, err)
+    captureApiException(err, { route: '/api/v1/dodo/webhook', method: 'POST' })
     return NextResponse.json({ error: 'Handler error' }, { status: 500 })
   }
 

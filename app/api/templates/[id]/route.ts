@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { TemplateUpdateSchema, formatZodError } from '@/lib/validation/schemas';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
+import { captureApiException } from '@/lib/monitoring/sentry';
 
 // GET /api/templates/[id] - Fetch a single template
 /**
@@ -42,6 +43,7 @@ export async function GET(
     });
   } catch (error) {
     console.error('Error in GET /api/templates/[id]:', error);
+    captureApiException(error, { route: '/api/templates/[id]', method: 'GET' });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -173,6 +175,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Error in PATCH /api/templates/[id]:', error);
+    captureApiException(error, { route: '/api/templates/[id]', method: 'PATCH' });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -237,6 +240,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Error in DELETE /api/templates/[id]:', error);
+    captureApiException(error, { route: '/api/templates/[id]', method: 'DELETE' });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

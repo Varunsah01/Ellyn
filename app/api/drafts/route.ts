@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { mapSequenceActionToTrackerContactPatch } from '@/lib/tracker-integration';
 import { DraftUpsertSchema, formatZodError } from '@/lib/validation/schemas';
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 async function syncTrackerContactForDraft(contactId: string, draftStatus: string | undefined) {
   if (draftStatus !== 'sent') return;
@@ -73,6 +74,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error in GET /api/drafts:', error);
+    captureApiException(error, { route: '/api/drafts', method: 'GET' })
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -166,6 +168,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('Error in POST /api/drafts:', error);
+    captureApiException(error, { route: '/api/drafts', method: 'POST' })
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

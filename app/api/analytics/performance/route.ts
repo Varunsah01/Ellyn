@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import {
   getPerformanceSnapshot,
   recordWebVitalMetric,
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
     console.error('[analytics/performance][POST] Internal error:', {
       message: error instanceof Error ? error.message : String(error),
     })
+    captureApiException(error, { route: '/api/analytics/performance', method: 'POST' })
     return NextResponse.json(
       { success: false, error: 'Failed to ingest performance metrics' },
       { status: 500 }
@@ -144,6 +146,7 @@ export async function GET(request: NextRequest) {
     console.error('[analytics/performance][GET] Internal error:', {
       message: error instanceof Error ? error.message : String(error),
     })
+    captureApiException(error, { route: '/api/analytics/performance', method: 'GET' })
     return NextResponse.json(
       { success: false, error: 'Failed to load performance snapshot' },
       { status: 500 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUser } from '@/lib/auth/helpers'
 import { dodo } from '@/lib/dodo'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     console.error('[checkout] Error:', error)
+    captureApiException(error, { route: '/api/v1/subscription/checkout', method: 'POST' })
     return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 500 })
   }
 }

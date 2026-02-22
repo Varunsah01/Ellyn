@@ -1,12 +1,17 @@
 "use client";
 
 import { Search, TableProperties } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { EmailDiscoveryForm } from "@/components/EmailDiscoveryForm";
 import { LeadsTable } from "@/components/LeadsTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 
 export default function DiscoveryPage() {
+  const searchParams = useSearchParams();
+  const defaultTab =
+    searchParams.get("tab") === "leads" ? "leads" : "discover";
+
   return (
     <DashboardShell>
       <div className="space-y-6">
@@ -17,7 +22,7 @@ export default function DiscoveryPage() {
           </p>
         </div>
 
-        <Tabs defaultValue="discover" className="space-y-6">
+        <Tabs defaultValue={defaultTab} className="space-y-6">
           <TabsList>
             <TabsTrigger value="discover" className="gap-2">
               <Search className="h-4 w-4" />

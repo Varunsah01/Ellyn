@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { invalidateEmailPatternCache } from '@/lib/cache/tags'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { type PatternFeedback, recordPatternFeedback } from '@/lib/pattern-learning'
 import { EmailFeedbackSchema, formatZodError } from '@/lib/validation/schemas'
 
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
     console.error('[API][email-feedback] Error:', {
       message,
     })
+    captureApiException(error, { route: '/api/email-feedback', method: 'POST' })
 
     return NextResponse.json(
       {

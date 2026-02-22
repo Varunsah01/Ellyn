@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
 import { LeadCreateSchema, formatZodError } from '@/lib/validation/schemas';
+import { captureApiException } from '@/lib/monitoring/sentry';
 
 // GET /api/leads - Fetch all leads
 /**
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Error in GET /api/leads:', error);
+    captureApiException(error, { route: '/api/leads', method: 'GET' });
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -134,6 +136,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     console.error('Error in POST /api/leads:', error);
+    captureApiException(error, { route: '/api/leads', method: 'POST' });
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

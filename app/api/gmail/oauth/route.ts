@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForTokens, encryptToken } from "@/lib/gmail-helper";
 import { supabase } from "@/lib/supabase";
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("OAuth error:", error);
+    captureApiException(error, { route: '/api/gmail/oauth', method: 'GET' })
     return NextResponse.redirect(
       new URL("/dashboard?tab=settings&status=error", request.url)
     );

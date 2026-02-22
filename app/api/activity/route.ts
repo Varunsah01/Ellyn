@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { recordActivity } from '@/lib/utils/recordActivity'
 
 export async function POST(request: NextRequest) {
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     console.error('Log activity error:', error)
+    captureApiException(error, { route: '/api/activity', method: 'POST' })
     return NextResponse.json({ error: 'Failed to log activity' }, { status: 500 })
   }
 }

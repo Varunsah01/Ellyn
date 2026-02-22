@@ -20,6 +20,7 @@ import { EmailGenerateSchema, formatZodError } from '@/lib/validation/schemas';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
 import { incrementEmailGeneration, QuotaExceededError } from '@/lib/quota';
 import { getDailyVerificationQuota } from '@/lib/verification-quota';
+import { captureApiException } from '@/lib/monitoring/sentry';
 
 type EmailVerificationStatus = 'verified' | 'invalid' | 'unverified';
 
@@ -172,7 +173,7 @@ export async function POST(request: NextRequest) {
         verification: {
           domainVerified: domainVerification.isValid,
           formatValid,
-          emailProvider: domainVerification.emailProvider,
+          emailProvider: domainVerification.emailProvider ?? null,
         },
       };
     });
@@ -255,6 +256,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error generating emails:', error);
+    captureApiException(error, { route: '/api/generate-emails', method: 'POST' });
     return NextResponse.json(
       { error: 'Internal server error while generating email patterns' },
       { status: 500 }
@@ -371,26 +373,34 @@ async function verifyTopPatterns(
     toVerify.map(p => verifyEmailAddress(p.email, userId))
   );
 
-  // Build email → { status, confidence } map from settled results.
+  // Build email -> { status, confidence } map from settled results.
   // calculateDeliverabilityConfidence handles the scoring; all values are 0-100.
   const updates = new Map<string, { status: EmailVerificationStatus; confidence: number }>();
   toVerify.forEach((p, i) => {
     const result = results[i];
+    if (!result) {
+      updates.set(p.email, { status: 'unverified', confidence: p.confidence });
+      return;
+    }
+
     if (result.status === 'fulfilled') {
       const { deliverability, smtpScore } = result.value;
       if (deliverability && deliverability !== 'UNKNOWN') {
         const confidence = calculateDeliverabilityConfidence(p.confidence, deliverability, smtpScore);
-        // RISKY is not confirmed invalid — show as 'unverified' so users still consider it.
+        // RISKY is not confirmed invalid - show as 'unverified' so users still consider it.
         const status: EmailVerificationStatus =
           deliverability === 'DELIVERABLE' ? 'verified' :
           deliverability === 'UNDELIVERABLE' ? 'invalid' :
           'unverified'; // RISKY
         updates.set(p.email, { status, confidence });
       } else {
-        // UNKNOWN or API unavailable — keep pattern score, mark unverified
+        // UNKNOWN or API unavailable - keep pattern score, mark unverified
         updates.set(p.email, { status: 'unverified', confidence: p.confidence });
       }
-    } else {
+      return;
+    }
+
+    if (result.status === 'rejected') {
       console.warn('[generate-emails] Verification promise rejected for', p.email, result.reason);
       updates.set(p.email, { status: 'unverified', confidence: p.confidence });
     }

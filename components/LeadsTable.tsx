@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Table,
   TableBody,
@@ -45,6 +46,7 @@ interface LeadsTableProps {
  * <LeadsTable />
  */
 export function LeadsTable({ refreshTrigger }: LeadsTableProps) {
+  const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -108,11 +110,10 @@ export function LeadsTable({ refreshTrigger }: LeadsTableProps) {
       if (response.ok) {
         fetchLeads(); // Refresh the list
       } else {
-        alert("Failed to delete lead");
+        console.error("Failed to delete lead");
       }
     } catch (error) {
       console.error("Error deleting lead:", error);
-      alert("Failed to delete lead");
     }
   };
 
@@ -274,7 +275,11 @@ export function LeadsTable({ refreshTrigger }: LeadsTableProps) {
             </TableHeader>
             <TableBody>
               {leads.map((lead) => (
-                <TableRow key={lead.id}>
+                <TableRow
+                  key={lead.id}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => router.push(`/dashboard/leads/${lead.id}`)}
+                >
                   <TableCell className="font-medium">{lead.person_name}</TableCell>
                   <TableCell>{lead.company_name}</TableCell>
                   <TableCell className="font-mono text-sm">
@@ -295,7 +300,8 @@ export function LeadsTable({ refreshTrigger }: LeadsTableProps) {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setSelectedLead(lead);
                             setEmailComposerOpen(true);
                           }}
@@ -307,15 +313,21 @@ export function LeadsTable({ refreshTrigger }: LeadsTableProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => alert(`View details for ${lead.person_name}`)}
-                        title="View details"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/dashboard/leads/${lead.id}`);
+                        }}
+                        title="View lead details"
                       >
                         <Eye className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(lead.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDelete(lead.id);
+                        }}
                         className="text-destructive hover:text-destructive"
                         title="Delete lead"
                       >

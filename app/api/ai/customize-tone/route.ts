@@ -4,6 +4,7 @@ import { checkAiRateLimit, getRateLimitIdentifier } from '@/lib/ai-rate-limit'
 import { getGeminiClient } from '@/lib/gemini'
 import { buildPrompt, getPromptConfig } from '@/lib/template-prompts'
 import { CustomizeToneSchema, formatZodError } from '@/lib/validation/schemas'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 interface CustomizeToneResponse {
   success: boolean
@@ -102,6 +103,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Customize
       error: toErrorMessage(error),
       durationMs: Date.now() - startedAt,
     })
+    captureApiException(error, { route: '/api/ai/customize-tone', method: 'POST' })
 
     return NextResponse.json(
       {

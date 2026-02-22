@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 export const dynamic = 'force-dynamic'
 
@@ -200,6 +201,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (err) {
     console.error('[verification-stats] Unexpected error:', err)
+    captureApiException(err, { route: '/api/admin/verification-stats', method: 'GET' })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

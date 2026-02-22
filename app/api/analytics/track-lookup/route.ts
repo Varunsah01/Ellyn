@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { invalidateUserAnalyticsCache } from '@/lib/cache/tags'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { TrackLookupSchema, formatZodError } from '@/lib/validation/schemas'
 
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('[analytics/track-lookup] Internal error:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/analytics/track-lookup', method: 'POST' })
     return NextResponse.json(
       { success: false, error: 'Failed to track lookup' },
       { status: 500 }

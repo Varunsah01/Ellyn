@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { captureApiException } from '@/lib/monitoring/sentry'
 import {
   DEFAULT_PRICING_REGION,
   PRICING_REGION_HEADER_KEYS,
@@ -46,6 +47,7 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Pricing region detection failed:", error);
+    captureApiException(error, { route: '/api/pricing-region', method: 'GET' })
     return NextResponse.json(
       { region: DEFAULT_PRICING_REGION },
       {

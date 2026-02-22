@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { invalidateEmailPatternCache } from '@/lib/cache/tags'
 import { recordPatternFeedback, PatternFeedback } from '@/lib/pattern-learning';
 import { PatternFeedbackSchema, formatZodError } from '@/lib/validation/schemas';
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 /**
  * Handle POST requests for `/api/pattern-feedback`.
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error recording pattern feedback:', error);
+    captureApiException(error, { route: '/api/pattern-feedback', method: 'POST' })
     return NextResponse.json(
       { error: 'Internal server error while recording pattern feedback' },
       { status: 500 }

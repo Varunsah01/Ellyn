@@ -209,6 +209,7 @@ export default function SettingsPage() {
 
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState("");
+  const [userId, setUserId] = useState("");
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const metadataRef = useRef<Record<string, unknown>>({});
 
@@ -303,6 +304,7 @@ export default function SettingsPage() {
       const meta = asRecord(user.user_metadata);
       const [splitFirst, splitLast] = splitFullName(asString(meta.full_name));
       setEmail(asString(user.email));
+      setUserId(user.id);
       setFirstName(asString(meta.first_name, splitFirst));
       setLastName(asString(meta.last_name, splitLast));
       setRole(asString(meta.role));

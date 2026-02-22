@@ -66,6 +66,33 @@ let csrfTokenCache = '';
 let csrfTokenFetchedAt = 0;
 let csrfRefreshPromise = null;
 
+/**
+ * Report a critical extension error to our backend for monitoring.
+ * Fires-and-forgets - never blocks the main pipeline.
+ */
+function reportExtensionError(error, context = {}) {
+  const payload = {
+    source: 'chrome-extension',
+    message: error?.message || String(error),
+    stack: error?.stack || null,
+    context: {
+      ...context,
+      extensionVersion: chrome.runtime.getManifest?.()?.version || 'unknown',
+      timestamp: new Date().toISOString(),
+    },
+  };
+
+  // Use the existing API base URL from config
+  const apiBase = typeof CONFIG !== 'undefined' ? CONFIG.API_BASE_URL : '';
+  if (!apiBase) return;
+
+  fetch(`${apiBase}/api/extension-errors`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch(() => {}); // always silent fail
+}
+
 async function configureSidePanelBehavior() {
   if (!chrome.sidePanel?.setPanelBehavior) {
     return;
@@ -1076,6 +1103,10 @@ async function handleExtractProfileFromTabMessage(data, sender, sendResponse) {
     });
   } catch (error) {
     console.error('[Extension] Failed EXTRACT_PROFILE_FROM_TAB:', error);
+    reportExtensionError(error, {
+      pipeline: 'extract-profile-from-tab',
+      tabId: Number.isFinite(payload?.tabId) ? payload.tabId : null,
+    });
     sendResponse({
       success: false,
       error: error?.message || 'Failed to extract profile from tab',
@@ -3001,6 +3032,16 @@ async function handleFindEmail(data, sender, sendResponse) {
       resetDate,
       message,
       error,
+    });
+    reportExtensionError(error, {
+      pipeline: 'find-email',
+      operationId,
+      stage,
+      errorCode,
+      resetDate,
+      tabId: Number.isFinite(data?.tabId) ? data.tabId : null,
+      profileUrl: normalizedInput?.profileUrl || null,
+      company: normalizedInput?.company || null,
     });
 
     await completeOperation(operationId, 'failed', {

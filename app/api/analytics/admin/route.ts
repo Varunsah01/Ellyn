@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import { requireAdminEndpointAccess } from '@/lib/auth/admin-endpoint-guard'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 import {
@@ -102,6 +103,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.error('[analytics/admin] Internal error:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/analytics/admin', method: 'GET' })
     return NextResponse.json(
       { success: false, error: 'Failed to load admin analytics' },
       { status: 500 }

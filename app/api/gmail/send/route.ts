@@ -8,6 +8,7 @@ import {
 } from "@/lib/gmail-helper";
 import { supabase } from "@/lib/supabase";
 import { GmailSendSchema, formatZodError, type GmailSendInput } from "@/lib/validation/schemas";
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 /**
  * Handle POST requests for `/api/gmail/send`.
@@ -121,6 +122,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: unknown) {
     console.error("Error sending email:", error);
+    captureApiException(error, { route: '/api/gmail/send', method: 'POST' })
     const errorMessage = error instanceof Error ? error.message : "Failed to send email";
 
     // Log failed attempt to email_history
@@ -134,6 +136,7 @@ export async function POST(request: NextRequest) {
       });
     } catch (logError) {
       console.error("Error logging failed email:", logError);
+      captureApiException(logError, { route: '/api/gmail/send', method: 'POST' })
     }
 
     return NextResponse.json(

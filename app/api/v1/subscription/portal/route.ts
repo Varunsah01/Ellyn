@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { getAuthenticatedUser } from '@/lib/auth/helpers'
 import { dodo } from '@/lib/dodo'
+import { captureApiException } from '@/lib/monitoring/sentry'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export async function POST() {
@@ -37,6 +38,7 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     console.error('[portal] Error:', error)
+    captureApiException(error, { route: '/api/v1/subscription/portal', method: 'POST' })
     return NextResponse.json({ error: 'Failed to create portal session' }, { status: 500 })
   }
 }

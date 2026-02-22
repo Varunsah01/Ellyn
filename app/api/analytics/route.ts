@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { subDays, format } from "date-fns";
 import { getAuthenticatedUser } from "@/lib/auth/helpers";
+import { captureApiException } from '@/lib/monitoring/sentry'
 
 const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || '';
 const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim() || '';
@@ -90,6 +91,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     console.error("[Analytics API] Error:", error);
+    captureApiException(error, { route: '/api/analytics', method: 'GET' })
     return NextResponse.json(
       { error: "Failed to fetch analytics data" },
       { status: 500 }
