@@ -27,6 +27,9 @@ export default function DashboardPage() {
   const greeting = currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
 
   const isLoading = statsLoading || activityLoading || contactsLoading || sequenceLoading;
+  const hasNoWeeklyProgress =
+    dashboardStats.newContactsThisWeek === 0 &&
+    dashboardStats.emailsSentThisWeek === 0;
 
   // Format recent contacts for QuickStats
   const formattedRecentContacts = recentContacts.map((c) => ({
@@ -172,7 +175,7 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">This Week's Progress</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">This Week&apos;s Progress</CardTitle>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -180,6 +183,15 @@ export default function DashboardPage() {
                   <div className="h-4 bg-muted rounded w-full" />
                   <div className="h-4 bg-muted rounded w-full" />
                   <div className="h-4 bg-muted rounded w-full" />
+                </div>
+              ) : hasNoWeeklyProgress ? (
+                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-muted-foreground">
+                  <p>
+                    Nothing yet this week &mdash; start by adding contacts on LinkedIn.
+                  </p>
+                  <Link href="/dashboard/contacts" className="mt-2 inline-block font-medium text-primary hover:underline">
+                    Go to Contacts
+                  </Link>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -194,7 +206,7 @@ export default function DashboardPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span>Response rate</span>
                     <span className="font-bold">
-                      {dashboardStats.emailsSent === 0 ? "—" : `${dashboardStats.responseRate}%`}
+                      {dashboardStats.emailsSent > 0 ? `${dashboardStats.responseRate}%` : "No data yet"}
                     </span>
                   </div>
                 </div>
@@ -207,6 +219,7 @@ export default function DashboardPage() {
             value={statsLoading ? 0 : dashboardStats.totalContacts}
             icon={Users}
             description={`${dashboardStats.newContactsThisWeek} added this week`}
+            emptyMessage="Add contacts via the Chrome extension"
             loading={statsLoading}
           />
 
@@ -215,16 +228,23 @@ export default function DashboardPage() {
             value={sequenceLoading ? 0 : sequenceStats.totalTemplates}
             icon={Zap}
             description="Reusable outreach templates"
+            emptyMessage="Create your first template"
             loading={sequenceLoading}
           />
 
           <StatCard
             title="Emails Sent"
             value={statsLoading ? 0 : dashboardStats.emailsSent}
-            change={dashboardStats.emailsSentThisWeek}
-            trend="up"
+            {...(dashboardStats.emailsSentThisWeek > 0
+              ? { change: dashboardStats.emailsSentThisWeek, trend: "up" as const }
+              : {})}
             icon={Mail}
-            description={dashboardStats.emailsSent === 0 ? "No emails sent yet" : `${dashboardStats.responseRate}% response rate`}
+            description={
+              dashboardStats.emailsSent > 0
+                ? `${dashboardStats.responseRate}% response rate`
+                : "No emails sent yet"
+            }
+            emptyMessage="No emails sent yet"
             loading={statsLoading}
           />
         </div>

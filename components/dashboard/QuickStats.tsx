@@ -56,10 +56,19 @@ export function QuickStats({
           </div>
         </CardHeader>
         <CardContent>
-          {recentContacts.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No contacts yet
-            </p>
+          {!loading && recentContacts.length === 0 ? (
+            <div className="py-4 text-center">
+              <p className="text-sm font-medium text-slate-900">No contacts yet</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Contacts you save from LinkedIn will appear here
+              </p>
+              <Link
+                href="/dashboard/contacts"
+                className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
+              >
+                Go to Contacts &rarr;
+              </Link>
+            </div>
           ) : (
             <div className="space-y-3">
               {recentContacts.slice(0, 5).map((contact) => (
@@ -117,12 +126,15 @@ export function QuickStats({
             </div>
           ) : topSequences.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-              <p className="text-sm text-muted-foreground">No sequences yet</p>
+              <p className="text-sm font-medium text-slate-900">No templates yet</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Create reusable email templates to speed up outreach
+              </p>
               <Link
-                href="/dashboard/sequences"
+                href="/dashboard/templates"
                 className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
               >
-                Create your first →
+                Create a template &rarr;
               </Link>
             </div>
           ) : (
@@ -181,3 +193,4 @@ export function QuickStats({
     </div>
   );
 }
+

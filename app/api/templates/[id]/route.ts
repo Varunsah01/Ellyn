@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { TemplateUpdateSchema, formatZodError } from '@/lib/validation/schemas';
+import { getAuthenticatedUser } from '@/lib/auth/helpers';
 
 // GET /api/templates/[id] - Fetch a single template
 /**
@@ -66,6 +67,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
+    const user = await getAuthenticatedUser();
     const { id } = params;
     const parsed = TemplateUpdateSchema.safeParse(await request.json());
     if (!parsed.success) {
@@ -121,6 +123,7 @@ export async function PATCH(
       .from('email_templates')
       .update(updatePayload)
       .eq('id', id)
+      .eq('user_id', user.id)
       .select()
       .single();
 
@@ -144,6 +147,7 @@ export async function PATCH(
         .from('email_templates')
         .update(fallbackUpdatePayload)
         .eq('id', id)
+        .eq('user_id', user.id)
         .select()
         .single();
 
@@ -165,6 +169,9 @@ export async function PATCH(
       message: 'Template updated successfully',
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Error in PATCH /api/templates/[id]:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
@@ -190,12 +197,28 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const user = await getAuthenticatedUser();
     const { id } = params;
+
+    // Prevent deletion of default templates
+    const { data: template } = await supabase
+      .from('email_templates')
+      .select('is_default, user_id')
+      .eq('id', id)
+      .single();
+
+    if (template?.is_default) {
+      return NextResponse.json(
+        { error: 'Default templates cannot be deleted. Duplicate them to customize.' },
+        { status: 403 }
+      );
+    }
 
     const { error } = await supabase
       .from('email_templates')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('user_id', user.id);
 
     if (error) {
       console.error('Error deleting template:', error);
@@ -210,6 +233,9 @@ export async function DELETE(
       message: 'Template deleted successfully',
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     console.error('Error in DELETE /api/templates/[id]:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

@@ -11,6 +11,7 @@ interface StatCardProps {
   change?: number;
   icon: LucideIcon;
   description?: string;
+  emptyMessage?: string;
   trend?: "up" | "down" | "neutral";
   loading?: boolean;
 }
@@ -28,9 +29,17 @@ export function StatCard({
   change,
   icon: Icon,
   description,
+  emptyMessage,
   trend = "neutral",
   loading = false,
 }: StatCardProps) {
+  const numericValue =
+    typeof value === "number" ? value : Number.parseFloat(String(value));
+  const isZeroValue =
+    !loading && Number.isFinite(numericValue) && numericValue === 0;
+  const helperText = isZeroValue ? emptyMessage || description : description;
+  const showChange =
+    !isZeroValue && typeof change === "number" && change > 0;
   const isPositive = trend === "up";
   const isNegative = trend === "down";
 
@@ -52,13 +61,16 @@ export function StatCard({
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="text-2xl font-bold"
+              className={cn(
+                "text-2xl font-bold",
+                isZeroValue && "text-muted-foreground"
+              )}
             >
               {value}
             </motion.div>
-            {(change !== undefined || description) && (
+            {(showChange || helperText) && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-                {change !== undefined && (
+                {showChange && (
                   <span
                     className={cn(
                       "flex items-center gap-1 font-medium",
@@ -71,7 +83,7 @@ export function StatCard({
                     {Math.abs(change)}%
                   </span>
                 )}
-                {description && <span>{description}</span>}
+                {helperText && <span>{helperText}</span>}
               </div>
             )}
           </>

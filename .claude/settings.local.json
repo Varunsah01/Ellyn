@@ -25,7 +25,9 @@
       "Bash(printf:*)",
       "Bash(npm run lint:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(test:*)"
+      "Bash(test:*)",
+      "Bash(git stash:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

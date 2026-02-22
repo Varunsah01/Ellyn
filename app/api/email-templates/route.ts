@@ -1,131 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
-import { TemplateCreateSchema, formatZodError } from "@/lib/validation/schemas";
-
-// Default email templates
-const defaultTemplates = [
-  {
-    id: "cold-outreach",
-    name: "Cold Outreach",
-    subject: "Quick question about {{company}}",
-    body: `Hi {{firstName}},
-
-I came across {{company}} and was impressed by your work in {{industry}}.
-
-I wanted to reach out because [YOUR REASON HERE].
-
-Would you be open to a quick chat this week?
-
-Best regards,
-[YOUR NAME]`,
-  },
-  {
-    id: "follow-up",
-    name: "Follow Up",
-    subject: "Following up - {{company}}",
-    body: `Hi {{firstName}},
-
-I wanted to follow up on my previous email about [TOPIC].
-
-I believe there could be value in connecting, especially regarding [SPECIFIC VALUE PROPOSITION].
-
-Let me know if you'd like to schedule a brief call.
-
-Thanks,
-[YOUR NAME]`,
-  },
-  {
-    id: "introduction",
-    name: "Introduction",
-    subject: "Introduction - {{yourName}} + {{firstName}}",
-    body: `Hi {{firstName}},
-
-My name is {{yourName}} and I work on [YOUR WORK/COMPANY].
-
-I noticed you're at {{company}} and thought we might have some interesting synergies around [TOPIC/AREA].
-
-Would love to connect if you have 15 minutes in the coming weeks.
-
-Best,
-{{yourName}}`,
-  },
-  {
-    id: "value-proposition",
-    name: "Value Proposition",
-    subject: "Helping {{company}} with [SPECIFIC OUTCOME]",
-    body: `Hi {{firstName}},
-
-I help companies like {{company}} achieve [SPECIFIC OUTCOME] through [YOUR SOLUTION].
-
-Some recent results we've delivered:
-• [RESULT 1]
-• [RESULT 2]
-• [RESULT 3]
-
-Would you be interested in learning more about how we could help {{company}}?
-
-Looking forward to hearing from you,
-[YOUR NAME]`,
-  },
-];
-
 /**
- * Handle GET requests for `/api/email-templates`.
- * @param {NextRequest} request - Request input.
- * @returns {unknown} JSON response for the GET /api/email-templates request.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // GET /api/email-templates
- * fetch('/api/email-templates')
+ * @deprecated Use /api/templates or /api/v1/templates instead.
+ * This route proxies to /api/templates for backwards compatibility.
  */
-export async function GET(_request: NextRequest) {
-  try {
-    // In a production app, you'd fetch user's custom templates from database
-    // For now, return default templates
-    return NextResponse.json({
-      templates: defaultTemplates,
-    });
-  } catch (error) {
-    console.error("Error fetching templates:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch templates" },
-      { status: 500 }
-    );
-  }
+import { NextRequest } from "next/server";
+
+export async function GET(request: NextRequest) {
+  const url = new URL('/api/templates', request.url);
+  return fetch(url.toString(), { headers: request.headers });
 }
 
-// For future implementation: save custom templates
-/**
- * Handle POST requests for `/api/email-templates`.
- * @param {NextRequest} request - Request input.
- * @returns {unknown} JSON response for the POST /api/email-templates request.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {ValidationError} If the request payload fails validation.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // POST /api/email-templates
- * fetch('/api/email-templates', { method: 'POST' })
- */
 export async function POST(request: NextRequest) {
-  try {
-    const parsed = TemplateCreateSchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: formatZodError(parsed.error) },
-        { status: 400 }
-      );
-    }
-    // TODO: Save custom template to database
-    // For now, return success
-    return NextResponse.json({
-      success: true,
-      message: "Template saved successfully",
-    });
-  } catch (error) {
-    console.error("Error saving template:", error);
-    return NextResponse.json(
-      { error: "Failed to save template" },
-      { status: 500 }
-    );
-  }
+  const url = new URL('/api/templates', request.url);
+  return fetch(url.toString(), {
+    method: 'POST',
+    headers: request.headers,
+    body: await request.text(),
+  });
 }

@@ -3,9 +3,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { UserPlus, Mail, MessageSquare, Zap, Clock, ArrowRight, FileText } from "lucide-react";
+import { UserPlus, Mail, MessageSquare, Zap, Inbox, ArrowRight, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import Link from "next/link";
 
 type ActivityType =
   | "contact_added"
@@ -100,10 +101,15 @@ export function ActivityFeed({
               ))}
             </div>
           ) : activities.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No recent activity</p>
-              <p className="text-sm mt-1">Start by adding contacts or creating sequences</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-6 py-10 text-center">
+              <Inbox className="mx-auto mb-3 h-10 w-10 text-slate-400" />
+              <p className="text-base font-medium text-slate-900">No activity yet</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Your outreach activity will appear here as you send emails and update contacts.
+              </p>
+              <Button asChild className="mt-4">
+                <Link href="/dashboard/contacts">Add your first contact</Link>
+              </Button>
             </div>
           ) : (
             <>

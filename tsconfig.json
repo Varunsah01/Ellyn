@@ -23,6 +23,7 @@
         "name": "next"
       }
     ],
+    "types": ["node", "react", "react-dom", "jest"],
     "paths": {
       "@/*": ["./*"]
     }

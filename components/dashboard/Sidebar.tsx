@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/DropdownMenu";
 import { mainNavItems, secondaryNavItems } from "@/lib/constants/navigation";
-import { ChevronLeft, Keyboard, LifeBuoy, LogOut, Sparkles } from "lucide-react";
+import { ChevronLeft, LifeBuoy, LogOut, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useAnalytics";
 import { useSequenceStats } from "@/lib/hooks/useSequences";
@@ -106,10 +106,6 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       .catch(() => undefined);
     return () => { isMounted = false; };
   }, []);
-
-  const handleKeyboardShortcuts = () => {
-    window.dispatchEvent(new CustomEvent("open-keyboard-shortcuts"));
-  };
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -309,11 +305,6 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                 Help &amp; Support
               </a>
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={handleKeyboardShortcuts}>
-              <Keyboard className="mr-2 h-4 w-4 text-muted-foreground" />
-              Keyboard Shortcuts
-            </DropdownMenuItem>
-            
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"

@@ -22,7 +22,8 @@ function createQueueEmptyState() {
 
   const sub = document.createElement("p");
   sub.className = "queue-empty-sub";
-  sub.textContent = "Save email results to build your outreach list.";
+  sub.textContent =
+    "Open a LinkedIn profile, run Find Email, then save the result to build your outreach queue.";
 
   const cta = document.createElement("a");
   cta.href = "https://www.linkedin.com/search/results/people/";
@@ -34,7 +35,7 @@ function createQueueEmptyState() {
     '<path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<rect x="2" y="9" width="4" height="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
     '<circle cx="4" cy="4" r="2" stroke="currentColor" stroke-width="1.5"/>' +
-    "</svg>Find People on LinkedIn";
+    "</svg>Open LinkedIn People Search";
 
   wrapper.appendChild(icon);
   wrapper.appendChild(heading);

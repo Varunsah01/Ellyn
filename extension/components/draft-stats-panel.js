@@ -339,6 +339,24 @@ function _ensureDspStyles() {
       margin: 0;
     }
 
+    .dsp-empty-action {
+      height: 32px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #334155;
+      cursor: pointer;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .dsp-empty-action:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+
     /* ── Footer ─────────────────────────────────────────────── */
     .dsp-footer {
       display: flex;
@@ -490,6 +508,9 @@ function _dspBuildContent(stats) {
       <div class="dsp-empty">
         <span class="dsp-empty-icon" aria-hidden="true">✉️</span>
         <p class="dsp-empty-text">No drafts generated in this period yet.<br>Open the Draft Generator and get started!</p>
+        <button type="button" class="dsp-empty-action" data-action="open-draft">
+          Back to Draft Generator
+        </button>
       </div>`;
   }
 
@@ -610,6 +631,10 @@ async function initDraftStatsPanelListeners(container) {
   let currentPeriod = "7d";
   const abortCtrl = { destroyed: false };
 
+  function emitClose() {
+    container.dispatchEvent(new CustomEvent("dsp-close", { bubbles: true }));
+  }
+
   // ── Load and render stats ────────────────────────────────────────────────
   async function loadStats(period) {
     if (abortCtrl.destroyed) return;
@@ -659,10 +684,18 @@ async function initDraftStatsPanelListeners(container) {
   const closeBtn = root.querySelector(".dsp-close-btn");
 
   function handleClose() {
-    root.dispatchEvent(new CustomEvent("dsp-close", { bubbles: true }));
+    emitClose();
   }
 
   closeBtn?.addEventListener("click", handleClose);
+
+  function handleMainAction(e) {
+    const btn = e.target.closest("[data-action='open-draft']");
+    if (!btn) return;
+    emitClose();
+  }
+
+  mainContent.addEventListener("click", handleMainAction);
 
   // ── Footer buttons (refresh + clear) ─────────────────────────────────────
   async function handleFooterAction(e) {
@@ -695,6 +728,7 @@ async function initDraftStatsPanelListeners(container) {
     abortCtrl.destroyed = true;
     periodBtns.forEach((btn) => btn.removeEventListener("click", handlePeriodClick));
     closeBtn?.removeEventListener("click", handleClose);
+    mainContent.removeEventListener("click", handleMainAction);
   }
 
   return {

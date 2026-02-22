@@ -77,6 +77,7 @@ resultEmail: null,
   feedbackSection: null,
   feedbackYesBtn: null,
   feedbackNoBtn: null,
+  quotaBar: null,
   quotaCount: null,
   quotaFill: null,
   quotaWarning: null,
@@ -196,6 +197,7 @@ elements.resultEmail = document.getElementById("resultEmail");
   elements.feedbackYesBtn = document.getElementById("feedbackYesBtn");
   elements.feedbackNoBtn = document.getElementById("feedbackNoBtn");
 
+  elements.quotaBar = document.getElementById("quotaBar");
   elements.quotaCount = document.getElementById("quotaCount");
   elements.quotaFill = document.getElementById("quotaFill");
   elements.quotaWarning = document.getElementById("quotaWarning");
@@ -1566,6 +1568,29 @@ async function updateQuotaStatus() {
     }
 
     const unlimitedPlan = !Number.isFinite(safeLimit);
+    const shouldShowQuota =
+      (Number.isFinite(safeUsed) && safeUsed > 0) || safeLimit !== null;
+    setQuotaVisibility(shouldShowQuota);
+
+    if (!shouldShowQuota) {
+      emailFinderState.quotaKnown = false;
+      emailFinderState.quotaAllowsLookup = true;
+
+      if (elements.quotaCount) {
+        elements.quotaCount.textContent = "";
+      }
+      if (elements.quotaFill) {
+        elements.quotaFill.style.width = "0%";
+        elements.quotaFill.classList.remove("warning", "danger");
+      }
+      setQuotaWarning("");
+      setUpgradeState(false, "", emailFinderState.upgradeUrl);
+      applyFindEmailAvailability();
+      return;
+    }
+
+    emailFinderState.quotaKnown = true;
+    emailFinderState.quotaAllowsLookup = true;
 
     if (elements.quotaCount) {
       if (Number.isFinite(safeUsed) && Number.isFinite(safeLimit)) {
@@ -1575,8 +1600,10 @@ async function updateQuotaStatus() {
       } else if (Number.isFinite(safeRemaining) && Number.isFinite(safeLimit)) {
         const derivedUsed = Math.max(0, safeLimit - safeRemaining);
         elements.quotaCount.textContent = `${derivedUsed}/${safeLimit}`;
+      } else if (Number.isFinite(safeLimit)) {
+        elements.quotaCount.textContent = `0/${safeLimit}`;
       } else {
-        elements.quotaCount.textContent = "0/Unlimited";
+        elements.quotaCount.textContent = "";
       }
     }
 
@@ -1603,15 +1630,13 @@ async function updateQuotaStatus() {
     }
 
     // Credit limits are currently disabled: quota UI is informational only.
-    emailFinderState.quotaKnown = true;
-    emailFinderState.quotaAllowsLookup = true;
     setUpgradeState(false, "", emailFinderState.upgradeUrl);
 
     if (unlimitedPlan) {
       if (Number.isFinite(safeUsed)) {
         setQuotaWarning(`Unlimited plan active. ${safeUsed} credits used.`);
       } else {
-        setQuotaWarning("Unlimited plan active.");
+        setQuotaWarning("");
       }
     } else if (Number.isFinite(safeRemaining)) {
       const lowThreshold = Math.max(3, Math.ceil(safeLimit * 0.15));
@@ -1629,22 +1654,24 @@ async function updateQuotaStatus() {
     console.warn("[Sidepanel] Failed to update quota:", error);
     emailFinderState.quotaKnown = false;
     emailFinderState.quotaAllowsLookup = true;
+    setQuotaVisibility(false);
     if (elements.quotaCount) {
-      elements.quotaCount.textContent = "0/Unlimited";
+      elements.quotaCount.textContent = "";
     }
     if (elements.quotaFill) {
       elements.quotaFill.style.width = "0%";
       elements.quotaFill.classList.remove("warning", "danger");
     }
-    setQuotaWarning("Unlimited plan active.");
+    setQuotaWarning("");
     setUpgradeState(false, "", emailFinderState.upgradeUrl);
     applyFindEmailAvailability();
   }
 }
 
 function resetQuotaUI() {
+  setQuotaVisibility(false);
   if (elements.quotaCount) {
-    elements.quotaCount.textContent = "0/Unlimited";
+    elements.quotaCount.textContent = "";
   }
   if (elements.quotaFill) {
     elements.quotaFill.style.width = "0%";
@@ -1653,6 +1680,10 @@ function resetQuotaUI() {
   setQuotaWarning("");
   setUpgradeState(false, "", emailFinderState.upgradeUrl);
   applyFindEmailAvailability();
+}
+
+function setQuotaVisibility(visible) {
+  elements.quotaBar?.classList.toggle("hidden", !visible);
 }
 
 function setQuotaWarning(message) {

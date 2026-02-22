@@ -11,6 +11,7 @@ export interface DashboardStats {
   totalSequences: number;
   emailsSent: number;
   responseRate: number;
+  hasEmailData: boolean;
   newContactsThisWeek: number;
   emailsSentThisWeek: number;
 }
@@ -58,6 +59,7 @@ export function useDashboardStats() {
     totalSequences: 0,
     emailsSent: 0,
     responseRate: 0,
+    hasEmailData: false,
     newContactsThisWeek: 0,
     emailsSentThisWeek: 0,
   });
@@ -143,6 +145,7 @@ export function useDashboardStats() {
         totalSequences: templates.length,
         emailsSent,
         responseRate: Math.round(responseRate * 10) / 10,
+        hasEmailData: emailsSent > 0,
         newContactsThisWeek,
         emailsSentThisWeek,
       });
@@ -348,4 +351,3 @@ export function useAnalytics() {
 
   return { analytics, loading, error, refresh: fetchAnalytics };
 }
-

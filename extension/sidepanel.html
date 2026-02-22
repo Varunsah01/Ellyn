@@ -924,7 +924,7 @@
                 <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
                   <path d="M5 12.5 9 16l10-10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
-                <span id="confidenceText">Email Found (98% confidence)</span>
+                <span id="confidenceText">Email found</span>
               </div>
 <div class="email-result">
                 <code id="resultEmail">john.doe@acme.com</code>
@@ -946,7 +946,7 @@
               </div>
 
               <details id="alternativesDetails">
-                <summary id="alternativesSummary" class="cursor-pointer text-xs font-medium text-slate-700">Show alternatives (0)</summary>
+                <summary id="alternativesSummary" class="cursor-pointer text-xs font-medium text-slate-700">Show alternatives</summary>
                 <ul id="alternativesList" class="alternatives-list"></ul>
               </details>
 
@@ -1094,7 +1094,7 @@
             <!-- Populated state — visible only when contacts exist -->
             <div id="queuePopulatedView" class="hidden mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div class="flex items-center justify-between">
-                <p id="queueCountLabel" class="text-sm font-medium text-slate-700">0 Contacts</p>
+                <p id="queueCountLabel" class="text-sm font-medium text-slate-700">Contacts in queue</p>
                 <div class="flex items-center gap-2">
                   <button
                     id="generateAllDraftsBtn"
@@ -1135,10 +1135,10 @@
             </div>
           </article>
 
-          <article class="quota-bar" aria-label="Quota">
+          <article id="quotaBar" class="quota-bar hidden" aria-label="Quota">
             <div class="quota-label">
               <span>Credits Used</span>
-              <span id="quotaCount">0/Unlimited</span>
+              <span id="quotaCount"></span>
             </div>
             <div class="quota-progress">
               <div id="quotaFill" class="quota-fill" style="width: 0%"></div>

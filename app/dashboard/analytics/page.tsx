@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { Button } from "@/components/ui/Button";
+import { Card, CardContent } from "@/components/ui/Card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { RefreshCw, TrendingUp, Users, BarChart, Activity } from "lucide-react";
 import { subDays, format } from "date-fns";
@@ -21,6 +23,36 @@ import { GoalTracker } from "@/components/analytics/GoalTracker";
 import { EmptyAnalytics } from "@/components/EmptyState";
 import { showToast } from "@/lib/toast";
 
+interface AnalyticsTabEmptyStateProps {
+  title: string;
+  description: string;
+  ctaLabel?: string;
+  ctaHref?: string;
+}
+
+function AnalyticsTabEmptyState({
+  title,
+  description,
+  ctaLabel,
+  ctaHref,
+}: AnalyticsTabEmptyStateProps) {
+  return (
+    <Card>
+      <CardContent className="py-10">
+        <div className="mx-auto max-w-xl text-center">
+          <p className="text-base font-semibold text-slate-900">{title}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+          {ctaLabel && ctaHref ? (
+            <Button asChild className="mt-4">
+              <Link href={ctaHref}>{ctaLabel}</Link>
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 30),
@@ -28,7 +60,6 @@ export default function AnalyticsPage() {
   });
   const [compareEnabled, setCompareEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [hasData, setHasData] = useState(true);
 
   // Analytics data state
   const [overviewData, setOverviewData] = useState<any>(null);
@@ -63,14 +94,6 @@ export default function AnalyticsPage() {
       setContactInsights(insights.data || {});
       setActivityHeatmap(heatmap.data || []);
       setTrackerPerformance(tracker.data || null);
-
-      // Check if there's any data
-      const hasAnyData =
-        (overview.data?.totalContacts ?? 0) > 0 ||
-        (contacts.data?.length ?? 0) > 0 ||
-        (sequences.data?.length ?? 0) > 0;
-
-      setHasData(hasAnyData);
     } catch (error) {
       console.error("Failed to fetch analytics:", error);
       showToast.error("Failed to load analytics data");
@@ -89,15 +112,24 @@ export default function AnalyticsPage() {
   };
 
   const breadcrumbs = [{ label: "Analytics" }];
-
-  // Show empty state if no data
-  if (!loading && !hasData) {
-    return (
-      <DashboardShell breadcrumbs={breadcrumbs}>
-        <EmptyAnalytics />
-      </DashboardShell>
-    );
-  }
+  const totalContacts = Number(overviewData?.data?.totalContacts ?? 0);
+  const showOverviewEmpty = !loading && totalContacts === 0;
+  const showSequencesEmpty = !loading && sequencePerformance.length === 0;
+  const topCompanies = Array.isArray(contactInsights?.topCompanies)
+    ? contactInsights.topCompanies
+    : [];
+  const topRoles = Array.isArray(contactInsights?.topRoles)
+    ? contactInsights.topRoles
+    : [];
+  const hasContactInsightsData =
+    topCompanies.some((item: any) => Number(item?.count ?? 0) > 0) ||
+    topRoles.some((item: any) => Number(item?.count ?? 0) > 0);
+  const showContactsEmpty = !loading && !hasContactInsightsData;
+  const heatmapHasActivity = activityHeatmap.some((day: any) =>
+    Array.isArray(day?.hours) &&
+    day.hours.some((hour: any) => Number(hour?.count ?? 0) > 0)
+  );
+  const showActivityEmpty = !loading && !heatmapHasActivity;
 
   return (
     <DashboardShell breadcrumbs={breadcrumbs}>
@@ -160,42 +192,64 @@ export default function AnalyticsPage() {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
-            {overviewData && (
-              <OverviewMetrics
-                data={overviewData.data}
-                comparison={overviewData.comparison}
-                loading={loading}
-              />
+            {showOverviewEmpty ? (
+              <EmptyAnalytics />
+            ) : (
+              <>
+                {overviewData && (
+                  <OverviewMetrics
+                    data={overviewData.data}
+                    comparison={overviewData.comparison}
+                    loading={loading}
+                  />
+                )}
+
+                <div className="grid gap-6 md:grid-cols-2">
+                  <TimeSeriesCharts contactsData={contactsOverTime} loading={loading} />
+
+                  {overviewData && (
+                    <GoalTracker
+                      currentContacts={overviewData.data?.totalContacts ?? 0}
+                      currentEmails={overviewData.data?.emailsSent ?? 0}
+                      currentReplyRate={overviewData.data?.replyRate !== null ? parseFloat(overviewData.data?.replyRate ?? "0") : 0}
+                    />
+                  )}
+                </div>
+
+                <TrackerPerformance data={trackerPerformance} loading={loading} />
+              </>
             )}
-
-            <div className="grid gap-6 md:grid-cols-2">
-              <TimeSeriesCharts contactsData={contactsOverTime} loading={loading} />
-
-              {overviewData && (
-                <GoalTracker
-                  currentContacts={overviewData.data?.totalContacts ?? 0}
-                  currentEmails={overviewData.data?.emailsSent ?? 0}
-                  currentReplyRate={overviewData.data?.replyRate !== null ? parseFloat(overviewData.data?.replyRate ?? "0") : 0}
-                />
-              )}
-            </div>
-
-            <TrackerPerformance data={trackerPerformance} loading={loading} />
           </TabsContent>
 
           {/* Sequences Tab */}
           <TabsContent value="sequences" className="space-y-6">
-            <SequencePerformanceTable data={sequencePerformance} loading={loading} />
+            {showSequencesEmpty ? (
+              <AnalyticsTabEmptyState
+                title="No sequences yet"
+                description="Create your first sequence to track enrollment, sent, and reply performance."
+                ctaLabel="Create a sequence"
+                ctaHref="/dashboard/sequences/create"
+              />
+            ) : (
+              <SequencePerformanceTable data={sequencePerformance} loading={loading} />
+            )}
           </TabsContent>
 
           {/* Contacts Tab */}
           <TabsContent value="contacts" className="space-y-6">
-            {contactInsights && (
+            {showContactsEmpty ? (
+              <AnalyticsTabEmptyState
+                title="No contact data yet"
+                description="Add more contacts to view company and role insights."
+                ctaLabel="View contacts"
+                ctaHref="/dashboard/contacts"
+              />
+            ) : (
               <ContactInsights
-                topCompanies={contactInsights.topCompanies || []}
-                topRoles={contactInsights.topRoles || []}
-                sourceBreakdown={contactInsights.sourceBreakdown || []}
-                topTags={contactInsights.topTags || []}
+                topCompanies={contactInsights?.topCompanies || []}
+                topRoles={contactInsights?.topRoles || []}
+                sourceBreakdown={contactInsights?.sourceBreakdown || []}
+                topTags={contactInsights?.topTags || []}
                 loading={loading}
               />
             )}
@@ -203,11 +257,19 @@ export default function AnalyticsPage() {
 
           {/* Activity Tab */}
           <TabsContent value="activity" className="space-y-6">
-            <ActivityHeatmap data={activityHeatmap} loading={loading} />
+            {showActivityEmpty ? (
+              <AnalyticsTabEmptyState
+                title="No activity recorded yet"
+                description="Send emails to start building your activity heatmap."
+                ctaLabel="Go to Contacts"
+                ctaHref="/dashboard/contacts"
+              />
+            ) : (
+              <ActivityHeatmap data={activityHeatmap} loading={loading} />
+            )}
           </TabsContent>
         </Tabs>
       </div>
     </DashboardShell>
   );
 }
-

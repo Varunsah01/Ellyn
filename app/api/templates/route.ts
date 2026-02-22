@@ -34,6 +34,57 @@ export async function GET(_request: NextRequest) {
       );
     }
 
+    // If user has no templates at all, seed the defaults
+    if (!data || data.length === 0) {
+      const defaultTemplates = [
+        {
+          name: 'Cold Outreach',
+          subject: 'Quick question about {{company}}',
+          body: `Hi {{firstName}},\n\nI came across {{company}} and was impressed by your work in {{industry}}.\n\nI wanted to reach out because [YOUR REASON HERE].\n\nWould you be open to a quick chat this week?\n\nBest regards,\n[YOUR NAME]`,
+          is_default: true,
+          user_id: user.id,
+          category: 'outreach',
+          icon: '📧',
+        },
+        {
+          name: 'Follow Up',
+          subject: 'Following up - {{company}}',
+          body: `Hi {{firstName}},\n\nI wanted to follow up on my previous email about [TOPIC].\n\nI believe there could be value in connecting, especially regarding [SPECIFIC VALUE PROPOSITION].\n\nLet me know if you'd like to schedule a brief call.\n\nThanks,\n[YOUR NAME]`,
+          is_default: true,
+          user_id: user.id,
+          category: 'follow-up',
+          icon: '🔄',
+        },
+        {
+          name: 'Introduction',
+          subject: 'Introduction - {{yourName}} + {{firstName}}',
+          body: `Hi {{firstName}},\n\nMy name is {{yourName}} and I work on [YOUR WORK/COMPANY].\n\nI noticed you're at {{company}} and thought we might have some interesting synergies around [TOPIC/AREA].\n\nWould love to connect if you have 15 minutes in the coming weeks.\n\nBest,\n{{yourName}}`,
+          is_default: true,
+          user_id: user.id,
+          category: 'introduction',
+          icon: '👋',
+        },
+        {
+          name: 'Value Proposition',
+          subject: 'Helping {{company}} with [SPECIFIC OUTCOME]',
+          body: `Hi {{firstName}},\n\nI help companies like {{company}} achieve [SPECIFIC OUTCOME] through [YOUR SOLUTION].\n\nSome recent results:\n• [RESULT 1]\n• [RESULT 2]\n• [RESULT 3]\n\nWould you be interested in learning more?\n\nLooking forward to hearing from you,\n[YOUR NAME]`,
+          is_default: true,
+          user_id: user.id,
+          category: 'value-prop',
+          icon: '💡',
+        },
+      ];
+
+      const { data: seeded, error: seedError } = await supabase
+        .from('email_templates')
+        .insert(defaultTemplates)
+        .select();
+
+      if (!seedError && seeded) {
+        return NextResponse.json({ success: true, templates: seeded });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       templates: data || [],
