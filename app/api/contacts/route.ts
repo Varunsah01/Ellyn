@@ -1,8 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createClient as createSupabaseJsClient } from '@supabase/supabase-js';
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers';
+import { createClient as createServerSupabaseClient } from '@/lib/supabase/server';
 import { ContactCreateSchema, formatZodError } from '@/lib/validation/schemas';
 import { recordActivity } from '@/lib/utils/recordActivity';
+
+type ContactDbClient = Awaited<ReturnType<typeof createServerSupabaseClient>>;
+
+function extractBearerToken(headers: Headers): string | null {
+  const rawAuth = headers.get('authorization');
+  if (!rawAuth) return null;
+
+  const match = rawAuth.match(/^Bearer\s+(.+)$/i);
+  if (!match?.[1]) return null;
+
+  const token = match[1].trim();
+  return token.length > 0 ? token : null;
+}
+
+async function createRequestScopedSupabaseClient(
+  request: Pick<Request, 'headers'>
+): Promise<ContactDbClient> {
+  const token = extractBearerToken(request.headers);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+
+  if (token && supabaseUrl && supabaseAnonKey) {
+    return createSupabaseJsClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    }) as unknown as ContactDbClient;
+  }
+
+  return createServerSupabaseClient();
+}
 
 // GET /api/contacts - List all contacts
 /**
@@ -18,6 +57,7 @@ import { recordActivity } from '@/lib/utils/recordActivity';
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
+    const supabase = await createRequestScopedSupabaseClient(request);
 
     // Parse query params
     const searchParams = request.nextUrl.searchParams;
@@ -138,6 +178,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
+    const supabase = await createRequestScopedSupabaseClient(request);
 
     const parsed = ContactCreateSchema.safeParse(await request.json());
     if (!parsed.success) {

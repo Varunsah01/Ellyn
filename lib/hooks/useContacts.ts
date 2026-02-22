@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRefreshListener } from '@/lib/context/AppRefreshContext';
 import { createClient } from '@/lib/supabase/client';
+import { supabase } from '@/lib/supabase';
 import { supabaseAuthedFetch } from '@/lib/auth/client-fetch';
 
 export interface Contact {
@@ -68,6 +69,31 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchContactsDirectly = useCallback(async () => {
+    let query = supabase
+      .from('contacts')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false });
+
+    if (search) {
+      query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,company.ilike.%${search}%`);
+    }
+
+    if (status) query = query.eq('status', status);
+    if (source) query = query.eq('source', source);
+
+    const offset = (page - 1) * limit;
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error: queryError, count } = await query;
+    if (queryError) throw queryError;
+
+    return {
+      contacts: (data || []) as Contact[],
+      totalCount: Number.isFinite(Number(count)) ? Number(count) : 0,
+    };
+  }, [limit, page, search, source, status]);
+
   const fetchContacts = useCallback(async () => {
     try {
       setLoading(true);
@@ -85,17 +111,36 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
 
       const response = await supabaseAuthedFetch(`/api/v1/contacts?${params.toString()}`);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: Failed to fetch contacts`);
+      if (response.ok) {
+        const payload = await response.json();
+        const body = payload?.data && typeof payload.data === 'object' ? payload.data : payload;
+        if (body?.success) {
+          setContacts(body.contacts || []);
+          setTotalCount(body.totalCount || body.pagination?.total || 0);
+          return;
+        }
+        throw new Error(body?.error || payload?.error || 'Failed to fetch contacts');
       }
 
-      const data = await response.json();
+      const errorPayload = await response.json().catch(() => ({})) as {
+        error?: string;
+        data?: { error?: string };
+      };
+      const apiErrorMessage =
+        errorPayload?.data?.error ||
+        errorPayload?.error ||
+        `HTTP ${response.status}: Failed to fetch contacts`;
 
-      if (data.success) {
-        setContacts(data.contacts || []);
-        setTotalCount(data.totalCount || data.pagination?.total || 0);
-      } else {
-        throw new Error(data.error || 'Failed to fetch contacts');
+      try {
+        const fallback = await fetchContactsDirectly();
+        setContacts(fallback.contacts);
+        setTotalCount(fallback.totalCount);
+        setError(null);
+        return;
+      } catch (fallbackError) {
+        const fallbackMessage =
+          fallbackError instanceof Error ? fallbackError.message : 'Fallback fetch failed';
+        throw new Error(`${apiErrorMessage} | ${fallbackMessage}`);
       }
     } catch (err) {
       console.error('[useContacts] Error:', err);
@@ -105,7 +150,7 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
     } finally {
       setLoading(false);
     }
-  }, [page, limit, search, status, source]);
+  }, [fetchContactsDirectly, limit, page, search, source, status]);
 
   // Initial fetch
   useEffect(() => {

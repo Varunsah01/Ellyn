@@ -1,12 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
+import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   ContactUpdateSchema,
   formatZodError,
   type ContactUpdateInput,
 } from "@/lib/validation/schemas";
 import { recordActivity } from "@/lib/utils/recordActivity";
+
+type ContactDbClient = Awaited<ReturnType<typeof createServerSupabaseClient>>;
+
+function extractBearerToken(headers: Headers): string | null {
+  const rawAuth = headers.get("authorization");
+  if (!rawAuth) return null;
+
+  const match = rawAuth.match(/^Bearer\s+(.+)$/i);
+  if (!match?.[1]) return null;
+
+  const token = match[1].trim();
+  return token.length > 0 ? token : null;
+}
+
+async function createRequestScopedSupabaseClient(
+  request: Pick<Request, "headers">
+): Promise<ContactDbClient> {
+  const token = extractBearerToken(request.headers);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+
+  if (token && supabaseUrl && supabaseAnonKey) {
+    return createSupabaseJsClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    }) as unknown as ContactDbClient;
+  }
+
+  return createServerSupabaseClient();
+}
 
 interface RouteContext {
   params: { id: string };
@@ -27,6 +66,7 @@ interface RouteContext {
 export async function GET(request: NextRequest, { params }: RouteContext) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
+    const supabase = await createRequestScopedSupabaseClient(request);
     const { data: contact, error } = await supabase
       .from("contacts")
       .select("*")
@@ -75,6 +115,7 @@ function buildUpdatePayload(body: ContactUpdateInput) {
 
 async function updateContact(request: NextRequest, id: string, userId: string) {
   try {
+    const supabase = await createRequestScopedSupabaseClient(request);
     const parsed = ContactUpdateSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -200,6 +241,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
+    const supabase = await createRequestScopedSupabaseClient(request);
     const { error } = await supabase
       .from("contacts")
       .delete()

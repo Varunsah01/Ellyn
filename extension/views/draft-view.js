@@ -53,6 +53,20 @@ function _ensureDvStyles() {
     }
 
     .dv-brand {
+      display: inline-flex;
+      align-items: center;
+      line-height: 1;
+      user-select: none;
+    }
+
+    .dv-brand-logo {
+      height: 18px;
+      width: auto;
+      display: block;
+      object-fit: contain;
+    }
+
+    .dv-brand-fallback {
       font-size: 14px;
       font-weight: 800;
       letter-spacing: 0.08em;
@@ -60,7 +74,7 @@ function _ensureDvStyles() {
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      user-select: none;
+      display: none;
     }
 
     .dv-header-actions {
@@ -347,7 +361,15 @@ function renderDraftView(contact) {
 
   <!-- ── Header ─────────────────────────────────────────── -->
   <header class="dv-header">
-    <span class="dv-brand" aria-label="Ellyn">ELLYN</span>
+    <span class="dv-brand" aria-label="Ellyn">
+      <img
+        src="assets/icons/logo.svg"
+        alt="Ellyn"
+        class="dv-brand-logo"
+        onerror="this.style.display='none';this.nextElementSibling.style.display='inline';"
+      />
+      <span class="dv-brand-fallback">ELLYN</span>
+    </span>
     <div class="dv-header-actions" role="toolbar" aria-label="Header actions">
       <button
         type="button"

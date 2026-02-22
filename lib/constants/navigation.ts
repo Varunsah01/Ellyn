@@ -43,11 +43,6 @@ export const mainNavItems: NavItem[] = [
     href: "/dashboard/sent",
     icon: Send,
   },
-  {
-    name: "Settings",
-    href: "/dashboard/settings",
-    icon: Settings,
-  },
 ];
 
 // Secondary items to be tucked away in the profile menu

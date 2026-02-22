@@ -50,6 +50,70 @@ function _ensureStyles() {
     .contact-card-root {
       animation: contactCardFadeIn 0.22s ease both;
     }
+    .cc-identity {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .cc-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .cc-avatar-logo {
+      width: 24px;
+      height: 24px;
+      object-fit: contain;
+      display: block;
+    }
+    .cc-avatar-fallback {
+      display: none;
+      width: 100%;
+      height: 100%;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: #4f46e5;
+      user-select: none;
+      text-transform: uppercase;
+    }
+    .cc-name-block {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding-top: 1px;
+    }
+    .cc-name {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.2;
+      font-weight: 700;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-transform: none;
+    }
+    .cc-subtitle {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.25;
+      color: #64748b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-transform: none;
+    }
     .contact-card-copy-btn:active {
       transform: scale(0.93);
     }
@@ -78,15 +142,19 @@ function renderContactCard(contact) {
   aria-label="Contact card for ${name}"
 >
   <!-- Avatar + name row -->
-  <div class="flex items-center gap-3 mb-3">
-    <div
-      aria-hidden="true"
-      class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700 select-none"
-      title="${name}"
-    >${ini}</div>
-    <div class="min-w-0">
-      <p class="truncate text-sm font-semibold text-slate-900">${name}</p>
-      ${role ? `<p class="truncate text-xs text-slate-500">${role}</p>` : ""}
+  <div class="cc-identity">
+    <div aria-hidden="true" class="cc-avatar" title="${name}">
+      <img
+        src="assets/icons/logo.svg"
+        alt=""
+        class="cc-avatar-logo"
+        onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';"
+      />
+      <span class="cc-avatar-fallback">${ini}</span>
+    </div>
+    <div class="cc-name-block">
+      <p class="cc-name" title="${name}">${name}</p>
+      ${role ? `<p class="cc-subtitle" title="${role}">${role}</p>` : ""}
     </div>
   </div>
 

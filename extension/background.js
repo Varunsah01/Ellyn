@@ -352,16 +352,6 @@ async function checkQuota() {
 }
 
 async function canPerformLookup() {
-  if (CONFIG.DISABLE_CREDIT_LIMITS) {
-    const status = await checkQuota().catch(() => null);
-    return {
-      allowed: true,
-      remaining: Number.isFinite(Number(status?.remaining)) ? Number(status.remaining) : null,
-      resetDate: status?.resetDate || null,
-      warning: 'Credit limits disabled',
-    };
-  }
-
   if (!quotaManager) {
     return {
       allowed: true,
@@ -370,8 +360,15 @@ async function canPerformLookup() {
       warning: 'Quota manager unavailable',
     };
   }
-
-  return quotaManager.canPerformLookup();
+  const quotaCheck = await quotaManager.canPerformLookup();
+  if (!CONFIG.DISABLE_CREDIT_LIMITS) {
+    return quotaCheck;
+  }
+  return {
+    ...quotaCheck,
+    allowed: true,
+    warning: quotaCheck?.warning || 'Credit limits disabled',
+  };
 }
 
 function isLinkedInProfileUrl(url) {

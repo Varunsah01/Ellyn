@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/DropdownMenu";
 import { mainNavItems, secondaryNavItems } from "@/lib/constants/navigation";
-import { ChevronLeft, Keyboard, LifeBuoy, LogOut, Sparkles, UserPlus } from "lucide-react";
+import { ChevronLeft, Keyboard, LifeBuoy, LogOut, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useAnalytics";
 import { useSequenceStats } from "@/lib/hooks/useSequences";
@@ -165,37 +165,6 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
             />
           </Link>
         )}
-      </div>
-
-      {/* New Contact shortcut */}
-      <div className="px-3 py-2.5 border-b">
-        <Button
-          asChild
-          className={cn(
-            "bg-[#FF6B6B] hover:bg-[#E05263] text-white transition-all duration-200 h-9",
-            collapsed ? "w-full justify-center px-0" : "w-full justify-start gap-2"
-          )}
-        >
-          <Link
-            href="/dashboard/contacts?action=new"
-            title={collapsed ? "New Contact" : undefined}
-          >
-            <UserPlus className="h-4 w-4 flex-shrink-0" />
-            <AnimatePresence mode="wait">
-              {!collapsed && (
-                <motion.span
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: "auto" }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="overflow-hidden whitespace-nowrap"
-                >
-                  New Contact
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </Link>
-        </Button>
       </div>
 
       <div className="flex flex-col flex-1 overflow-hidden">

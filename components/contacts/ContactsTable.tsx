@@ -120,6 +120,9 @@ export function ContactsTable({ search = "", status = "", source = "" }: Contact
         <p className="text-sm text-muted-foreground">
           Failed to load contacts. Please try again.
         </p>
+        <p className="max-w-xl text-center text-xs text-muted-foreground/80">
+          {error}
+        </p>
         <Button variant="outline" onClick={() => void refresh()}>
           Retry
         </Button>

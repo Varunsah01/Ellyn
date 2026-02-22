@@ -35,6 +35,7 @@ const emailFinderState = {
   quotaAllowsLookup: true,
   currentResult: null,
   currentError: null,
+  resultProfileKey: "",
   loadingTimer: null,
   stageIndex: 0,
   upgradeUrl: PRICING_URL,
@@ -573,15 +574,22 @@ async function refreshProfileContext(reason = "auto") {
     const [activeTab] = await queryTabs({ active: true, currentWindow: true });
     const tabId = Number.isFinite(activeTab?.id) ? activeTab.id : null;
     const tabUrl = typeof activeTab?.url === "string" ? activeTab.url : "";
+    const previousProfileKey = emailFinderState.lastProfileKey;
     console.log("[Sidepanel] Active tab for profile context", { tabId, tabUrl });
 
     if (!Number.isFinite(tabId) || !isLinkedInProfile(tabUrl)) {
+      if (previousProfileKey || emailFinderState.currentResult || emailFinderState.currentError) {
+        clearLookupStateForProfileChange("left-linkedin-profile");
+      }
       emailFinderState.lastProfileKey = "";
       resetProfileContext("Open a LinkedIn profile to begin.", "neutral");
       return;
     }
 
     const incomingKey = buildProfileContextKey(tabId, tabUrl);
+    if (previousProfileKey && incomingKey !== previousProfileKey) {
+      clearLookupStateForProfileChange("linkedin-profile-url-changed");
+    }
     const ageMs = Date.now() - Number(emailFinderState.profileContext?.lastUpdatedAt || 0);
     if (reason !== "manual" && incomingKey === emailFinderState.lastProfileKey && ageMs < PROFILE_SYNC_INTERVAL_MS) {
       return;
@@ -871,6 +879,35 @@ function applyFindEmailAvailability() {
   elements.findEmailBtn.title = reason;
 }
 
+function clearLookupStateForProfileChange(reason = "profile-changed") {
+  const hadVisibleState = Boolean(
+    emailFinderState.currentResult ||
+      emailFinderState.currentError ||
+      !elements.resultsCard?.classList.contains("hidden") ||
+      !elements.errorState?.classList.contains("hidden")
+  );
+
+  emailFinderState.currentResult = null;
+  emailFinderState.currentError = null;
+  emailFinderState.resultProfileKey = "";
+
+  if (elements.resultEmail) {
+    elements.resultEmail.textContent = "";
+  }
+
+  renderAlternatives([]);
+  elements.feedbackSection?.classList.add("hidden");
+  hideResultAndError();
+  _hideStatsView();
+  _hideDraftView();
+  _dvLastContactKey = "";
+
+  if (hadVisibleState) {
+    console.log("[Sidepanel] Cleared stale lookup state", { reason });
+    setStatus("Profile changed. Previous result cleared.", "neutral");
+  }
+}
+
 function setPrimaryFinderAction(mode = "find") {
   const showFind = mode === "find";
   const showDraft = mode === "draft";
@@ -1116,6 +1153,10 @@ function hideResultAndError() {
 function displayResults(data) {
   emailFinderState.currentResult = data || null;
   emailFinderState.currentError = null;
+  emailFinderState.resultProfileKey = buildProfileContextKey(
+    emailFinderState.profileContext?.tabId,
+    emailFinderState.profileContext?.profileUrl
+  );
 
   const email = String(data?.email || "").trim();
   const confidencePercent = toConfidencePercent(data?.confidence);
@@ -1179,6 +1220,7 @@ function renderAlternatives(items) {
 function showError(message, code, resetDate) {
   emailFinderState.currentError = message;
   emailFinderState.currentResult = null;
+  emailFinderState.resultProfileKey = "";
 
   // Set dynamic title based on error type
   if (elements.errorTitle) {

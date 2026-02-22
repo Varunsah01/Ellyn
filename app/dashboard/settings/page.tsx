@@ -11,6 +11,12 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/Checkbox";
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/Accordion";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -29,30 +35,23 @@ import {
 } from "@/components/ui/Select";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Switch } from "@/components/ui/Switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/hooks/useToast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 import { validatePasswordStrength } from "@/lib/validation/password";
 import {
   AlertTriangle,
-  Bell,
-  Copy,
-  ExternalLink,
-  Eye,
-  EyeOff,
-  Key,
   Link as LinkIcon,
   Lock,
   Mail,
-  RefreshCw,
   Save,
   Shield,
   Trash2,
   Upload,
   User,
-  Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 type EmailProvider = "gmail" | "outlook" | "smtp";
 type SmtpEncryption = "tls" | "ssl" | "none";
@@ -83,15 +82,6 @@ interface SequencePreferences {
   sendingWindowEnd: string;
   sendingDays: string[];
   blackoutDates: string[];
-}
-
-interface NotificationPreferences {
-  email: Record<"replyReceived" | "sequenceCompleted" | "contactBounced" | "sequencePaused", boolean>;
-  inApp: Record<
-    "replyReceived" | "sequenceCompleted" | "contactBounced" | "sequencePaused" | "newTemplateSuggestions",
-    boolean
-  >;
-  weeklyDigest: { weeklyPerformanceSummary: boolean };
 }
 
 interface PrivacyPreferences {
@@ -127,17 +117,6 @@ const DEFAULT_SEQUENCE_PREFERENCES: SequencePreferences = {
   blackoutDates: [],
 };
 
-const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
-  email: { replyReceived: true, sequenceCompleted: true, contactBounced: true, sequencePaused: true },
-  inApp: {
-    replyReceived: true,
-    sequenceCompleted: true,
-    contactBounced: true,
-    sequencePaused: true,
-    newTemplateSuggestions: true,
-  },
-  weeklyDigest: { weeklyPerformanceSummary: true },
-};
 const DEFAULT_PRIVACY_PREFERENCES: PrivacyPreferences = {
   retention: "1_year",
   allowAnonymizedAi: true,
@@ -168,6 +147,25 @@ const DAYS = [
   { value: "fri", label: "Fri" },
   { value: "sat", label: "Sat" },
   { value: "sun", label: "Sun" },
+];
+
+type SettingsSectionId =
+  | "profile"
+  | "email"
+  | "privacy"
+  | "integrations";
+
+type SettingsSection = {
+  id: SettingsSectionId;
+  label: string;
+  icon: LucideIcon;
+};
+
+const SETTINGS_SECTIONS: SettingsSection[] = [
+  { id: "profile", label: "Profile", icon: User },
+  { id: "email", label: "Email", icon: Mail },
+  { id: "privacy", label: "Privacy & Security", icon: Shield },
+  { id: "integrations", label: "Integrations", icon: LinkIcon },
 ];
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -205,27 +203,11 @@ function initials(value: string): string {
   return token || "?";
 }
 
-function maskApiKey(key: string): string {
-  if (!key) return "No key generated yet";
-  if (key.length < 12) return key;
-  return `${key.slice(0, 4)}-****...${key.slice(-4)}`;
-}
-
-function extensionCode(userId: string, email: string): string {
-  const source = `${userId}:${email}`;
-  let hash = 0;
-  for (let i = 0; i < source.length; i += 1) {
-    hash = (hash * 31 + source.charCodeAt(i)) % 1_000_000_007;
-  }
-  return `ELLYN-${Math.abs(hash).toString(36).toUpperCase().padStart(8, "0").slice(0, 8)}`;
-}
-
 export default function SettingsPage() {
   const router = useRouter();
   const { toast } = useToast();
 
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState("");
   const [email, setEmail] = useState("");
   const [metadata, setMetadata] = useState<Record<string, unknown>>({});
   const metadataRef = useRef<Record<string, unknown>>({});
@@ -239,27 +221,16 @@ export default function SettingsPage() {
 
   const [emailPrefs, setEmailPrefs] = useState<EmailPreferences>(DEFAULT_EMAIL_PREFERENCES);
   const [sequencePrefs, setSequencePrefs] = useState<SequencePreferences>(DEFAULT_SEQUENCE_PREFERENCES);
-  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(
-    DEFAULT_NOTIFICATION_PREFERENCES,
-  );
   const [privacyPrefs, setPrivacyPrefs] = useState<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
   const [integrations, setIntegrations] = useState<IntegrationPreferences>(DEFAULT_INTEGRATIONS);
-
-  const [apiKey, setApiKey] = useState("sk-ellyn-demo-key-123");
-  const [apiUsage, setApiUsage] = useState({ used: 0, limit: 1000 });
-  const [apiLoading, setApiLoading] = useState(true);
-  const [showApiKey, setShowApiKey] = useState(false);
 
   const [blackoutInput, setBlackoutInput] = useState("");
   const [saveProfileLoading, setSaveProfileLoading] = useState(false);
   const [saveEmailLoading, setSaveEmailLoading] = useState(false);
   const [saveSequenceLoading, setSaveSequenceLoading] = useState(false);
-  const [saveNotificationLoading, setSaveNotificationLoading] = useState(false);
   const [savePrivacyLoading, setSavePrivacyLoading] = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
-  const [regeneratingApiKey, setRegeneratingApiKey] = useState(false);
-  const [apiDialogOpen, setApiDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmEmail, setDeleteConfirmEmail] = useState("");
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -270,8 +241,11 @@ export default function SettingsPage() {
   const [passwordUpdateError, setPasswordUpdateError] = useState("");
   const [passwordUpdateSuccess, setPasswordUpdateSuccess] = useState("");
   const [passwordUpdating, setPasswordUpdating] = useState(false);
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>("profile");
 
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const sectionCardRef = useRef<HTMLDivElement | null>(null);
+  const sectionInitRef = useRef(false);
   const nameForAvatar = useMemo(
     () => `${firstName} ${lastName}`.trim() || email.split("@")[0] || "Account",
     [firstName, lastName, email],
@@ -311,25 +285,6 @@ export default function SettingsPage() {
     [toast],
   );
 
-  const loadApiKey = useCallback(async () => {
-    setApiLoading(true);
-    try {
-      const res = await fetch("/api/v1/account/api-key", { cache: "no-store" });
-      const payload = (await res.json()) as Record<string, unknown>;
-      if (!res.ok) throw new Error(asString(payload.error, "Failed to load API key"));
-      setApiKey(asString(payload.key, "sk-ellyn-demo-key-123"));
-      setApiUsage({ used: asNum(payload.used, 0), limit: asNum(payload.limit, 1000) });
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "API key unavailable",
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    } finally {
-      setApiLoading(false);
-    }
-  }, [toast]);
-
   const loadSettings = useCallback(async () => {
     setLoading(true);
     if (!isSupabaseConfigured) {
@@ -347,7 +302,6 @@ export default function SettingsPage() {
 
       const meta = asRecord(user.user_metadata);
       const [splitFirst, splitLast] = splitFullName(asString(meta.full_name));
-      setUserId(user.id);
       setEmail(asString(user.email));
       setFirstName(asString(meta.first_name, splitFirst));
       setLastName(asString(meta.last_name, splitLast));
@@ -395,27 +349,6 @@ export default function SettingsPage() {
         blackoutDates: blackouts,
       });
 
-      const notif = asRecord(meta.notification_preferences);
-      const notifEmail = asRecord(notif.email);
-      const notifInApp = asRecord(notif.inApp);
-      const notifDigest = asRecord(notif.weeklyDigest);
-      setNotificationPrefs({
-        email: {
-          replyReceived: asBool(notifEmail.replyReceived, true),
-          sequenceCompleted: asBool(notifEmail.sequenceCompleted, true),
-          contactBounced: asBool(notifEmail.contactBounced, true),
-          sequencePaused: asBool(notifEmail.sequencePaused, true),
-        },
-        inApp: {
-          replyReceived: asBool(notifInApp.replyReceived, true),
-          sequenceCompleted: asBool(notifInApp.sequenceCompleted, true),
-          contactBounced: asBool(notifInApp.contactBounced, true),
-          sequencePaused: asBool(notifInApp.sequencePaused, true),
-          newTemplateSuggestions: asBool(notifInApp.newTemplateSuggestions, true),
-        },
-        weeklyDigest: { weeklyPerformanceSummary: asBool(notifDigest.weeklyPerformanceSummary, true) },
-      });
-
       const privacy = asRecord(meta.privacy_preferences);
       const retention = asString(privacy.retention, "1_year");
       setPrivacyPrefs({
@@ -446,8 +379,16 @@ export default function SettingsPage() {
 
   useEffect(() => {
     void loadSettings();
-    void loadApiKey();
-  }, [loadApiKey, loadSettings]);
+  }, [loadSettings]);
+
+  useEffect(() => {
+    if (!sectionInitRef.current) {
+      sectionInitRef.current = true;
+      return;
+    }
+    sectionCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [activeSection]);
+
   const saveProfile = async () => {
     setSaveProfileLoading(true);
     const startedAt = Date.now();
@@ -536,15 +477,6 @@ export default function SettingsPage() {
     setSaveSequenceLoading(true);
     await saveMetadataPatch({ sequence_preferences: sequencePrefs }, "Sequence preferences saved.");
     setSaveSequenceLoading(false);
-  };
-
-  const saveNotifications = async () => {
-    setSaveNotificationLoading(true);
-    await saveMetadataPatch(
-      { notification_preferences: notificationPrefs },
-      "Notification preferences saved.",
-    );
-    setSaveNotificationLoading(false);
   };
 
   const savePrivacy = async () => {
@@ -641,27 +573,6 @@ export default function SettingsPage() {
     }
   };
 
-  const regenerateKey = async () => {
-    setRegeneratingApiKey(true);
-    try {
-      const res = await fetch("/api/v1/account/api-key", { method: "POST" });
-      const payload = (await res.json()) as Record<string, unknown>;
-      if (!res.ok) throw new Error(asString(payload.error, "Failed to regenerate API key"));
-      setApiKey(asString(payload.key, apiKey));
-      setApiUsage({ used: asNum(payload.used, apiUsage.used), limit: asNum(payload.limit, apiUsage.limit) });
-      setApiDialogOpen(false);
-      toast({ title: "API key regenerated", description: "Old key is no longer active." });
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Regenerate failed",
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    } finally {
-      setRegeneratingApiKey(false);
-    }
-  };
-
   const saveIntegrations = useCallback(
     async (next: IntegrationPreferences, message: string) => {
       const ok = await saveMetadataPatch({ ...next }, message);
@@ -692,22 +603,6 @@ export default function SettingsPage() {
     );
   }
 
-  const notificationRows = {
-    email: [
-      { key: "replyReceived", label: "Reply received" },
-      { key: "sequenceCompleted", label: "Sequence completed" },
-      { key: "contactBounced", label: "Contact bounced" },
-      { key: "sequencePaused", label: "Sequence paused (auto-pause triggered)" },
-    ] as const,
-    inApp: [
-      { key: "replyReceived", label: "Reply received" },
-      { key: "sequenceCompleted", label: "Sequence completed" },
-      { key: "contactBounced", label: "Contact bounced" },
-      { key: "sequencePaused", label: "Sequence paused (auto-pause triggered)" },
-      { key: "newTemplateSuggestions", label: "New template suggestions" },
-    ] as const,
-  };
-
   return (
     <DashboardShell>
       <div className="space-y-6">
@@ -716,23 +611,67 @@ export default function SettingsPage() {
           <p className="text-muted-foreground mt-1">Manage your account and preferences</p>
         </div>
 
-        <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-7">
-            <TabsTrigger value="profile"><User className="mr-2 h-4 w-4 hidden sm:inline" />Profile</TabsTrigger>
-            <TabsTrigger value="email"><Mail className="mr-2 h-4 w-4 hidden sm:inline" />Email</TabsTrigger>
-            <TabsTrigger value="sequences"><Zap className="mr-2 h-4 w-4 hidden sm:inline" />Sequences</TabsTrigger>
-            <TabsTrigger value="notifications"><Bell className="mr-2 h-4 w-4 hidden sm:inline" />Notifications</TabsTrigger>
-            <TabsTrigger value="privacy"><Shield className="mr-2 h-4 w-4 hidden sm:inline" />Privacy</TabsTrigger>
-            <TabsTrigger value="api"><Key className="mr-2 h-4 w-4 hidden sm:inline" />API</TabsTrigger>
-            <TabsTrigger value="integrations"><LinkIcon className="mr-2 h-4 w-4 hidden sm:inline" />Integrations</TabsTrigger>
-          </TabsList>
-          <TabsContent value="profile">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+          <aside className="w-full lg:sticky lg:top-24 lg:w-[220px] lg:shrink-0 lg:self-start">
+            <div className="lg:hidden">
+              <Label htmlFor="settings-section-select">Section</Label>
+              <Select
+                value={activeSection}
+                onValueChange={(value) => setActiveSection(value as SettingsSectionId)}
+              >
+                <SelectTrigger id="settings-section-select" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SETTINGS_SECTIONS.map((section) => (
+                    <SelectItem key={section.id} value={section.id}>
+                      {section.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <nav className="hidden rounded-lg border bg-card p-2 lg:flex lg:flex-col">
+              {SETTINGS_SECTIONS.map((section) => {
+                const Icon = section.icon;
+                const isActive = activeSection === section.id;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => setActiveSection(section.id)}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md border-l-2 px-3 py-2 text-left text-sm transition-colors",
+                      isActive
+                        ? "border-l-primary bg-primary/10 text-primary"
+                        : "border-l-transparent text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span>{section.label}</span>
+                  </button>
+                );
+              })}
+            </nav>
+          </aside>
+
+          <div ref={sectionCardRef} className="min-w-0 flex-1 scroll-mt-24">
+            {activeSection === "profile" && (
             <Card>
               <CardHeader>
                 <CardTitle>Profile Information</CardTitle>
-                <CardDescription>Update your personal information</CardDescription>
+                <CardDescription>
+                  Keep your account identity and personal details up to date.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="accountEmail">Account Email</Label>
+                  <Input id="accountEmail" type="email" className="mt-2" value={email} readOnly />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Your sign-in email for this workspace.
+                  </p>
+                </div>
                 <div className="rounded-lg border p-4 flex flex-wrap items-center gap-4">
                   <Avatar className="h-16 w-16 border">
                     <AvatarImage src={avatarUrl || undefined} alt={nameForAvatar} />
@@ -752,24 +691,21 @@ export default function SettingsPage() {
                   <div><Label htmlFor="firstName">First Name</Label><Input id="firstName" className="mt-2" value={firstName} onChange={(e) => setFirstName(e.target.value)} /></div>
                   <div><Label htmlFor="lastName">Last Name</Label><Input id="lastName" className="mt-2" value={lastName} onChange={(e) => setLastName(e.target.value)} /></div>
                 </div>
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" className="mt-2" value={email} readOnly />
-                  <p className="text-xs text-muted-foreground mt-1">To change your email, contact support.</p>
-                </div>
                 <div><Label htmlFor="role">Role</Label><Input id="role" className="mt-2" value={role} onChange={(e) => setRole(e.target.value)} /></div>
                 <div><Label htmlFor="company">Company</Label><Input id="company" className="mt-2" value={company} onChange={(e) => setCompany(e.target.value)} /></div>
                 <div><Label htmlFor="bio">Bio</Label><Textarea id="bio" className="mt-2 min-h-[100px]" value={bio} onChange={(e) => setBio(e.target.value)} /></div>
-                <Button onClick={saveProfile} disabled={saveProfileLoading}><Save className="mr-2 h-4 w-4" />{saveProfileLoading ? "Saving..." : "Save Changes"}</Button>
+                <Button onClick={saveProfile} disabled={saveProfileLoading}><Save className="mr-2 h-4 w-4" />{saveProfileLoading ? "Saving..." : "Save Profile"}</Button>
               </CardContent>
             </Card>
-          </TabsContent>
+            )}
 
-          <TabsContent value="email">
+            {activeSection === "email" && (
             <Card>
               <CardHeader>
-                <CardTitle>Outreach Preferences</CardTitle>
-                <CardDescription>Configure outreach defaults</CardDescription>
+                <CardTitle>Email & Outreach</CardTitle>
+                <CardDescription>
+                  Configure sending identity, inbox provider, and safe day-to-day outreach limits.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div><Label>From Name</Label><Input className="mt-2" value={emailPrefs.fromName} onChange={(e) => setEmailPrefs((p) => ({ ...p, fromName: e.target.value }))} /></div>
@@ -816,111 +752,98 @@ export default function SettingsPage() {
                     </Select>
                   </div>
                 </div>
+                <div>
+                  <Label>Max Emails to Send per Day</Label>
+                  <Input type="number" max={200} className="mt-2" value={String(sequencePrefs.dailySendLimit)} onChange={(e) => setSequencePrefs((p) => ({ ...p, dailySendLimit: Math.min(200, Math.max(1, Number(e.target.value) || 1)) }))} />
+                  {sequencePrefs.dailySendLimit > 100 && <p className="text-sm text-amber-700 mt-1">Warning: daily limits above 100 can impact deliverability.</p>}
+                </div>
                 <div className="border rounded-lg p-4 flex items-center justify-between">
                   <div><Label>Unsubscribe Footer</Label><p className="text-sm text-muted-foreground">Include one-click unsubscribe footer in outreach emails.</p></div>
                   <Switch checked={emailPrefs.includeUnsubscribeFooter} onCheckedChange={(checked) => setEmailPrefs((p) => ({ ...p, includeUnsubscribeFooter: checked }))} />
                 </div>
                 <Button onClick={saveEmail} disabled={saveEmailLoading}><Save className="mr-2 h-4 w-4" />{saveEmailLoading ? "Saving..." : "Save Email Preferences"}</Button>
+                <Accordion type="single" collapsible className="rounded-lg border px-4">
+                  <AccordionItem value="advanced-outreach" className="border-b-0">
+                    <AccordionTrigger className="py-3">Advanced Outreach Defaults</AccordionTrigger>
+                    <AccordionContent className="space-y-4 pb-4">
+                      <p className="text-sm text-muted-foreground">
+                        Control default timing and limits for outreach sequences.
+                      </p>
+                      <div className="grid md:grid-cols-2 gap-3">
+                        <div><Label>Default Follow-up Interval (days)</Label><Input type="number" className="mt-1" value={String(sequencePrefs.followUpIntervalDays)} onChange={(e) => setSequencePrefs((p) => ({ ...p, followUpIntervalDays: Math.max(1, Number(e.target.value) || 1) }))} /></div>
+                        <div><Label>Max Follow-ups per Contact</Label><Input type="number" className="mt-1" value={String(sequencePrefs.maxFollowUpsPerContact)} onChange={(e) => setSequencePrefs((p) => ({ ...p, maxFollowUpsPerContact: Math.max(1, Number(e.target.value) || 1) }))} /></div>
+                      </div>
+                      <div className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center justify-between"><div><Label>Auto-pause on Reply</Label><p className="text-sm text-muted-foreground">Pause when contact replies.</p></div><Switch checked={sequencePrefs.autoPauseOnReply} onCheckedChange={(checked) => setSequencePrefs((p) => ({ ...p, autoPauseOnReply: checked }))} /></div>
+                        <div className="flex items-center justify-between"><div><Label>Auto-pause on OOO Detection</Label><p className="text-sm text-muted-foreground">Pause when out-of-office replies are detected.</p></div><Switch checked={sequencePrefs.autoPauseOnOoo} onCheckedChange={(checked) => setSequencePrefs((p) => ({ ...p, autoPauseOnOoo: checked }))} /></div>
+                      </div>
+                      <div className="border rounded-lg p-4 space-y-3">
+                        <h3 className="font-medium">Sending Window</h3>
+                        <div className="grid md:grid-cols-2 gap-3">
+                          <div><Label>Start Time</Label><Input type="time" className="mt-1" value={sequencePrefs.sendingWindowStart} onChange={(e) => setSequencePrefs((p) => ({ ...p, sendingWindowStart: e.target.value }))} /></div>
+                          <div><Label>End Time</Label><Input type="time" className="mt-1" value={sequencePrefs.sendingWindowEnd} onChange={(e) => setSequencePrefs((p) => ({ ...p, sendingWindowEnd: e.target.value }))} /></div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                          {DAYS.map((day) => (
+                            <label key={day.value} className="border rounded-md px-2 py-2 text-sm flex items-center gap-2">
+                              <Checkbox checked={sequencePrefs.sendingDays.includes(day.value)} onCheckedChange={(checked: boolean | "indeterminate") => setSequencePrefs((p) => ({ ...p, sendingDays: checked === true ? Array.from(new Set([...p.sendingDays, day.value])) : p.sendingDays.filter((d) => d !== day.value) }))} />
+                              {day.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="border rounded-lg p-4 space-y-2">
+                        <h3 className="font-medium">Blackout Dates</h3>
+                        <div className="flex gap-2">
+                          <Input placeholder="YYYY-MM-DD" value={blackoutInput} onChange={(e) => setBlackoutInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addBlackout(); } }} />
+                          <Button type="button" variant="outline" onClick={addBlackout}>Add</Button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {sequencePrefs.blackoutDates.length === 0 && <p className="text-sm text-muted-foreground">No blackout dates added.</p>}
+                          {sequencePrefs.blackoutDates.map((date) => (
+                            <Badge key={date} variant="outline" className="gap-2 pr-1">{date}<button type="button" className="px-1 rounded hover:bg-muted text-xs" onClick={() => setSequencePrefs((p) => ({ ...p, blackoutDates: p.blackoutDates.filter((d) => d !== date) }))}>x</button></Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <Button onClick={saveSequences} disabled={saveSequenceLoading}><Save className="mr-2 h-4 w-4" />{saveSequenceLoading ? "Saving..." : "Save Outreach Defaults"}</Button>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </CardContent>
             </Card>
-          </TabsContent>
-          <TabsContent value="sequences">
-            <Card>
-              <CardHeader><CardTitle>Sequence Defaults</CardTitle><CardDescription>Set sequence behavior</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-3">
-                  <div><Label>Default Follow-up Interval (days)</Label><Input type="number" className="mt-1" value={String(sequencePrefs.followUpIntervalDays)} onChange={(e) => setSequencePrefs((p) => ({ ...p, followUpIntervalDays: Math.max(1, Number(e.target.value) || 1) }))} /></div>
-                  <div><Label>Max Follow-ups per Contact</Label><Input type="number" className="mt-1" value={String(sequencePrefs.maxFollowUpsPerContact)} onChange={(e) => setSequencePrefs((p) => ({ ...p, maxFollowUpsPerContact: Math.max(1, Number(e.target.value) || 1) }))} /></div>
-                </div>
-                <div className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between"><div><Label>Auto-pause on Reply</Label><p className="text-sm text-muted-foreground">Pause when contact replies.</p></div><Switch checked={sequencePrefs.autoPauseOnReply} onCheckedChange={(checked) => setSequencePrefs((p) => ({ ...p, autoPauseOnReply: checked }))} /></div>
-                  <div className="flex items-center justify-between"><div><Label>Auto-pause on OOO Detection</Label><p className="text-sm text-muted-foreground">Pause when out-of-office replies are detected.</p></div><Switch checked={sequencePrefs.autoPauseOnOoo} onCheckedChange={(checked) => setSequencePrefs((p) => ({ ...p, autoPauseOnOoo: checked }))} /></div>
-                </div>
-                <div>
-                  <Label>Daily Send Limit</Label>
-                  <Input type="number" max={200} className="mt-1" value={String(sequencePrefs.dailySendLimit)} onChange={(e) => setSequencePrefs((p) => ({ ...p, dailySendLimit: Math.min(200, Math.max(1, Number(e.target.value) || 1)) }))} />
-                  {sequencePrefs.dailySendLimit > 100 && <p className="text-sm text-amber-700 mt-1">Warning: daily limits above 100 can impact deliverability.</p>}
-                </div>
-                <div className="border rounded-lg p-4 space-y-3">
-                  <h3 className="font-medium">Sending Window</h3>
-                  <div className="grid md:grid-cols-2 gap-3">
-                    <div><Label>Start Time</Label><Input type="time" className="mt-1" value={sequencePrefs.sendingWindowStart} onChange={(e) => setSequencePrefs((p) => ({ ...p, sendingWindowStart: e.target.value }))} /></div>
-                    <div><Label>End Time</Label><Input type="time" className="mt-1" value={sequencePrefs.sendingWindowEnd} onChange={(e) => setSequencePrefs((p) => ({ ...p, sendingWindowEnd: e.target.value }))} /></div>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-                    {DAYS.map((day) => (
-                      <label key={day.value} className="border rounded-md px-2 py-2 text-sm flex items-center gap-2">
-                        <Checkbox checked={sequencePrefs.sendingDays.includes(day.value)} onCheckedChange={(checked: boolean | "indeterminate") => setSequencePrefs((p) => ({ ...p, sendingDays: checked === true ? Array.from(new Set([...p.sendingDays, day.value])) : p.sendingDays.filter((d) => d !== day.value) }))} />
-                        {day.label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div className="border rounded-lg p-4 space-y-2">
-                  <h3 className="font-medium">Blackout Dates</h3>
-                  <div className="flex gap-2">
-                    <Input placeholder="YYYY-MM-DD" value={blackoutInput} onChange={(e) => setBlackoutInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addBlackout(); } }} />
-                    <Button type="button" variant="outline" onClick={addBlackout}>Add</Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {sequencePrefs.blackoutDates.length === 0 && <p className="text-sm text-muted-foreground">No blackout dates added.</p>}
-                    {sequencePrefs.blackoutDates.map((date) => (
-                      <Badge key={date} variant="outline" className="gap-2 pr-1">{date}<button type="button" className="px-1 rounded hover:bg-muted text-xs" onClick={() => setSequencePrefs((p) => ({ ...p, blackoutDates: p.blackoutDates.filter((d) => d !== date) }))}>x</button></Badge>
-                    ))}
-                  </div>
-                </div>
-                <Button onClick={saveSequences} disabled={saveSequenceLoading}><Save className="mr-2 h-4 w-4" />{saveSequenceLoading ? "Saving..." : "Save Sequence Preferences"}</Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
+            )}
 
-          <TabsContent value="notifications">
+            {activeSection === "privacy" && (
             <Card>
-              <CardHeader><CardTitle>Notification Preferences</CardTitle><CardDescription>Control alerts and channels</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="border rounded-lg p-4 space-y-3">
-                  <h3 className="font-medium">Email Notifications</h3>
-                  {notificationRows.email.map((row) => (
-                    <div className="flex items-center justify-between" key={row.key}>
-                      <Label>{row.label}</Label>
-                      <Switch checked={notificationPrefs.email[row.key]} onCheckedChange={(checked) => setNotificationPrefs((p) => ({ ...p, email: { ...p.email, [row.key]: checked } }))} />
-                    </div>
-                  ))}
-                </div>
-                <div className="border rounded-lg p-4 space-y-3">
-                  <h3 className="font-medium">In-App Notifications</h3>
-                  {notificationRows.inApp.map((row) => (
-                    <div className="flex items-center justify-between" key={row.key}>
-                      <Label>{row.label}</Label>
-                      <Switch checked={notificationPrefs.inApp[row.key]} onCheckedChange={(checked) => setNotificationPrefs((p) => ({ ...p, inApp: { ...p.inApp, [row.key]: checked } }))} />
-                    </div>
-                  ))}
-                </div>
-                <div className="border rounded-lg p-4 flex items-center justify-between">
-                  <div><h3 className="font-medium">Weekly Digest</h3><p className="text-sm text-muted-foreground">Weekly performance summary (email only)</p></div>
-                  <Switch checked={notificationPrefs.weeklyDigest.weeklyPerformanceSummary} onCheckedChange={(checked) => setNotificationPrefs((p) => ({ ...p, weeklyDigest: { weeklyPerformanceSummary: checked } }))} />
-                </div>
-                <Button onClick={saveNotifications} disabled={saveNotificationLoading}><Save className="mr-2 h-4 w-4" />{saveNotificationLoading ? "Saving..." : "Save Notification Preferences"}</Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="privacy">
-            <Card>
-              <CardHeader><CardTitle>Data & Privacy</CardTitle><CardDescription>Security and account controls</CardDescription></CardHeader>
+              <CardHeader><CardTitle>Privacy & Security</CardTitle><CardDescription>Manage security settings, data controls, and account protection.</CardDescription></CardHeader>
               <CardContent className="space-y-6">
-                <div><h3 className="font-medium mb-2">Export Data</h3><p className="text-sm text-muted-foreground mb-2">Download all your data from Ellyn.</p><Button variant="outline">Export All Data</Button></div>
-                <div className="border rounded-lg p-4 space-y-3">
-                  <h3 className="font-medium">Data Retention</h3>
-                  <Select value={privacyPrefs.retention} onValueChange={(value) => setPrivacyPrefs((p) => ({ ...p, retention: value as PrivacyPreferences["retention"] }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="6_months">Keep data for 6 months</SelectItem>
-                      <SelectItem value="1_year">Keep data for 1 year</SelectItem>
-                      <SelectItem value="2_years">Keep data for 2 years</SelectItem>
-                      <SelectItem value="forever">Keep data forever</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="border rounded-lg p-4 flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-medium">Two-Factor Authentication</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Add a second verification step to protect your account.</p>
+                  </div>
+                  <Button variant="outline" asChild>
+                    <Link href="/dashboard/settings/security/2fa">Set up</Link>
+                  </Button>
                 </div>
+                <div><h3 className="font-medium mb-2">Export Data</h3><p className="text-sm text-muted-foreground mb-2">Download all your data from Ellyn.</p><Button variant="outline">Export All Data</Button></div>
+                <Accordion type="single" collapsible className="rounded-lg border px-4">
+                  <AccordionItem value="privacy-advanced" className="border-b-0">
+                    <AccordionTrigger className="py-3">Advanced</AccordionTrigger>
+                    <AccordionContent className="space-y-3 pb-4">
+                      <h3 className="font-medium">Data Retention</h3>
+                      <Select value={privacyPrefs.retention} onValueChange={(value) => setPrivacyPrefs((p) => ({ ...p, retention: value as PrivacyPreferences["retention"] }))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="6_months">Keep data for 6 months</SelectItem>
+                          <SelectItem value="1_year">Keep data for 1 year</SelectItem>
+                          <SelectItem value="2_years">Keep data for 2 years</SelectItem>
+                          <SelectItem value="forever">Keep data forever</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
                 <div className="border rounded-lg p-4 flex items-start justify-between gap-4">
                   <div><Label>Allow Ellyn to use anonymised data to improve AI suggestions</Label><p className="text-sm text-muted-foreground mt-1">Helps improve quality while removing personally identifiable details.</p></div>
                   <Switch checked={privacyPrefs.allowAnonymizedAi} onCheckedChange={(checked) => setPrivacyPrefs((p) => ({ ...p, allowAnonymizedAi: checked }))} />
@@ -952,55 +875,26 @@ export default function SettingsPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            )}
 
-          <TabsContent value="api">
-            <Card>
-              <CardHeader><CardTitle>API Access</CardTitle><CardDescription>Manage API key and usage</CardDescription></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="border rounded-lg p-4 space-y-3">
-                  <Label>Your API Key</Label>
-                  {apiLoading ? <Skeleton className="h-10 w-full" /> : (
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Input readOnly value={showApiKey ? apiKey : maskApiKey(apiKey)} className="font-mono" />
-                      <Button type="button" variant="outline" onClick={() => setShowApiKey((prev) => !prev)}>{showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}{showApiKey ? "Hide" : "Reveal"}</Button>
-                      <Button type="button" variant="outline" onClick={async () => { await navigator.clipboard.writeText(apiKey); toast({ title: "Copied", description: "API key copied to clipboard." }); }}><Copy className="h-4 w-4" />Copy</Button>
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button variant="outline" onClick={() => setApiDialogOpen(true)}><RefreshCw className="h-4 w-4" />Regenerate API Key</Button>
-                  <a href="https://docs.ellyn.app/api" target="_blank" rel="noreferrer" className="inline-flex items-center text-sm text-primary hover:underline">API Documentation<ExternalLink className="h-3.5 w-3.5 ml-1" /></a>
-                </div>
-                <div className="rounded-lg border p-4 flex items-center justify-between text-sm"><span className="text-muted-foreground">API Usage This Month</span><span className="font-medium">{apiUsage.used} / {apiUsage.limit}</span></div>
-                <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">Default rate limits apply per workspace and API key.</div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="integrations">
-            <Card>
-              <CardHeader><CardTitle>Integrations</CardTitle><CardDescription>Connect your tools</CardDescription></CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-lg border p-4 space-y-2">
-                  <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-red-100 text-red-700 font-semibold flex items-center justify-center">G</div><div><p className="font-medium">Gmail</p><p className="text-sm text-muted-foreground">Connect Gmail for send and reply sync.</p></div></div>{integrations.gmail_connected ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Connected</Badge> : <Badge variant="outline">Not Connected</Badge>}</div>
-                  {integrations.gmail_connected ? <Button variant="outline" onClick={() => void saveIntegrations({ ...integrations, gmail_connected: false }, "Gmail disconnected.")}>Disconnect</Button> : <Button asChild><Link href="/api/v1/auth/gmail">Connect Gmail</Link></Button>}
-                </div>
-                <div className="rounded-lg border p-4 space-y-2">
-                  <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-blue-100 text-blue-700 font-semibold flex items-center justify-center">O</div><div><p className="font-medium">Outlook / Microsoft 365</p><p className="text-sm text-muted-foreground">Connect Outlook for send and scheduling.</p></div></div>{integrations.outlook_connected ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Connected</Badge> : <Badge variant="outline">Not Connected</Badge>}</div>
-                  {integrations.outlook_connected ? <Button variant="outline" onClick={() => void saveIntegrations({ ...integrations, outlook_connected: false }, "Outlook disconnected.")}>Disconnect</Button> : <Button asChild><Link href="/api/v1/auth/outlook">Connect Outlook</Link></Button>}
-                </div>
-                <div className="rounded-lg border p-4 space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-slate-100 text-slate-700 font-semibold flex items-center justify-center">L</div><div><p className="font-medium">LinkedIn</p><p className="text-sm text-muted-foreground">Sync LinkedIn activity.</p></div></div><Badge variant="secondary">Coming Soon</Badge></div><Button variant="outline" disabled>Coming Soon</Button></div>
-                <div className="rounded-lg border p-4 space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-violet-100 text-violet-700 font-semibold flex items-center justify-center">S</div><div><p className="font-medium">Slack</p><p className="text-sm text-muted-foreground">Get in-app alerts in Slack.</p></div></div><Badge variant="secondary">Coming Soon</Badge></div><Button variant="outline" disabled>Coming Soon</Button></div>
-                <div className="rounded-lg border p-4 space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-orange-100 text-orange-700 font-semibold flex items-center justify-center">Z</div><div><p className="font-medium">Zapier</p><p className="text-sm text-muted-foreground">Trigger workflows in 5000+ apps.</p></div></div><Badge variant="outline">Available</Badge></div><Button variant="outline" asChild><a href="https://zapier.com/apps/ellyn" target="_blank" rel="noreferrer">Open Zapier<ExternalLink className="h-3.5 w-3.5" /></a></Button></div>
-                <div className="rounded-lg border p-4 space-y-2">
-                  <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-emerald-100 text-emerald-700 font-semibold flex items-center justify-center">C</div><div><p className="font-medium">Chrome Extension</p><p className="text-sm text-muted-foreground">Link extension to your account.</p></div></div>{integrations.extension_linked ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Linked</Badge> : <Badge variant="outline">Not Linked</Badge>}</div>
-                  {integrations.extension_linked ? <p className="text-sm text-muted-foreground">Extension linked successfully.</p> : <div className="space-y-2"><Button variant="outline" onClick={async () => { await navigator.clipboard.writeText(extensionCode(userId, email)); toast({ title: "Extension code copied", description: "Paste this in the extension to link your account." }); }}>Link Extension</Button><p className="text-xs text-muted-foreground">Link code: {extensionCode(userId, email)}</p></div>}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+            {activeSection === "integrations" && (
+              <Card>
+                <CardHeader><CardTitle>Integrations</CardTitle><CardDescription>Connect your mailbox and external tools used in your outreach workflow.</CardDescription></CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-lg border p-4 space-y-2">
+                    <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-red-100 text-red-700 font-semibold flex items-center justify-center">G</div><div><p className="font-medium">Gmail</p><p className="text-sm text-muted-foreground">Connect Gmail for send and reply sync.</p></div></div>{integrations.gmail_connected ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Connected</Badge> : <Badge variant="outline">Not Connected</Badge>}</div>
+                    {integrations.gmail_connected ? <Button variant="outline" onClick={() => void saveIntegrations({ ...integrations, gmail_connected: false }, "Gmail disconnected.")}>Disconnect</Button> : <Button asChild><Link href="/api/v1/auth/gmail">Connect Gmail</Link></Button>}
+                  </div>
+                  <div className="rounded-lg border p-4 space-y-2">
+                    <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-blue-100 text-blue-700 font-semibold flex items-center justify-center">O</div><div><p className="font-medium">Outlook / Microsoft 365</p><p className="text-sm text-muted-foreground">Connect Outlook for send and scheduling.</p></div></div>{integrations.outlook_connected ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Connected</Badge> : <Badge variant="outline">Not Connected</Badge>}</div>
+                    {integrations.outlook_connected ? <Button variant="outline" onClick={() => void saveIntegrations({ ...integrations, outlook_connected: false }, "Outlook disconnected.")}>Disconnect</Button> : <Button asChild><Link href="/api/v1/auth/outlook">Connect Outlook</Link></Button>}
+                  </div>
+                  <div className="rounded-lg border p-4 space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-orange-100 text-orange-700 font-semibold flex items-center justify-center">Z</div><div><p className="font-medium">Zapier</p><p className="text-sm text-muted-foreground">Automation integration for workflows.</p></div></div><Badge variant="secondary">Coming Soon</Badge></div><Button variant="outline" disabled>Coming Soon</Button></div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </div>
       </div>
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
@@ -1013,15 +907,6 @@ export default function SettingsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={apiDialogOpen} onOpenChange={setApiDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Regenerate API Key?</DialogTitle><DialogDescription>Your old API key will stop working immediately.</DialogDescription></DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setApiDialogOpen(false)} disabled={regeneratingApiKey}>Cancel</Button>
-            <Button onClick={regenerateKey} disabled={regeneratingApiKey}>{regeneratingApiKey ? "Regenerating..." : "Regenerate"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </DashboardShell>
   );
 }

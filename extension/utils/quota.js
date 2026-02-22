@@ -20,8 +20,8 @@ class QuotaManager {
       const response = await this.request('/api/v1/quota/check', { method: 'POST' });
 
       if (response.status === 429) {
-        const resetDate = response.payload?.resetDate || null;
-        const remaining = Number(response.payload?.remaining || 0);
+        const resetDate = this.getPayloadValue(response.payload, 'resetDate') || null;
+        const remaining = Number(this.getPayloadValue(response.payload, 'remaining') || 0);
         return {
           allowed: false,
           remaining,
@@ -51,10 +51,13 @@ class QuotaManager {
         };
       }
 
+      this.statusCache = null;
+      this.statusCacheAt = 0;
+
       return {
-        allowed: Boolean(response.payload?.allowed),
-        remaining: this.toMaybeNumber(response.payload?.remaining),
-        resetDate: response.payload?.resetDate || null,
+        allowed: Boolean(this.getPayloadValue(response.payload, 'allowed')),
+        remaining: this.toMaybeNumber(this.getPayloadValue(response.payload, 'remaining')),
+        resetDate: this.getPayloadValue(response.payload, 'resetDate') || null,
       };
     } catch (error) {
       this.log('canPerformLookup error, allowing as fallback', this.serializeError(error));
@@ -105,13 +108,13 @@ class QuotaManager {
 
       const status = {
         allowed:
-          Number.isFinite(Number(response.payload?.remaining)) &&
-          Number(response.payload?.remaining) > 0,
-        used: this.toMaybeNumber(response.payload?.used),
-        limit: this.toMaybeNumber(response.payload?.limit),
-        remaining: this.toMaybeNumber(response.payload?.remaining),
-        resetDate: response.payload?.resetDate || null,
-        planType: response.payload?.planType || null,
+          Number.isFinite(Number(this.getPayloadValue(response.payload, 'remaining'))) &&
+          Number(this.getPayloadValue(response.payload, 'remaining')) > 0,
+        used: this.toMaybeNumber(this.getPayloadValue(response.payload, 'used')),
+        limit: this.toMaybeNumber(this.getPayloadValue(response.payload, 'limit')),
+        remaining: this.toMaybeNumber(this.getPayloadValue(response.payload, 'remaining')),
+        resetDate: this.getPayloadValue(response.payload, 'resetDate') || null,
+        planType: this.getPayloadValue(response.payload, 'planType') || null,
       };
 
       this.statusCache = status;
@@ -212,6 +215,19 @@ class QuotaManager {
   toMaybeNumber(value) {
     const num = Number(value);
     return Number.isFinite(num) ? num : null;
+  }
+
+  getPayloadValue(payload, key) {
+    if (payload && typeof payload === 'object' && Object.prototype.hasOwnProperty.call(payload, key)) {
+      return payload[key];
+    }
+
+    const nested = payload?.data;
+    if (nested && typeof nested === 'object' && Object.prototype.hasOwnProperty.call(nested, key)) {
+      return nested[key];
+    }
+
+    return null;
   }
 
   serializeError(error) {
