@@ -801,6 +801,14 @@ function normalizeProfileResponseData(response, fallbackUrl = "") {
   } else if (data?.role && typeof data.role === "object" && data.role.title) {
     role = String(data.role.title).trim();
   }
+
+  if (!company && role) {
+    const fromRoleMatch = role.match(/\b(?:at|@)\s+([^|,\n\u00B7\u2022]+?)(?:\s*(?:\||,|\u00B7|\u2022|$))/i);
+    if (fromRoleMatch?.[1]) {
+      company = normalizeInline(fromRoleMatch[1]);
+    }
+  }
+
   const profileUrl = String(normalized.profileUrl || data?.profileUrl || fallbackUrl || "").trim();
   const companyPageUrl = String(
     normalized.companyPageUrl ||
@@ -986,6 +994,33 @@ function deriveCompanyFromEmail(email) {
     .replace(/[_-]+/g, " ");
   const displayName = toDisplayCase(companyToken);
   return displayName || "Unknown Company";
+}
+
+function normalizeLinkedInUrlForApi(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  let candidate = raw;
+  if (/^\/in\//i.test(candidate)) {
+    candidate = `https://www.linkedin.com${candidate}`;
+  } else if (!/^https?:\/\//i.test(candidate) && /^www\.linkedin\.com\//i.test(candidate)) {
+    candidate = `https://${candidate}`;
+  }
+
+  try {
+    const parsed = new URL(candidate);
+    if (!/linkedin\.com$/i.test(parsed.hostname) && !/\.linkedin\.com$/i.test(parsed.hostname)) {
+      return "";
+    }
+    return parsed.toString();
+  } catch {
+    return "";
+  }
+}
+
+function hasUsableProfileIdentity(response, fallbackUrl = "") {
+  const normalized = normalizeProfileResponseData(response, fallbackUrl);
+  return Boolean(normalized.fullName && normalized.company);
 }
 
 function getProfileContextGateStatus() {
@@ -1553,12 +1588,34 @@ async function syncPendingContactsQuietly() {
 async function markSavedRowSynced(savedRow, backendId = "synced") {
   const existing = await storageGet([SAVED_CONTACTS_KEY]);
   const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
-  const idx = list.findIndex(
-    (entry) => entry.email === savedRow.email && entry.createdAt === savedRow.createdAt
-  );
+  const localId = String(savedRow?.localId || "").trim();
+  let idx = -1;
+
+  if (localId) {
+    idx = list.findIndex((entry) => String(entry?.localId || "") === localId);
+  }
+
+  if (idx === -1) {
+    idx = list.findIndex(
+      (entry) => entry.email === savedRow.email && entry.createdAt === savedRow.createdAt
+    );
+  }
+
+  if (idx === -1) {
+    idx = list.findIndex(
+      (entry) => entry.email === savedRow.email && !entry?.backendId
+    );
+  }
+
   if (idx !== -1) {
     list[idx] = { ...list[idx], backendId };
     await storageSet({ [SAVED_CONTACTS_KEY]: list });
+  } else {
+    console.warn("[Sidepanel] markSavedRowSynced: unable to locate row", {
+      email: savedRow?.email,
+      createdAt: savedRow?.createdAt,
+      localId,
+    });
   }
 }
 
@@ -1612,7 +1669,9 @@ async function syncContactToBackend(savedRow, profileContext) {
       "Unknown Company"
     );
     const role = pickFirstNonEmpty(ctx.role, savedRow.role);
-    const linkedinUrl = pickFirstNonEmpty(ctx.profileUrl, savedRow.profileUrl);
+    const linkedinUrl = normalizeLinkedInUrlForApi(
+      pickFirstNonEmpty(ctx.profileUrl, savedRow.profileUrl)
+    );
     const inferredEmail = pickFirstNonEmpty(savedRow.email);
 
     const body = {
@@ -1630,11 +1689,33 @@ async function syncContactToBackend(savedRow, profileContext) {
       if (body[k] === undefined) delete body[k];
     });
 
-    let response = await postContactToBackendPath(apiBaseUrl, "/api/contacts", body, authToken);
+    const postContact = async (payload) => {
+      let res = await postContactToBackendPath(apiBaseUrl, "/api/contacts", payload, authToken);
 
-    // Some deployments only expose the versioned route. Retry there before failing.
-    if (!response.ok && (response.status === 404 || response.status === 405)) {
-      response = await postContactToBackendPath(apiBaseUrl, "/api/v1/contacts", body, authToken);
+      // Some deployments only expose the versioned route. Retry there before failing.
+      if (!res.ok && (res.status === 404 || res.status === 405)) {
+        res = await postContactToBackendPath(apiBaseUrl, "/api/v1/contacts", payload, authToken);
+      }
+
+      return res;
+    };
+
+    let response = await postContact(body);
+
+    if (response.status === 400) {
+      // Retry once with only required + safest fields when optional validation fails.
+      const minimalBody = {
+        firstName,
+        lastName,
+        company,
+        inferredEmail: inferredEmail || undefined,
+        source: "extension",
+      };
+      Object.keys(minimalBody).forEach((k) => {
+        if (minimalBody[k] === undefined) delete minimalBody[k];
+      });
+
+      response = await postContact(minimalBody);
     }
 
     if (response.status === 401) {
@@ -1700,7 +1781,9 @@ async function saveCurrentResultToContacts() {
   const context = emailFinderState.profileContext || {};
   const splitName = splitHumanName(pickFirstNonEmpty(context.fullName));
   const nowIso = new Date().toISOString();
+  const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const savedRow = {
+    localId,
     email: String(result.email),
     pattern: String(result.pattern || ""),
     confidence: toConfidencePercent(result.confidence),
@@ -2094,9 +2177,11 @@ function isMissingReceiverError(error) {
 }
 
 async function requestProfileExtraction(tabId, debug = false) {
+  let directResponse = null;
+
   try {
-    const directResponse = await sendTabMessage(tabId, { type: "EXTRACT_PROFILE", debug });
-    if (directResponse) {
+    directResponse = await sendTabMessage(tabId, { type: "EXTRACT_PROFILE", debug });
+    if (directResponse && hasUsableProfileIdentity(directResponse)) {
       return directResponse;
     }
   } catch (error) {
@@ -2105,12 +2190,18 @@ async function requestProfileExtraction(tabId, debug = false) {
     }
   }
 
-  return sendRuntimeMessage({
+  const runtimeResponse = await sendRuntimeMessage({
     type: "EXTRACT_PROFILE_FROM_TAB",
     tabId,
     debug,
     data: { tabId, debug },
   });
+
+  if (runtimeResponse && hasUsableProfileIdentity(runtimeResponse)) {
+    return runtimeResponse;
+  }
+
+  return runtimeResponse || directResponse;
 }
 
 function sendTabMessage(tabId, message) {

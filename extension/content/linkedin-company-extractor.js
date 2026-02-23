@@ -73,39 +73,82 @@ class LinkedInCompanyExtractor {
    * @returns {{companyName: string, companyPageUrl: string|null, extractionMethod: string, confidence: number, isCurrent: boolean}|null}
    */
   extractFromExperienceSection(companyName = '') {
+    // GROUPED_EXPERIENCE_FIX
     const experienceSection = this.getExperienceSection();
     if (!experienceSection) {
       this.log('Experience section not found');
       return null;
     }
 
-    const links = Array.from(experienceSection.querySelectorAll('a[href*="/company/"]'));
-    if (links.length === 0) {
-      this.log('No company links found in experience section');
+    const entries = Array.from(
+      experienceSection.querySelectorAll(
+        [
+          'li.pvs-list__paged-list-item',
+          'li[class*="pvs-list__item"]',
+          'div[class*="pvs-entity"]',
+        ].join(', ')
+      )
+    );
+    if (entries.length === 0) {
+      this.log('No experience entries found while extracting company from experience section');
       return null;
     }
 
     const candidates = [];
-    for (const link of links) {
-      const companyPageUrl = this.normalizeLinkedInCompanyUrl(link.getAttribute('href'));
+    for (let i = 0; i < entries.length; i += 1) {
+      const entry = entries[i];
+
+      let isGrouped = false;
+      try {
+        isGrouped = Boolean(entry.querySelector(':scope > div ul, :scope ul.pvs-list'));
+      } catch {
+        isGrouped = Boolean(entry.querySelector('ul.pvs-list') || entry.querySelector('ul'));
+      }
+
+      const isCurrent = this.isCurrentPosition(entry);
+      this.log('GROUPED_EXPERIENCE_FIX: evaluating company entry in experience', {
+        index: i,
+        isGrouped,
+        isCurrent,
+      });
+
+      if (isGrouped && !isCurrent) {
+        this.log('GROUPED_EXPERIENCE_FIX: skipping grouped parent without current child', { index: i });
+        continue;
+      }
+
+      const parentCompanyLink =
+        entry.querySelector(':scope > div a[href*="/company/"]') ||
+        entry.querySelector(':scope > a[href*="/company/"]') ||
+        entry.querySelector('a[data-field="experience_company_logo"]') ||
+        entry.querySelector('a[href*="/company/"]');
+
+      const companyPageUrl = this.normalizeLinkedInCompanyUrl(parentCompanyLink?.getAttribute('href'));
       if (!companyPageUrl) continue;
 
-      const extractedName = this.cleanText(link.textContent || '');
+      const extractedName = this.stripEmploymentSuffix(
+        this.cleanText(
+          parentCompanyLink?.querySelector('span[aria-hidden="true"]')?.textContent ||
+            parentCompanyLink?.textContent ||
+            ''
+        )
+      );
       const slug = this.getCompanySlugFromUrl(companyPageUrl);
       const matchScore = this.getCompanyMatchScore(companyName, `${extractedName} ${slug}`.trim());
-      const isCurrent = this.isCurrentPosition(link);
-      const score = (isCurrent ? 4 : 2) + matchScore;
+      const score = (isCurrent ? (isGrouped ? 5 : 4) : 2) + matchScore;
 
       candidates.push({
         companyPageUrl,
         extractedName,
         isCurrent,
+        isGrouped,
         matchScore,
         score,
       });
     }
 
     if (candidates.length === 0) {
+      this.log('No experience company candidates after grouped/current filtering');
       return null;
     }
 
@@ -160,7 +203,7 @@ class LinkedInCompanyExtractor {
     for (const link of links) {
       const companyPageUrl = this.normalizeLinkedInCompanyUrl(link.getAttribute('href'));
       if (!companyPageUrl) continue;
-      const extractedName = this.cleanText(link.textContent || '');
+      const extractedName = this.stripEmploymentSuffix(this.cleanText(link.textContent || ''));
       const slug = this.getCompanySlugFromUrl(companyPageUrl);
       const matchScore = this.getCompanyMatchScore(companyName, `${extractedName} ${slug}`.trim());
       candidates.push({
@@ -223,7 +266,7 @@ class LinkedInCompanyExtractor {
     }
 
     const companyPageUrl = this.normalizeLinkedInCompanyUrl(link.getAttribute('href'));
-    const extractedName = this.cleanText(link.textContent || '');
+    const extractedName = this.stripEmploymentSuffix(this.cleanText(link.textContent || ''));
     const slug = this.getCompanySlugFromUrl(companyPageUrl);
     const matchScore = this.getCompanyMatchScore(companyName, `${extractedName} ${slug}`.trim());
     if (String(companyName || '').trim() && matchScore < 2) {
@@ -252,12 +295,28 @@ class LinkedInCompanyExtractor {
    * @returns {boolean}
    */
   isCurrentPosition(element) {
+    // GROUPED_EXPERIENCE_FIX
     try {
       if (!element || !(element instanceof Element)) return false;
+      // For grouped structures, check if ANY nested child has "Present"
       const entity = element.closest('.pvs-entity') || element.closest('li');
       if (!entity) return false;
-      const text = this.cleanText(entity.textContent || '').toLowerCase();
-      return text.includes('present') || text.includes('current');
+
+      // If this is a parent company node, look at child date ranges only
+      const nestedList = entity.querySelector('ul.pvs-list, :scope > div ul');
+      if (nestedList) {
+        const groupedCurrent = Array.from(nestedList.querySelectorAll('li')).some((child) =>
+          /present/i.test(child.textContent || '')
+        );
+        this.log('GROUPED_EXPERIENCE_FIX: grouped current-position check', {
+          groupedCurrent,
+        });
+        return groupedCurrent;
+      }
+
+      // Standard check for single-role entries
+      const text = this.cleanText(entity.textContent || '');
+      return /present|current/i.test(text);
     } catch (error) {
       this.log('Failed to determine current position flag', { error: error?.message || String(error) });
       return false;
@@ -309,6 +368,21 @@ class LinkedInCompanyExtractor {
       .replace(/\u00a0/g, ' ')
       .replace(/\u200B/g, '')
       .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  stripEmploymentSuffix(text) {
+    // GROUPED_EXPERIENCE_FIX
+    return String(text || '')
+      .replace(
+        /[\u00B7\u2022·•]\s*(Full[- ]?time|Part[- ]?time|Contract|Freelance|Internship|Apprenticeship|Seasonal|Volunteer|On-?site|Remote|Hybrid)\b.*$/gi,
+        ''
+      )
+      .replace(
+        /\b(Full[- ]?time|Part[- ]?time|Contract|Freelance|Internship|Apprenticeship|Seasonal|Volunteer|On-?site|Remote|Hybrid)\b.*$/gi,
+        ''
+      )
+      .replace(/\s{2,}/g, ' ')
       .trim();
   }
 
