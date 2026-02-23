@@ -642,6 +642,128 @@
 
       .session-expired-signin-btn:hover { opacity: 0.85; }
 
+      /* SUBTLE_CORRECTION_UI */
+
+      .correction-trigger-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 10px;
+      }
+
+      .correction-trigger-link {
+        background: none;
+        border: none;
+        padding: 0;
+        font-size: 11px;
+        color: #94a3b8;
+        cursor: pointer;
+        text-decoration: underline;
+        text-decoration-style: dotted;
+        text-underline-offset: 2px;
+        transition: color 0.15s ease;
+        line-height: 1.5;
+      }
+
+      .correction-trigger-link:hover {
+        color: #64748b;
+      }
+
+      .correction-panel {
+        margin-top: 10px;
+        padding: 12px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        animation: correctionFadeIn 0.18s ease;
+      }
+
+      @keyframes correctionFadeIn {
+        from { opacity: 0; transform: translateY(-4px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      .correction-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 10px;
+      }
+
+      .correction-row {
+        margin-bottom: 8px;
+      }
+
+      .correction-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .correction-select {
+        width: 100%;
+        height: 32px;
+        font-size: 12px;
+        padding: 0 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #334155;
+        outline: none;
+        cursor: pointer;
+      }
+
+      .correction-select:focus {
+        border-color: #7c3aed;
+        box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+      }
+
+      .correction-input {
+        width: 100%;
+        height: 32px;
+        font-size: 12px;
+        padding: 0 8px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #ffffff;
+        color: #334155;
+        outline: none;
+        box-sizing: border-box;
+      }
+
+      .correction-input:focus {
+        border-color: #7c3aed;
+        box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+      }
+
+      .correction-input::placeholder {
+        color: #94a3b8;
+      }
+
+      .correction-action-row {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .correction-confirm-btn {
+        height: 30px;
+        padding: 0 14px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #ffffff;
+        background: #7c3aed;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s ease, opacity 0.15s ease;
+      }
+
+      .correction-confirm-btn:hover:not(:disabled) {
+        background: #6d28d9;
+      }
+
+      .correction-confirm-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
       /* ── Dashboard footer nav ───────────────────────────── */
       .dash-footer {
         position: fixed;
@@ -950,13 +1072,65 @@
                 <ul id="alternativesList" class="alternatives-list"></ul>
               </details>
 
+              <!-- SUBTLE_CORRECTION_UI: replaces old Yes/No feedback buttons -->
               <div id="feedbackSection" class="feedback-section">
-                <p class="feedback-prompt">Did this email work?</p>
-                <div class="feedback-buttons">
-                  <button id="feedbackYesBtn" type="button" class="feedback-btn yes">✓ Yes</button>
-                  <button id="feedbackNoBtn" type="button" class="feedback-btn no">✗ No</button>
+
+                <!-- Layer 1: always visible quiet link -->
+                <div class="correction-trigger-row">
+                  <button
+                    id="correctionTriggerBtn"
+                    type="button"
+                    class="correction-trigger-link"
+                    aria-expanded="false"
+                    aria-controls="correctionPanel"
+                  >
+                    Not the right email?
+                  </button>
                 </div>
+
+                <!-- Layer 2: expandable correction panel (hidden by default) -->
+                <div
+                  id="correctionPanel"
+                  class="correction-panel hidden"
+                  role="region"
+                  aria-label="Update email address"
+                >
+                  <p class="correction-label">Update the email for this contact</p>
+
+                  <!-- Alternatives dropdown (only shown if alternatives exist) -->
+                  <div id="correctionAlternativesRow" class="correction-row hidden">
+                    <select id="correctionAlternativesSelect" class="correction-select">
+                      <option value="">Choose from found alternatives...</option>
+                    </select>
+                  </div>
+
+                  <!-- Manual input row -->
+                  <div class="correction-row">
+                    <input
+                      id="correctionManualInput"
+                      type="email"
+                      class="correction-input"
+                      placeholder="Or enter email manually"
+                      autocomplete="off"
+                      spellcheck="false"
+                    />
+                  </div>
+
+                  <!-- Confirm button -->
+                  <div class="correction-row correction-action-row">
+                    <button
+                      id="correctionConfirmBtn"
+                      type="button"
+                      class="correction-confirm-btn"
+                      disabled
+                    >
+                      Use this email →
+                    </button>
+                  </div>
+                </div>
+
               </div>
+              <!-- END SUBTLE_CORRECTION_UI -->
             </div>
 
             <div id="errorState" class="hidden mt-4 error-state rounded-xl border border-red-200 bg-red-50 p-4">

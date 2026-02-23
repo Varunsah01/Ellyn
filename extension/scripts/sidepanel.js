@@ -79,8 +79,12 @@ resultEmail: null,
   alternativesSummary: null,
   alternativesList: null,
   feedbackSection: null,
-  feedbackYesBtn: null,
-  feedbackNoBtn: null,
+  correctionTriggerBtn: null,
+  correctionPanel: null,
+  correctionAlternativesRow: null,
+  correctionAlternativesSelect: null,
+  correctionManualInput: null,
+  correctionConfirmBtn: null,
   quotaBar: null,
   quotaCount: null,
   quotaFill: null,
@@ -285,8 +289,12 @@ elements.resultEmail = document.getElementById("resultEmail");
   elements.alternativesSummary = document.getElementById("alternativesSummary");
   elements.alternativesList = document.getElementById("alternativesList");
   elements.feedbackSection = document.getElementById("feedbackSection");
-  elements.feedbackYesBtn = document.getElementById("feedbackYesBtn");
-  elements.feedbackNoBtn = document.getElementById("feedbackNoBtn");
+  elements.correctionTriggerBtn = document.getElementById("correctionTriggerBtn");
+  elements.correctionPanel = document.getElementById("correctionPanel");
+  elements.correctionAlternativesRow = document.getElementById("correctionAlternativesRow");
+  elements.correctionAlternativesSelect = document.getElementById("correctionAlternativesSelect");
+  elements.correctionManualInput = document.getElementById("correctionManualInput");
+  elements.correctionConfirmBtn = document.getElementById("correctionConfirmBtn");
 
   elements.quotaBar = document.getElementById("quotaBar");
   elements.quotaCount = document.getElementById("quotaCount");
@@ -372,8 +380,6 @@ function bindEvents() {
   elements.retryBtn?.addEventListener("click", findEmail);
   elements.copyEmailBtn?.addEventListener("click", () => copyCurrentEmail());
   elements.saveToContactsBtn?.addEventListener("click", saveCurrentResultToContacts);
-  elements.feedbackYesBtn?.addEventListener("click", () => submitFeedback(true));
-  elements.feedbackNoBtn?.addEventListener("click", () => submitFeedback(false));
   elements.upgradeButton?.addEventListener("click", () => {
     const url = emailFinderState.upgradeUrl || PRICING_URL;
     chrome.tabs.create({ url });
@@ -497,6 +503,8 @@ function bindEvents() {
     console.log("[Sidepanel] Draft sent via Gmail:", e.detail);
     // The draft view and gmail-action-button handle storage and toast internally
   });
+
+  initCorrectionUI();
 }
 
 function bindRuntimeListeners() {
@@ -1382,6 +1390,24 @@ function displayResults(data) {
   // A new email was found — invalidate the draft view's contact key so it
   // re-renders with the correct email the next time the user switches to it.
   _dvLastContactKey = "";
+
+  // SUBTLE_CORRECTION_UI: Reset correction panel state for new result
+  if (elements.correctionPanel) {
+    elements.correctionPanel.classList.add("hidden");
+  }
+  if (elements.correctionTriggerBtn) {
+    elements.correctionTriggerBtn.setAttribute("aria-expanded", "false");
+    elements.correctionTriggerBtn.textContent = "Not the right email?";
+  }
+  if (elements.correctionManualInput) {
+    elements.correctionManualInput.value = "";
+  }
+  if (elements.correctionAlternativesSelect) {
+    elements.correctionAlternativesSelect.value = "";
+  }
+  if (elements.correctionConfirmBtn) {
+    elements.correctionConfirmBtn.disabled = true;
+  }
 }
 
 function renderAlternatives(items) {
@@ -1871,6 +1897,218 @@ async function submitFeedback(worked) {
     console.warn("[Sidepanel] Feedback submission failed, queued locally:", error);
     showToast("Feedback queued offline.", "info");
     elements.feedbackSection?.classList.add("hidden");
+  }
+}
+
+/**
+ * SUBTLE_CORRECTION_UI
+ * Initializes the inline email correction interaction.
+ * Called once from bindEvents().
+ */
+function initCorrectionUI() {
+  const {
+    correctionTriggerBtn,
+    correctionPanel,
+    correctionAlternativesRow,
+    correctionAlternativesSelect,
+    correctionManualInput,
+    correctionConfirmBtn,
+  } = elements;
+
+  if (!correctionTriggerBtn || !correctionPanel) return;
+
+  // ── Toggle panel open/close ──────────────────────────────────────────────
+  correctionTriggerBtn.addEventListener("click", () => {
+    const isExpanded = correctionPanel.classList.contains("hidden") === false;
+
+    if (isExpanded) {
+      correctionPanel.classList.add("hidden");
+      correctionTriggerBtn.setAttribute("aria-expanded", "false");
+      correctionTriggerBtn.textContent = "Not the right email?";
+    } else {
+      correctionPanel.classList.remove("hidden");
+      correctionTriggerBtn.setAttribute("aria-expanded", "true");
+      correctionTriggerBtn.textContent = "Cancel";
+
+      populateCorrectionAlternatives();
+
+      setTimeout(() => correctionManualInput?.focus(), 120);
+    }
+  });
+
+  // ── Enable confirm button when either field has a value ──────────────────
+  const updateConfirmState = () => {
+    const hasManual = String(correctionManualInput?.value || "").trim().length > 3;
+    const hasDropdown =
+      correctionAlternativesSelect?.value &&
+      correctionAlternativesSelect.value !== "";
+
+    if (correctionConfirmBtn) {
+      correctionConfirmBtn.disabled = !hasManual && !hasDropdown;
+    }
+  };
+
+  correctionManualInput?.addEventListener("input", () => {
+    if (correctionAlternativesSelect && correctionManualInput.value.length > 0) {
+      correctionAlternativesSelect.value = "";
+    }
+    updateConfirmState();
+  });
+
+  correctionAlternativesSelect?.addEventListener("change", () => {
+    if (correctionManualInput) {
+      correctionManualInput.value = "";
+    }
+    updateConfirmState();
+  });
+
+  // ── Confirm handler ──────────────────────────────────────────────────────
+  correctionConfirmBtn?.addEventListener("click", async () => {
+    const manualVal = String(correctionManualInput?.value || "").trim();
+    const dropdownVal = String(correctionAlternativesSelect?.value || "").trim();
+
+    const newEmail = manualVal || dropdownVal;
+    if (!newEmail) return;
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(newEmail)) {
+      showToast("Please enter a valid email address.", "error");
+      return;
+    }
+
+    const previousEmail = String(emailFinderState.currentResult?.email || "");
+
+    // 1. Update the displayed email in the result card
+    if (elements.resultEmail) {
+      elements.resultEmail.textContent = newEmail;
+    }
+
+    // 2. Update state
+    if (emailFinderState.currentResult) {
+      emailFinderState.currentResult.email = newEmail;
+    }
+
+    // 3. Invalidate draft so it re-generates with the correct email
+    _dvLastContactKey = "";
+
+    // 4. Submit correction feedback (fire-and-forget)
+    void submitCorrectionFeedback(previousEmail, newEmail);
+
+    // 5. Quiet success toast
+    showToast("Email updated.", "success");
+
+    // 6. Collapse the correction panel
+    correctionPanel.classList.add("hidden");
+    if (correctionTriggerBtn) {
+      correctionTriggerBtn.setAttribute("aria-expanded", "false");
+      correctionTriggerBtn.textContent = "Not the right email?";
+    }
+
+    // 7. Clear input fields
+    if (correctionManualInput) correctionManualInput.value = "";
+    if (correctionAlternativesSelect) correctionAlternativesSelect.value = "";
+    if (correctionConfirmBtn) correctionConfirmBtn.disabled = true;
+  });
+}
+
+/**
+ * SUBTLE_CORRECTION_UI
+ * Populates the alternatives dropdown with emails from the current result.
+ */
+function populateCorrectionAlternatives() {
+  const { correctionAlternativesRow, correctionAlternativesSelect } = elements;
+  if (!correctionAlternativesSelect) return;
+
+  const alternatives = Array.isArray(emailFinderState.currentResult?.alternativeEmails)
+    ? emailFinderState.currentResult.alternativeEmails
+    : [];
+
+  const currentEmail = String(emailFinderState.currentResult?.email || "").toLowerCase();
+  const filtered = alternatives.filter(
+    (alt) => String(alt?.email || "").toLowerCase() !== currentEmail
+  );
+
+  if (filtered.length === 0) {
+    correctionAlternativesRow?.classList.add("hidden");
+    return;
+  }
+
+  correctionAlternativesRow?.classList.remove("hidden");
+
+  correctionAlternativesSelect.innerHTML =
+    '<option value="">Choose from found alternatives...</option>';
+
+  filtered.forEach((alt) => {
+    const email = String(alt?.email || "");
+    const pct = Math.round((alt?.confidence || 0) * 100);
+    if (!email) return;
+    const option = document.createElement("option");
+    option.value = email;
+    option.textContent = pct > 0 ? `${email} (${pct}%)` : email;
+    correctionAlternativesSelect.appendChild(option);
+  });
+}
+
+/**
+ * SUBTLE_CORRECTION_UI
+ * Sends a correction event to the backend. Fire-and-forget, never blocks UI.
+ *
+ * @param {string} originalEmail  - The email we found
+ * @param {string} correctedEmail - The email the user confirmed is correct
+ */
+async function submitCorrectionFeedback(originalEmail, correctedEmail) {
+  const result = emailFinderState.currentResult;
+  if (!result?.pattern) return;
+
+  const companyDomain = String(originalEmail).split("@")[1] || "";
+  if (!companyDomain) return;
+
+  const token = await getAuthToken();
+  const payload = {
+    email: String(originalEmail),
+    correctedEmail: String(correctedEmail),
+    pattern: String(result.pattern),
+    companyDomain,
+    worked: false,
+    source: "inline_correction",
+  };
+
+  try {
+    const { apiBaseUrl } = await resolveBaseUrls();
+    const headers = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    let response = await fetchWithTimeout(`${apiBaseUrl}/api/v1/email-feedback`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok && (response.status === 404 || response.status === 405)) {
+      response = await fetchWithTimeout(`${apiBaseUrl}/api/v1/pattern-feedback`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+    }
+
+    if (!response.ok) {
+      const queued = await storageGet([FEEDBACK_QUEUE_KEY]);
+      const queue = Array.isArray(queued?.[FEEDBACK_QUEUE_KEY])
+        ? queued[FEEDBACK_QUEUE_KEY] : [];
+      queue.push({ ...payload, queuedAt: new Date().toISOString() });
+      await storageSet({ [FEEDBACK_QUEUE_KEY]: queue.slice(0, 50) });
+    }
+  } catch {
+    try {
+      const queued = await storageGet([FEEDBACK_QUEUE_KEY]);
+      const queue = Array.isArray(queued?.[FEEDBACK_QUEUE_KEY])
+        ? queued[FEEDBACK_QUEUE_KEY] : [];
+      queue.push({ ...payload, queuedAt: new Date().toISOString() });
+      await storageSet({ [FEEDBACK_QUEUE_KEY]: queue.slice(0, 50) });
+    } catch { /* silently ignore */ }
   }
 }
 

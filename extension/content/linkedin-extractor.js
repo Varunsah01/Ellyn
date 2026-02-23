@@ -53,6 +53,7 @@ const CONFIDENCE = {
     jsonLd: 0.62,
     topCard: 0.84,
     headline: 0.9,
+    ogDescription: 0.91, // OG_DESC_PARSE_v1 - og:description structured parse
     experience: 0.88,
     notFound: 0,
   },
@@ -60,6 +61,7 @@ const CONFIDENCE = {
     jsonLd: 0.7,
     topCard: 0.75,
     headline: 0.7,
+    ogDescription: 0.88, // OG_DESC_PARSE_v1 - og:description structured parse
     experience: 0.92,
     notFound: 0,
   },
@@ -67,6 +69,7 @@ const CONFIDENCE = {
     jsonLd: 0.95,
     dom: 0.8,
     openGraph: 0.65,
+    ogDescription: 0.8, // OG_DESC_PARSE_v1 - og:description last-segment parse
     notFound: 0,
   },
 };
@@ -76,6 +79,7 @@ class LinkedInExtractor {
     this.extractionLog = [];
     this._jsonLdNodes = null;
     this._jsonLdNodeScriptCount = 0;
+    this._ogDataCache = null; // OG_DESC_PARSE_v1
     this._lastExtractedProfile = null;
     this._profileUrl = null;
     this.verboseLogging = Boolean(verboseLogging);
@@ -190,6 +194,7 @@ class LinkedInExtractor {
 
   async extractProfile() {
     const currentUrl = window.location.href;
+    this._ogDataCache = null; // OG_DESC_PARSE_v1
 
     // Invalidate instance caches if the profile URL has changed
     // (LinkedIn SPA navigation without full page reload)
@@ -200,6 +205,7 @@ class LinkedInExtractor {
       });
       this._jsonLdNodes = null;
       this._jsonLdNodeScriptCount = 0;
+      this._ogDataCache = null; // OG_DESC_PARSE_v1
       this._lastExtractedProfile = null;
     }
     this._profileUrl = currentUrl;
@@ -604,6 +610,11 @@ class LinkedInExtractor {
   }
 
   extractFromOpenGraph() {
+    // OG_DESC_PARSE_v1
+    // Return cached result if already parsed in this extraction run
+    if (this._ogDataCache !== null) {
+      return this._ogDataCache;
+    }
     this.log('Attempting Open Graph extraction');
 
     const ogTitle = this.cleanText(
@@ -622,29 +633,103 @@ class LinkedInExtractor {
       return null;
     }
 
-    this.log('Found Open Graph title', { ogTitle });
+    this.log('Found Open Graph data', { ogTitle, ogDescriptionPreview: ogDescription.slice(0, 120) });
 
+    // OG_DESC_PARSE_v1
+    // Parse name from og:title
+    // Format: "John Doe - Software Engineer | LinkedIn"
+    // or:     "John Doe | LinkedIn"
     const titleWithoutLinkedIn = ogTitle.replace(/\s*\|\s*LinkedIn.*$/i, '').trim();
-    const parts = titleWithoutLinkedIn.split(' - ');
-    if (parts.length === 0) {
-      this.log('Could not parse Open Graph title');
-      return null;
+    const titleParts = titleWithoutLinkedIn.split(' - ');
+    const fullName = this.cleanNameCandidate(titleParts[0]) || null;
+    const titleHeadline = titleParts.length > 1
+      ? this.cleanText(titleParts.slice(1).join(' - '))
+      : '';
+
+    // OG_DESC_PARSE_v1
+    // Parse og:description for structured fields
+    // LinkedIn format: "Name · Role at Company · Industry · N connections · Location"
+    let ogCompany = null;
+    let ogRole = null;
+    let ogLocation = null;
+    let ogDescParseMethod = 'none';
+
+    if (ogDescription) {
+      // OG_DESC_STRUCTURED_PARSE - do not remove this tag
+      // OG_DESC_PARSE_v1
+      const MIDDOT = '\u00B7';
+      const segments = ogDescription
+        .split(MIDDOT)
+        .map((s) => this.cleanText(s))
+        .filter(Boolean);
+
+      this.log('og:description segments', { count: segments.length, segments });
+
+      // Segment 0 is name (already from title)
+      // Segment 1 is typically "Role at Company" or a role-only headline
+      if (segments.length >= 2) {
+        const roleAtCompany = segments[1];
+        const atMatch = roleAtCompany.match(/^(.+?)\s+at\s+(.+)$/i);
+
+        if (atMatch) {
+          const rawRole = this.stripEmploymentSuffix(this.cleanText(atMatch[1]));
+          const rawCompany = this.stripEmploymentSuffix(this.cleanCompanyCandidate(atMatch[2]));
+
+          if (rawRole && this.isLikelyRole(rawRole)) {
+            ogRole = rawRole;
+            ogDescParseMethod = 'role-at-company';
+          }
+          if (rawCompany && this.isLikelyCompany(rawCompany)) {
+            ogCompany = rawCompany;
+            ogDescParseMethod = 'role-at-company';
+          }
+          this.log('og:description "Role at Company" parse', { rawRole, rawCompany, ogRole, ogCompany });
+        } else {
+          const cleaned = this.stripEmploymentSuffix(this.cleanText(roleAtCompany));
+          if (cleaned && this.isLikelyRole(cleaned)) {
+            ogRole = cleaned;
+            ogDescParseMethod = 'role-only';
+          }
+          this.log('og:description role-only parse', { ogRole });
+        }
+      }
+
+      // OG_DESC_PARSE_v1
+      // Parse location from the last location-like segment
+      for (let i = segments.length - 1; i >= 2; i -= 1) {
+        const seg = segments[i];
+        if (/^\d|followers|connections|link/i.test(seg)) continue;
+        if (seg.length < 3 || seg.length > 60) continue;
+
+        if (
+          /,/.test(seg) ||
+          /\b(india|usa|uk|us|canada|australia|germany|france|london|delhi|mumbai|bangalore|new york|san francisco|berlin)\b/i.test(seg)
+        ) {
+          ogLocation = seg;
+          break;
+        }
+      }
+
+      this.log('og:description structured parse result', {
+        ogCompany,
+        ogRole,
+        ogLocation,
+        parseMethod: ogDescParseMethod,
+      });
     }
 
-    const fullName = this.cleanNameCandidate(parts[0]);
-    const headline = parts.length > 1 ? this.cleanText(parts.slice(1).join(' - ')) : '';
-
-    this.log('Open Graph parsed', {
-      fullName,
-      headline,
-      ogDescriptionPreview: ogDescription.slice(0, 100),
-    });
-
-    return {
+    // OG_DESC_PARSE_v1
+    const result = {
       fullName: fullName || null,
-      headline: headline || null,
+      headline: titleHeadline || null,
       description: ogDescription || null,
+      ogCompany: ogCompany || null,
+      ogRole: ogRole || null,
+      ogLocation: ogLocation || null,
+      ogDescParseMethod,
     };
+    this._ogDataCache = result;
+    return result;
   }
 
   extractFromDom() {
@@ -755,6 +840,15 @@ class LinkedInExtractor {
       addCandidate(headlineCompany, 'headline', CONFIDENCE.company.headline);
     } else {
       this.log('Headline did not return a valid company');
+    }
+
+    // OG_DESC_PARSE_v1
+    this.log('TIER 1b: Attempting og:description structured parse');
+    const ogData = this.extractFromOpenGraph();
+    if (ogData?.ogCompany) {
+      addCandidate(ogData.ogCompany, 'og-description', CONFIDENCE.company.ogDescription);
+    } else {
+      this.log('og:description did not return a valid company');
     }
 
     this.log('TIER 2: Attempting top-card extraction');
@@ -1303,6 +1397,18 @@ class LinkedInExtractor {
         title: jsonLd.headline,
         source: 'json-ld',
         confidence: CONFIDENCE.role.jsonLd,
+      };
+    }
+
+    // OG_DESC_PARSE_v1
+    this.log('Extracting role - attempting og:description structured parse');
+    const ogDataForRole = this.extractFromOpenGraph();
+    if (ogDataForRole?.ogRole && this.isLikelyRole(ogDataForRole.ogRole)) {
+      this.log('Role extracted from og:description', { role: ogDataForRole.ogRole });
+      return {
+        title: ogDataForRole.ogRole,
+        source: 'og-description',
+        confidence: CONFIDENCE.role.ogDescription,
       };
     }
 
@@ -2101,6 +2207,7 @@ class LinkedInExtractor {
   scoreCompanyCandidate(name, source) {
     const base = {
       headline: 1.0,
+      'og-description': 0.97, // OG_DESC_PARSE_v1
       'experience-current': 0.95,
       'top-card': 0.84,
       'json-ld': 0.62,

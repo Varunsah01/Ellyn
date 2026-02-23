@@ -485,6 +485,7 @@ function normalizeExtractorPayload(extracted) {
 
   const education = extracted?.education || null;
   const profileType = extracted?.profileType || null;
+  const companySource = String(extracted?.company?.source || '').trim();
 
   const normalized = {
     firstName,
@@ -496,6 +497,12 @@ function normalizeExtractorPayload(extracted) {
     profileUrl,
     education,
     profileType,
+    // VOYAGER_TRACKING - preserve source metadata for transparency
+    _extractionSources: {
+      company: companySource || 'unknown',
+      name: String(extracted?.name?.source || '').trim() || 'unknown',
+      role: String(extracted?.role?.source || '').trim() || 'unknown',
+    },
   };
 
   console.log('[Background] Normalized payload:', normalized);
@@ -1014,6 +1021,123 @@ async function extractProfileReadOnlyFromPage(tabId) {
   });
 
   return injection?.result || null;
+}
+
+/**
+ * Calls LinkedIn's Voyager internal API from the context of a LinkedIn tab
+ * to get authoritative profile data (name, company, role).
+ *
+ * VOYAGER_CONFIDENCE_GATE - only call this when DOM extraction confidence
+ * is below threshold. Calling it on every lookup would increase ToS exposure.
+ *
+ * @param {number} tabId
+ * @returns {Promise<{fullName: string, company: string, role: string} | null>}
+ */
+async function fetchVoyagerForTab(tabId) {
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        return new Promise(async (resolve) => {
+          try {
+            const identityMatch = window.location.pathname.match(/\/in\/([^/?#]+)/i);
+            if (!identityMatch?.[1]) {
+              resolve(null);
+              return;
+            }
+
+            const memberIdentity = decodeURIComponent(identityMatch[1]);
+            const tokenMatch = document.cookie.match(/(?:^|;\s*)JSESSIONID="?([^\";\s]+)"?/);
+            const csrfToken = tokenMatch?.[1] ? tokenMatch[1].replace(/^"|"$/g, '') : '';
+
+            const headers = {
+              accept: 'application/json',
+              'x-restli-protocol-version': '2.0.0',
+            };
+            if (csrfToken) headers['csrf-token'] = csrfToken;
+
+            const clean = (v) =>
+              String(v || '')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            const extractCompanyFromPositions = (payload) => {
+              const positions = payload?.positionView?.elements || payload?.data?.positionView?.elements || [];
+              const current =
+                positions.find((p) => !p.timePeriod?.endDate && (p.companyName || p.company?.name)) ||
+                positions[0];
+              if (current) {
+                return clean(current.companyName || current.company?.name || '');
+              }
+
+              const included = Array.isArray(payload?.included) ? payload.included : [];
+              const profilePositionEntry = included.find(
+                (item) =>
+                  item?.$type?.includes('ProfilePosition') || item?.entityUrn?.includes('profilePosition')
+              );
+              if (profilePositionEntry) {
+                return clean(profilePositionEntry.companyName || profilePositionEntry.company?.name || '');
+              }
+              return '';
+            };
+
+            const extractRoleFromPositions = (payload) => {
+              const positions = payload?.positionView?.elements || payload?.data?.positionView?.elements || [];
+              const current = positions.find((p) => !p.timePeriod?.endDate) || positions[0];
+              if (current?.title) return clean(current.title);
+
+              const included = Array.isArray(payload?.included) ? payload.included : [];
+              const posEntry = included.find(
+                (item) =>
+                  item?.$type?.includes('ProfilePosition') || item?.entityUrn?.includes('profilePosition')
+              );
+              return clean(posEntry?.title || '');
+            };
+
+            const endpoints = [
+              `https://www.linkedin.com/voyager/api/identity/profileView/${encodeURIComponent(memberIdentity)}`,
+              `https://www.linkedin.com/voyager/api/identity/dash/profiles?q=memberIdentity&memberIdentity=${encodeURIComponent(memberIdentity)}&decorationId=com.linkedin.voyager.dash.deco.identity.profile.FullProfileWithEntities-35`,
+            ];
+
+            for (const endpoint of endpoints) {
+              try {
+                const resp = await fetch(endpoint, {
+                  method: 'GET',
+                  credentials: 'include',
+                  headers,
+                });
+                if (!resp.ok) continue;
+                const payload = await resp.json();
+
+                const profile = payload?.profile || payload?.data?.profile || payload;
+                const firstName = clean(profile?.firstName || '');
+                const lastName = clean(profile?.lastName || '');
+                const fullName = firstName && lastName ? `${firstName} ${lastName}` : clean(profile?.name || '');
+
+                const company = extractCompanyFromPositions(payload);
+                const role = extractRoleFromPositions(payload);
+
+                if (fullName || company) {
+                  resolve({ fullName, company, role });
+                  return;
+                }
+              } catch {
+                // Try next endpoint
+              }
+            }
+            resolve(null);
+          } catch {
+            resolve(null);
+          }
+        });
+      },
+    });
+
+    return result?.result || null;
+  } catch (error) {
+    console.warn('[Extension] Voyager fetch failed:', error?.message || String(error));
+    return null;
+  }
 }
 
 async function requestProfileExtraction(tabId, options = {}) {
@@ -2131,6 +2255,82 @@ async function extractProfileFromTab(tabId) {
     } else if (primaryError && !extractorResponse) {
       throw new Error(primaryError?.message || 'Failed to extract LinkedIn profile data');
     }
+  }
+
+  // VOYAGER_CONFIDENCE_GATE - check if company confidence is below threshold
+  // If so, use Voyager to get authoritative structured company data.
+  // Only fires when DOM/OG extraction is uncertain (confidence < 0.85).
+  // This avoids unnecessary Voyager calls on high-confidence extractions.
+  const VOYAGER_COMPANY_CONFIDENCE_THRESHOLD = 0.85; // VOYAGER_CONFIDENCE_GATE
+  const companyConfidence = Number(extractorResponse?.data?.company?.confidence || 0);
+  const companyName = String(normalized?.company || '').trim();
+
+  const shouldCallVoyager =
+    companyConfidence < VOYAGER_COMPANY_CONFIDENCE_THRESHOLD ||
+    !companyName;
+
+  if (shouldCallVoyager) {
+    console.log('[Extension] Company confidence below threshold - calling Voyager', {
+      companyConfidence,
+      companyName: companyName || '(empty)',
+      threshold: VOYAGER_COMPANY_CONFIDENCE_THRESHOLD,
+    });
+
+    try {
+      const voyagerData = await withTimeout(
+        fetchVoyagerForTab(tabId),
+        4000,
+        'Voyager confidence-gate fetch'
+      );
+
+      if (voyagerData) {
+        console.log('[Extension] Voyager returned data', {
+          fullName: voyagerData.fullName,
+          company: voyagerData.company,
+          role: voyagerData.role,
+        });
+
+        // Only overwrite company if Voyager returned something non-empty
+        // and the result looks more authoritative than what we have.
+        if (voyagerData.company && voyagerData.company !== normalized.company) {
+          console.log('[Extension] Voyager overwriting company:', {
+            old: normalized.company,
+            new: voyagerData.company,
+          });
+          normalized.company = voyagerData.company;
+
+          // Patch the underlying extractorResponse.data so the rest of the
+          // pipeline sees the corrected value.
+          if (extractorResponse?.data?.company) {
+            extractorResponse.data.company.name = voyagerData.company;
+            extractorResponse.data.company.source = 'voyager-confidence-gate';
+            extractorResponse.data.company.confidence = 0.97;
+          }
+        }
+
+        // Overwrite role only if we had nothing before
+        if (voyagerData.role && !normalized.role) {
+          normalized.role = voyagerData.role;
+          if (extractorResponse?.data?.role) {
+            extractorResponse.data.role.title = voyagerData.role;
+            extractorResponse.data.role.source = 'voyager-confidence-gate';
+            extractorResponse.data.role.confidence = 0.95;
+          }
+        }
+      } else {
+        console.log('[Extension] Voyager returned null - using DOM extraction result');
+      }
+    } catch (voyagerError) {
+      // Voyager is non-critical. Log and continue with DOM result.
+      console.warn('[Extension] Voyager confidence-gate failed (non-fatal):', {
+        error: voyagerError?.message || String(voyagerError),
+      });
+    }
+  } else {
+    console.log('[Extension] Company confidence sufficient - skipping Voyager', {
+      companyConfidence,
+      companyName,
+    });
   }
 
   if (!extractorResponse?.success || !extractorResponse?.data) {
