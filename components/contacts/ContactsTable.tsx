@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DataTable } from "@/components/dashboard/DataTable";
 import { ColumnDef } from "@tanstack/react-table";
@@ -16,6 +17,13 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/Avatar";
 import { Checkbox } from "@/components/ui/Checkbox";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/Dialog";
+import {
   MoreHorizontal,
   Mail,
   KanbanSquare,
@@ -31,6 +39,12 @@ import { EmptyContacts } from "@/components/EmptyState";
 import { showToast } from "@/lib/toast";
 import { ListSkeleton } from "@/components/ui/Skeleton";
 import { useContacts, type Contact as ApiContact } from "@/lib/hooks/useContacts";
+import {
+  EditContactModal,
+  type EditableTrackerContact,
+  type EditContactPayload,
+} from "@/components/tracker/EditContactModal";
+import { supabaseAuthedFetch } from "@/lib/auth/client-fetch";
 import {
   buildTrackerContactHref,
   saveTrackerDeepLinkContact,
@@ -71,6 +85,13 @@ function toLocalContact(api: ApiContact): Contact {
   };
 }
 
+function splitFullName(name: string): { firstName: string; lastName: string } {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0] ?? "", lastName: "" };
+  return { firstName: parts[0] ?? "", lastName: parts.slice(1).join(" ") };
+}
+
 const statusColors = {
   new: "bg-blue-500/10 text-blue-500 border-blue-500/20",
   contacted: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
@@ -109,6 +130,12 @@ export function ContactsTable({ search = "", status = "", source = "" }: Contact
   const router = useRouter();
   const { contacts: apiContacts, loading, error, refresh } = useContacts({ search, status, source });
   const contacts = apiContacts.map(toLocalContact);
+  const [editContact, setEditContact] = useState<Contact | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [isEditSaving, setIsEditSaving] = useState(false);
+  const [deleteContact, setDeleteContact] = useState<Contact | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   if (loading) {
     return <ListSkeleton count={5} />;
@@ -140,6 +167,82 @@ export function ContactsTable({ search = "", status = "", source = "" }: Contact
       status: contact.status,
     });
     router.push(buildTrackerContactHref(contact.id, { source: "contacts" }));
+  };
+
+  const toEditableTrackerContact = (
+    contact: Contact | null
+  ): EditableTrackerContact | null => {
+    if (!contact) return null;
+    const { firstName, lastName } = splitFullName(contact.name);
+    return {
+      id: contact.id,
+      full_name: contact.name,
+      first_name: firstName || null,
+      last_name: lastName || null,
+      role: contact.role || null,
+      company: contact.company || null,
+      inferred_email: contact.email || null,
+      linkedin_url: contact.linkedinUrl || null,
+      notes: null,
+    };
+  };
+
+  const handleEditSave = async (payload: EditContactPayload) => {
+    if (!editContact) return;
+
+    setIsEditSaving(true);
+    try {
+      const res = await supabaseAuthedFetch(`/api/v1/contacts/${editContact.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          company: payload.company,
+          role: payload.role ?? undefined,
+          confirmedEmail: payload.confirmedEmail ?? undefined,
+          linkedinUrl: payload.linkedinUrl ?? undefined,
+          notes: payload.notes ?? undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+
+      showToast.success("Contact updated");
+      setEditOpen(false);
+      setEditContact(null);
+      await refresh();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setIsEditSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteContact) return;
+
+    setIsDeleting(true);
+    try {
+      const res = await supabaseAuthedFetch(`/api/v1/contacts/${deleteContact.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "Failed to delete contact");
+      }
+      showToast.success("Contact deleted");
+      setDeleteOpen(false);
+      setDeleteContact(null);
+      await refresh();
+    } catch (err) {
+      showToast.error(err instanceof Error ? err.message : "Failed to delete");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (contacts.length === 0) {
@@ -366,7 +469,8 @@ export function ContactsTable({ search = "", status = "", source = "" }: Contact
               </DropdownMenuItem>
               <DropdownMenuItem onClick={(e) => {
                 e.stopPropagation();
-                showToast.info("Edit contact coming soon");
+                setEditContact(contact);
+                setEditOpen(true);
               }}>
                 <Edit className="mr-2 h-4 w-4" />
                 Edit contact
@@ -375,7 +479,8 @@ export function ContactsTable({ search = "", status = "", source = "" }: Contact
                 className="text-destructive"
                 onClick={(e) => {
                   e.stopPropagation();
-                  showToast.error("Delete functionality coming soon");
+                  setDeleteContact(contact);
+                  setDeleteOpen(true);
                 }}
               >
                 <Trash className="mr-2 h-4 w-4" />
@@ -389,10 +494,60 @@ export function ContactsTable({ search = "", status = "", source = "" }: Contact
   ];
 
   return (
-    <DataTable
-      columns={columns}
-      data={contacts}
-      onRowClick={(contact) => router.push(`/dashboard/contacts/${contact.id}`)}
-    />
+    <>
+      <DataTable
+        columns={columns}
+        data={contacts}
+        onRowClick={(contact) => router.push(`/dashboard/contacts/${contact.id}`)}
+      />
+
+      <EditContactModal
+        open={editOpen}
+        contact={toEditableTrackerContact(editContact)}
+        isSaving={isEditSaving}
+        onOpenChange={(open) => {
+          setEditOpen(open);
+          if (!open) setEditContact(null);
+        }}
+        onSave={(payload) => void handleEditSave(payload)}
+      />
+
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          setDeleteOpen(open);
+          if (!open) setDeleteContact(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Contact</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Are you sure you want to delete{" "}
+            <strong className="text-foreground">
+              {deleteContact?.name ?? "this contact"}
+            </strong>
+            ? This action cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleDelete()}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete Contact"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

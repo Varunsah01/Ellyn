@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,8 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Badge } from "@/components/ui/Badge";
 import { CsrfHiddenInput } from "@/components/CsrfHiddenInput";
 import { X } from "lucide-react";
+import { showToast } from "@/lib/toast";
+import { supabaseAuthedFetch } from "@/lib/auth/client-fetch";
 
 const contactFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -52,6 +55,7 @@ interface AddContactDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   contact?: ContactFormValues & { id: string; tags: string[] };
+  onContactAdded?: () => void;
 }
 
 /**
@@ -65,7 +69,9 @@ export function AddContactDialog({
   open,
   onOpenChange,
   contact,
+  onContactAdded,
 }: AddContactDialogProps) {
+  const router = useRouter();
   const [tags, setTags] = useState<string[]>(contact?.tags || []);
   const [tagInput, setTagInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -87,17 +93,64 @@ export function AddContactDialog({
   const onSubmit = async (data: ContactFormValues) => {
     setIsLoading(true);
     try {
-      // TODO: Save to Supabase
-      console.log("Contact data:", { ...data, tags });
+      const trimmedName = data.name.trim();
+      const [firstNamePart = "", ...lastNameParts] = trimmedName.split(/\s+/);
+      const firstName = firstNamePart || trimmedName;
+      const lastName = lastNameParts.join(" ") || firstName;
+      const statusMap: Record<string, string> = {
+        new: "new",
+        contacted: "contacted",
+        responded: "replied",
+        interested: "replied",
+        not_interested: "no_response",
+      };
+      const sourceMap: Record<string, string> = {
+        LinkedIn: "manual",
+        Referral: "manual",
+        Event: "manual",
+        Email: "manual",
+        Other: "manual",
+      };
+      const status = statusMap[data.status] ?? "new";
+      const source = sourceMap[data.source] ?? "manual";
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await supabaseAuthedFetch("/api/v1/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          company: data.company,
+          role: data.role,
+          status,
+          source,
+          notes: data.notes,
+          linkedinUrl: data.linkedinUrl,
+          tags,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string; details?: Array<{ message?: string }> }
+          | null;
+        const detail = payload?.details?.[0]?.message;
+        const message = detail
+          ? `${payload?.error ?? "Failed to add contact"}: ${detail}`
+          : payload?.error ?? `Request failed with status ${response.status}`;
+        throw new Error(message);
+      }
 
       onOpenChange(false);
       form.reset();
       setTags([]);
+      showToast.success("Contact added");
+      onContactAdded?.();
+      router.refresh();
     } catch (error) {
-      console.error("Error saving contact:", error);
+      showToast.error(
+        error instanceof Error ? error.message : "Failed to add contact"
+      );
     } finally {
       setIsLoading(false);
     }

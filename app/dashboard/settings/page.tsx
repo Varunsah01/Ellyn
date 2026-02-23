@@ -203,6 +203,32 @@ function initials(value: string): string {
   return token || "?";
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function toSignatureEditorHtml(value: string): string {
+  const input = value.trim();
+  if (!input) return "";
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(input);
+  if (looksLikeHtml) return value;
+  return escapeHtml(value).replace(/\n/g, "<br>");
+}
+
+function normalizeSignatureHtml(value: string): string {
+  const collapsed = value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+  return collapsed ? value : "";
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -246,6 +272,7 @@ export default function SettingsPage() {
 
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const sectionCardRef = useRef<HTMLDivElement | null>(null);
+  const signatureEditorRef = useRef<HTMLDivElement | null>(null);
   const sectionInitRef = useRef(false);
   const nameForAvatar = useMemo(
     () => `${firstName} ${lastName}`.trim() || email.split("@")[0] || "Account",
@@ -326,7 +353,7 @@ export default function SettingsPage() {
           password: asString(smtpMeta.password),
           encryption: encryption === "ssl" || encryption === "none" ? (encryption as SmtpEncryption) : "tls",
         },
-        signature: asString(emailMeta.signature),
+        signature: toSignatureEditorHtml(asString(emailMeta.signature)),
         defaultSendTime: asString(emailMeta.defaultSendTime, "09:00"),
         timezone: asString(emailMeta.timezone, "America/New_York"),
         includeUnsubscribeFooter: asBool(emailMeta.includeUnsubscribeFooter, true),
@@ -390,6 +417,41 @@ export default function SettingsPage() {
     }
     sectionCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [activeSection]);
+
+  useEffect(() => {
+    const editor = signatureEditorRef.current;
+    if (!editor) return;
+    const nextHtml = toSignatureEditorHtml(emailPrefs.signature);
+    if (editor.innerHTML !== nextHtml) {
+      editor.innerHTML = nextHtml;
+    }
+  }, [emailPrefs.signature]);
+
+  const syncSignatureFromEditor = useCallback(() => {
+    const editor = signatureEditorRef.current;
+    if (!editor) return;
+    const nextValue = normalizeSignatureHtml(editor.innerHTML);
+    setEmailPrefs((prev) => (prev.signature === nextValue ? prev : { ...prev, signature: nextValue }));
+  }, []);
+
+  const applySignatureFormat = useCallback((command: "bold" | "italic") => {
+    const editor = signatureEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand(command, false);
+    syncSignatureFromEditor();
+  }, [syncSignatureFromEditor]);
+
+  const addSignatureLink = useCallback(() => {
+    const editor = signatureEditorRef.current;
+    if (!editor) return;
+    const rawUrl = window.prompt("Enter link URL");
+    if (!rawUrl) return;
+    const normalizedUrl = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    editor.focus();
+    document.execCommand("createLink", false, normalizedUrl);
+    syncSignatureFromEditor();
+  }, [syncSignatureFromEditor]);
 
   const saveProfile = async () => {
     setSaveProfileLoading(true);
@@ -743,7 +805,33 @@ export default function SettingsPage() {
                     <Button type="button" variant="outline" onClick={testSmtp} disabled={smtpTesting}>{smtpTesting ? "Testing..." : "Test Connection"}</Button>
                   </div>
                 )}
-                <div><Label>Signature (plain text; HTML coming soon)</Label><Textarea className="mt-2 min-h-[100px]" value={emailPrefs.signature} onChange={(e) => setEmailPrefs((p) => ({ ...p, signature: e.target.value }))} /></div>
+                <div className="space-y-2">
+                  <Label>Signature</Label>
+                  <div className="rounded-md border">
+                    <div className="flex flex-wrap items-center gap-2 border-b bg-slate-50 px-2 py-2">
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-2" onClick={() => applySignatureFormat("bold")}>
+                        <span className="font-bold">B</span>
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-2" onClick={() => applySignatureFormat("italic")}>
+                        <span className="italic">I</span>
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="h-8 px-2" onClick={addSignatureLink}>
+                        Link
+                      </Button>
+                    </div>
+                    <div
+                      ref={signatureEditorRef}
+                      className="min-h-[120px] w-full bg-background px-3 py-2 text-sm outline-none"
+                      contentEditable
+                      suppressContentEditableWarning
+                      onInput={syncSignatureFromEditor}
+                      data-placeholder="Write your signature..."
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Signature formatting is saved as HTML and will appear in sent emails.
+                  </p>
+                </div>
                 <div className="grid md:grid-cols-2 gap-3">
                   <div><Label>Default Send Time</Label><Input className="mt-1" type="time" value={emailPrefs.defaultSendTime} onChange={(e) => setEmailPrefs((p) => ({ ...p, defaultSendTime: e.target.value }))} /></div>
                   <div>

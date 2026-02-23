@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useAnalytics";
 import { useSequenceStats } from "@/lib/hooks/useSequences";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { useSubscription } from "@/context/SubscriptionContext";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -53,6 +54,8 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const router = useRouter();
   const { stats } = useDashboardStats();
   const { stats: sequenceStats } = useSequenceStats();
+  const { plan_type } = useSubscription();
+  const isPaidUser = plan_type === "pro";
   const [userFullName, setUserFullName] = useState("Account");
   const [userEmail, setUserEmail] = useState("");
   const [avatarInitials, setAvatarInitials] = useState("?");
@@ -287,13 +290,14 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               </DropdownMenuItem>
             ))}
 
-            {/* TODO: Hide this when the user is already on a paid plan. */}
-            <DropdownMenuItem asChild>
-              <Link href="/dashboard/billing/upgrade" className="cursor-pointer">
-                <Sparkles className="mr-2 h-4 w-4 text-muted-foreground" />
-                Upgrade / Plan
-              </Link>
-            </DropdownMenuItem>
+            {!isPaidUser && (
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/billing/upgrade" className="cursor-pointer">
+                  <Sparkles className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Upgrade / Plan
+                </Link>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem asChild>
               <a
                 href="https://ellyn.app/support"
