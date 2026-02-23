@@ -21,6 +21,8 @@ interface QuickStatsProps {
   recentContacts: Contact[];
   topSequences: TopSequence[];
   loading?: boolean;
+  contactsLoading?: boolean;
+  contactsLive?: boolean;
   onViewAllContacts?: () => void;
   onViewAllSequences?: () => void;
 }
@@ -36,6 +38,8 @@ export function QuickStats({
   recentContacts,
   topSequences,
   loading = false,
+  contactsLoading = false,
+  contactsLive = false,
   onViewAllContacts,
   onViewAllSequences,
 }: QuickStatsProps) {
@@ -45,7 +49,17 @@ export function QuickStats({
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Recent Contacts</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">Recent Contacts</CardTitle>
+              {contactsLive ? (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-200 bg-emerald-50 text-emerald-700"
+                >
+                  Live
+                </Badge>
+              ) : null}
+            </div>
             {onViewAllContacts && (
               <Button variant="ghost" size="sm" onClick={onViewAllContacts} asChild>
                 <Link href="/dashboard/contacts">
@@ -56,7 +70,19 @@ export function QuickStats({
           </div>
         </CardHeader>
         <CardContent>
-          {!loading && recentContacts.length === 0 ? (
+          {contactsLoading ? (
+            <div className="space-y-3 animate-pulse">
+              {[1, 2, 3].map((item) => (
+                <div key={item} className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-full bg-muted" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 w-2/3 rounded bg-muted" />
+                    <div className="h-3 w-1/2 rounded bg-muted" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : recentContacts.length === 0 ? (
             <div className="py-4 text-center">
               <p className="text-sm font-medium text-slate-900">No contacts yet</p>
               <p className="mt-1 text-xs text-muted-foreground">

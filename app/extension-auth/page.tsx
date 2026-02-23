@@ -46,26 +46,16 @@ function ExtensionAuthInner() {
         return;
       }
 
-      // Fetch plan_type for the extension to personalise quota display
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("plan_type")
-        .eq("id", session.user.id)
-        .single();
-      const planType = (profile?.plan_type as string | undefined) ?? "free";
-
-      const payload = {
-        auth_token: session.access_token,
-        user: {
-          id: session.user.id,
-          email: session.user.email ?? "",
-          name:
-            (session.user.user_metadata?.full_name as string | undefined) ??
-            session.user.email ??
-            "",
-        },
-        plan_type: planType,
+      const sessionPayload = {
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
       };
+
+      if (!sessionPayload.access_token || !sessionPayload.refresh_token) {
+        setStatus("error");
+        setErrorMessage("Unable to sync extension session. Please sign in again.");
+        return;
+      }
 
       // chrome.runtime.sendMessage is available to web pages listed in
       // the extension's externally_connectable manifest field.
@@ -91,7 +81,7 @@ function ExtensionAuthInner() {
             callback: (response: unknown) => void
           ) => void)(
             extensionId,
-            { type: "WEBAPP_AUTH_SYNC", payload },
+            { type: "ELLYN_SET_SESSION", session: sessionPayload },
             (response) => {
               const lastError = chromeRuntime.lastError as { message?: string } | undefined;
               if (lastError) {

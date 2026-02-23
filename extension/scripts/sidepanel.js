@@ -9,8 +9,15 @@ const AUTH_STORAGE_KEYS = ["isAuthenticated", "user", "auth_token", AUTH_SOURCE_
 const SAVED_CONTACTS_KEY = "saved_contact_results";
 const FEEDBACK_QUEUE_KEY = "feedback_queue";
 const SYNC_STATUS_KEY = "sync_status";
+const SYNC_QUEUE_KEY = "sync_queue";
 const PROFILE_SYNC_INTERVAL_MS = 2000;
 const PROFILE_CONTEXT_FRESH_MS = 15000;
+const CONTACT_SYNC_STATE = Object.freeze({
+  SYNCED: "synced",
+  QUEUED: "queued",
+  AUTH_FAILED: "auth_failed",
+  FAILED: "failed",
+});
 
 const STAGES = Object.freeze({
   EXTRACTION: "extraction",
@@ -531,11 +538,17 @@ function bindRuntimeListeners() {
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== "local") return;
-    if (changes.isAuthenticated || changes.user || changes.auth_token) {
+    const supabaseSessionChanged = Object.keys(changes).some(
+      (key) => key.startsWith("sb-") && key.endsWith("-auth-token")
+    );
+    if (changes.isAuthenticated || changes.user || changes.auth_token || supabaseSessionChanged) {
       syncAuthStateFromStorage();
     }
-    if (changes[SYNC_STATUS_KEY]) {
+    if (changes[SYNC_STATUS_KEY] || changes[SYNC_QUEUE_KEY]) {
       void renderSyncStatus();
+    }
+    if (changes[SAVED_CONTACTS_KEY] || changes[SYNC_QUEUE_KEY] || changes[SYNC_STATUS_KEY]) {
+      void renderQueueCard();
     }
   });
 }
@@ -556,10 +569,41 @@ function hideLegacyStages() {
   elements.stage3?.classList.add("hidden");
 }
 
+function isSupabaseSessionValue(rawValue) {
+  if (typeof rawValue !== "string" || rawValue.trim().length === 0) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    return typeof parsed?.access_token === "string" && parsed.access_token.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function hasStoredSupabaseSession() {
+  try {
+    const allStorage = await storageGet(null);
+    return Object.entries(allStorage || {}).some(([key, value]) => {
+      if (!key.startsWith("sb-") || !key.endsWith("-auth-token")) {
+        return false;
+      }
+      return isSupabaseSessionValue(value);
+    });
+  } catch {
+    return false;
+  }
+}
+
 async function syncAuthStateFromStorage() {
   const auth = await storageGet(AUTH_STORAGE_KEYS);
-  const authToken = typeof auth?.auth_token === "string" ? auth.auth_token.trim() : "";
-  const isAuthenticated = authToken.length > 0;
+  const hasSupabaseSession = await hasStoredSupabaseSession();
+  let authToken = typeof auth?.auth_token === "string" ? auth.auth_token.trim() : "";
+  if (!authToken && hasSupabaseSession) {
+    authToken = await getAuthToken();
+  }
+  const isAuthenticated = hasSupabaseSession && authToken.length > 0;
 
   emailFinderState.isAuthenticated = isAuthenticated;
   emailFinderState.user = auth?.user || null;
@@ -1506,54 +1550,116 @@ function swapButtonToCheckmark(btn, durationMs = 1500) {
   }, durationMs);
 }
 
-async function setSyncStatus(status) {
+async function setSyncStatus(status, extras = {}) {
+  const stored = await storageGet([SYNC_STATUS_KEY]);
+  const current = stored?.[SYNC_STATUS_KEY] && typeof stored[SYNC_STATUS_KEY] === "object"
+    ? stored[SYNC_STATUS_KEY]
+    : {};
+
   await storageSet({
     [SYNC_STATUS_KEY]: {
+      ...current,
+      ...extras,
       lastSyncStatus: status,
       lastSyncAt: new Date().toISOString(),
     },
   });
 }
 
+function formatSyncRelativeTimestamp(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "";
+
+  const deltaMs = Math.max(0, Date.now() - parsed.getTime());
+  const deltaMinutes = Math.floor(deltaMs / 60000);
+
+  if (deltaMinutes <= 0) return "just now";
+  if (deltaMinutes === 1) return "1 min ago";
+  return `${deltaMinutes} min ago`;
+}
+
 async function renderSyncStatus() {
   if (!elements.syncStatusRow) return;
+  elements.syncStatusRow.classList.remove("hidden");
 
   if (!emailFinderState.isAuthenticated) {
-    // Gray dot — not connected
-    elements.syncStatusRow.classList.remove("hidden");
     if (elements.syncDot) elements.syncDot.dataset.status = "none";
-    if (elements.syncLabel) elements.syncLabel.textContent = "Not connected";
+    if (elements.syncLabel) elements.syncLabel.textContent = "Sign in to sync";
     if (elements.syncActionBtn) {
-      elements.syncActionBtn.textContent = "Connect";
+      elements.syncActionBtn.textContent = "Sign in";
       elements.syncActionBtn.dataset.action = "connect";
       elements.syncActionBtn.classList.remove("hidden");
+      elements.syncActionBtn.disabled = false;
     }
     return;
   }
 
-  // Authenticated — read persisted sync state
-  const stored = await storageGet([SYNC_STATUS_KEY, SAVED_CONTACTS_KEY]);
-  const syncState = stored?.[SYNC_STATUS_KEY] || null;
-  const status = syncState?.lastSyncStatus || null;
-  const contacts = Array.isArray(stored?.[SAVED_CONTACTS_KEY]) ? stored[SAVED_CONTACTS_KEY] : [];
-  const hasPendingSync = contacts.some((entry) => !entry?.backendId);
+  const stored = await storageGet([SYNC_STATUS_KEY, SYNC_QUEUE_KEY]);
+  const syncState = stored?.[SYNC_STATUS_KEY] && typeof stored[SYNC_STATUS_KEY] === "object"
+    ? stored[SYNC_STATUS_KEY]
+    : {};
+  const queue = Array.isArray(stored?.[SYNC_QUEUE_KEY]) ? stored[SYNC_QUEUE_KEY] : [];
+  const queueCount = queue.length;
+  const status = String(syncState?.lastSyncStatus || "").trim();
+  const lastSyncAt = String(syncState?.lastSyncAt || "").trim();
 
-  elements.syncStatusRow.classList.remove("hidden");
-
-  if (status === "failed" || hasPendingSync) {
-    // Yellow dot — sync pending
-    if (elements.syncDot) elements.syncDot.dataset.status = "failed";
-    if (elements.syncLabel) elements.syncLabel.textContent = "Sync pending";
+  if (queueCount > 0) {
+    if (elements.syncDot) elements.syncDot.dataset.status = "queued";
+    if (elements.syncLabel) {
+      elements.syncLabel.textContent = `${queueCount} contact${queueCount === 1 ? "" : "s"} pending sync`;
+    }
     if (elements.syncActionBtn) {
       elements.syncActionBtn.textContent = "Retry";
       elements.syncActionBtn.dataset.action = "retry";
       elements.syncActionBtn.classList.remove("hidden");
+      elements.syncActionBtn.disabled = false;
     }
-  } else {
-    // Green dot — synced (covers "success" and null/no-sync-yet)
-    if (elements.syncDot) elements.syncDot.dataset.status = "success";
-    if (elements.syncLabel) elements.syncLabel.textContent = "Synced with Ellyn App";
-    if (elements.syncActionBtn) elements.syncActionBtn.classList.add("hidden");
+    return;
+  }
+
+  if (status === "failed") {
+    if (elements.syncDot) elements.syncDot.dataset.status = "error";
+    if (elements.syncLabel) elements.syncLabel.textContent = "Sync failed";
+    if (elements.syncActionBtn) {
+      elements.syncActionBtn.textContent = "Retry";
+      elements.syncActionBtn.dataset.action = "retry";
+      elements.syncActionBtn.classList.remove("hidden");
+      elements.syncActionBtn.disabled = false;
+    }
+    return;
+  }
+
+  if (status === "auth_failed") {
+    if (elements.syncDot) elements.syncDot.dataset.status = "error";
+    if (elements.syncLabel) elements.syncLabel.textContent = "Sync failed (sign in required)";
+    if (elements.syncActionBtn) {
+      elements.syncActionBtn.textContent = "Sign in";
+      elements.syncActionBtn.dataset.action = "connect";
+      elements.syncActionBtn.classList.remove("hidden");
+      elements.syncActionBtn.disabled = false;
+    }
+    return;
+  }
+
+  if (elements.syncDot) elements.syncDot.dataset.status = "success";
+  const lastSyncDate = lastSyncAt ? new Date(lastSyncAt) : null;
+  const isRecent =
+    lastSyncDate &&
+    Number.isFinite(lastSyncDate.getTime()) &&
+    Date.now() - lastSyncDate.getTime() < 5 * 60 * 1000;
+
+  if (elements.syncLabel) {
+    if (isRecent) {
+      const relative = formatSyncRelativeTimestamp(lastSyncAt);
+      elements.syncLabel.textContent = relative ? `Synced ${relative}` : "Synced";
+    } else {
+      elements.syncLabel.textContent = "Synced";
+    }
+  }
+  if (elements.syncActionBtn) {
+    elements.syncActionBtn.classList.add("hidden");
+    elements.syncActionBtn.disabled = false;
   }
 }
 
@@ -1570,23 +1676,39 @@ async function handleSyncAction() {
 
 async function retryPendingContacts() {
   if (elements.syncActionBtn) {
-    elements.syncActionBtn.textContent = "Retrying…";
+    elements.syncActionBtn.textContent = "Retrying...";
     elements.syncActionBtn.disabled = true;
   }
 
   try {
-    const existing = await storageGet([SAVED_CONTACTS_KEY]);
+    try {
+      await sendRuntimeMessage({ type: "PROCESS_SYNC_QUEUE" });
+    } catch {
+      // Queue processor may be unavailable during transient worker restarts.
+    }
+
+    const existing = await storageGet([SAVED_CONTACTS_KEY, SYNC_QUEUE_KEY]);
     const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
-    const pending = list.filter((entry) => !entry.backendId);
+    const queue = Array.isArray(existing?.[SYNC_QUEUE_KEY]) ? existing[SYNC_QUEUE_KEY] : [];
+    const queuedLocalIds = new Set(
+      queue
+        .map((entry) => String(entry?.localId || "").trim())
+        .filter(Boolean)
+    );
+    const pending = list.filter((entry) => {
+      const localId = String(entry?.localId || "").trim();
+      if (localId && queuedLocalIds.has(localId)) return false;
+      return !isSavedContactSynced(entry);
+    });
 
     for (const entry of pending) {
-      // syncContactToBackend handles success/failure status internally
       await syncContactToBackend(entry, null);
     }
   } finally {
     if (elements.syncActionBtn) {
       elements.syncActionBtn.disabled = false;
     }
+    await renderQueueCard();
     await renderSyncStatus();
   }
 }
@@ -1597,9 +1719,25 @@ async function syncPendingContactsQuietly() {
 
   emailFinderState.pendingSyncInFlight = true;
   try {
-    const existing = await storageGet([SAVED_CONTACTS_KEY]);
+    try {
+      await sendRuntimeMessage({ type: "PROCESS_SYNC_QUEUE" });
+    } catch {
+      // Background may be sleeping; local retries below are still attempted.
+    }
+
+    const existing = await storageGet([SAVED_CONTACTS_KEY, SYNC_QUEUE_KEY]);
     const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
-    const pending = list.filter((entry) => !entry?.backendId);
+    const queue = Array.isArray(existing?.[SYNC_QUEUE_KEY]) ? existing[SYNC_QUEUE_KEY] : [];
+    const queuedLocalIds = new Set(
+      queue
+        .map((entry) => String(entry?.localId || "").trim())
+        .filter(Boolean)
+    );
+    const pending = list.filter((entry) => {
+      const localId = String(entry?.localId || "").trim();
+      if (localId && queuedLocalIds.has(localId)) return false;
+      return !isSavedContactSynced(entry);
+    });
     if (pending.length === 0) return;
 
     for (const entry of pending) {
@@ -1607,193 +1745,253 @@ async function syncPendingContactsQuietly() {
     }
   } finally {
     emailFinderState.pendingSyncInFlight = false;
+    await renderQueueCard();
     await renderSyncStatus();
   }
 }
 
-async function markSavedRowSynced(savedRow, backendId = "synced") {
-  const existing = await storageGet([SAVED_CONTACTS_KEY]);
-  const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
-  const localId = String(savedRow?.localId || "").trim();
-  let idx = -1;
-
-  if (localId) {
-    idx = list.findIndex((entry) => String(entry?.localId || "") === localId);
-  }
-
-  if (idx === -1) {
-    idx = list.findIndex(
-      (entry) => entry.email === savedRow.email && entry.createdAt === savedRow.createdAt
-    );
-  }
-
-  if (idx === -1) {
-    idx = list.findIndex(
-      (entry) => entry.email === savedRow.email && !entry?.backendId
-    );
-  }
-
-  if (idx !== -1) {
-    list[idx] = { ...list[idx], backendId };
-    await storageSet({ [SAVED_CONTACTS_KEY]: list });
-  } else {
-    console.warn("[Sidepanel] markSavedRowSynced: unable to locate row", {
-      email: savedRow?.email,
-      createdAt: savedRow?.createdAt,
-      localId,
-    });
-  }
+function isSavedContactSynced(savedRow) {
+  const syncState = String(savedRow?.syncState || "").trim();
+  const backendId = String(savedRow?.backendId || "").trim();
+  return syncState === CONTACT_SYNC_STATE.SYNCED || backendId.length > 0;
 }
 
-async function postContactToBackendPath(apiBaseUrl, path, body, authToken) {
-  return fetchWithTimeout(
-    `${apiBaseUrl}${path}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify(body),
-    },
-    10000
+function getCompanyDomainFromEmail(email) {
+  const domain = String(email || "").trim().split("@")[1] || "";
+  return String(domain || "").trim().toLowerCase();
+}
+
+function resolveSavedRowIndex(list, savedRow) {
+  const localId = String(savedRow?.localId || "").trim();
+  if (localId) {
+    const localMatchIndex = list.findIndex((entry) => String(entry?.localId || "").trim() === localId);
+    if (localMatchIndex !== -1) return localMatchIndex;
+  }
+
+  const createdAt = String(savedRow?.createdAt || "").trim();
+  const email = String(savedRow?.email || "").trim().toLowerCase();
+  if (email && createdAt) {
+    const exactIndex = list.findIndex(
+      (entry) =>
+        String(entry?.email || "").trim().toLowerCase() === email &&
+        String(entry?.createdAt || "").trim() === createdAt
+    );
+    if (exactIndex !== -1) return exactIndex;
+  }
+
+  if (email) {
+    return list.findIndex((entry) => String(entry?.email || "").trim().toLowerCase() === email);
+  }
+
+  return -1;
+}
+
+async function updateSavedRowSyncState(savedRow, syncState, extras = {}) {
+  const existing = await storageGet([SAVED_CONTACTS_KEY]);
+  const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
+  const idx = resolveSavedRowIndex(list, savedRow);
+
+  if (idx !== -1) {
+    list[idx] = {
+      ...list[idx],
+      ...extras,
+      syncState,
+      syncUpdatedAt: new Date().toISOString(),
+      syncError:
+        syncState === CONTACT_SYNC_STATE.SYNCED
+          ? null
+          : String(extras?.syncError || list[idx]?.syncError || "").trim() || null,
+    };
+    await storageSet({ [SAVED_CONTACTS_KEY]: list });
+    return list[idx];
+  }
+
+  const fallbackRow = {
+    ...savedRow,
+    ...extras,
+    syncState,
+    syncUpdatedAt: new Date().toISOString(),
+    syncError:
+      syncState === CONTACT_SYNC_STATE.SYNCED
+        ? null
+        : String(extras?.syncError || "").trim() || null,
+  };
+  list.unshift(fallbackRow);
+  await storageSet({ [SAVED_CONTACTS_KEY]: list.slice(0, 250) });
+  console.warn("[Sidepanel] updateSavedRowSyncState: row not found, inserted fallback row", {
+    email: savedRow?.email,
+    createdAt: savedRow?.createdAt,
+    localId: savedRow?.localId,
+  });
+  return fallbackRow;
+}
+
+function buildContactSyncPayload(savedRow, profileContext) {
+  const ctx = profileContext || {};
+  const mergedName = pickFirstNonEmpty(ctx.fullName, savedRow.fullName);
+  const splitName = splitHumanName(mergedName);
+  const fallbackName = deriveNameFromEmail(savedRow.email);
+  const firstName = pickFirstNonEmpty(
+    ctx.firstName,
+    savedRow.firstName,
+    splitName.firstName,
+    fallbackName.firstName,
+    "Unknown"
   );
+  const lastName = pickFirstNonEmpty(
+    ctx.lastName,
+    savedRow.lastName,
+    splitName.lastName,
+    fallbackName.lastName,
+    "Contact"
+  );
+  const company = pickFirstNonEmpty(
+    ctx.company,
+    savedRow.company,
+    deriveCompanyFromEmail(savedRow.email),
+    "Unknown"
+  );
+  const role = pickFirstNonEmpty(ctx.role, savedRow.role);
+  const linkedinUrl = normalizeLinkedInUrlForApi(
+    pickFirstNonEmpty(ctx.profileUrl, savedRow.profileUrl)
+  );
+  const email = pickFirstNonEmpty(savedRow.email);
+
+  return {
+    firstName,
+    lastName,
+    company,
+    designation: role || "",
+    role: role || "",
+    linkedinUrl: linkedinUrl || "",
+    headline: pickFirstNonEmpty(savedRow.headline, ctx.headline),
+    photoUrl: pickFirstNonEmpty(savedRow.photoUrl, ctx.photoUrl),
+    email,
+    emailConfidence: toFiniteNumber(savedRow.confidence),
+    emailVerified: savedRow.emailVerified === true,
+    emailSource: pickFirstNonEmpty(savedRow.emailSource, "extension"),
+    companyDomain: pickFirstNonEmpty(
+      savedRow.companyDomain,
+      getCompanyDomainFromEmail(email)
+    ),
+  };
 }
 
 async function syncContactToBackend(savedRow, profileContext) {
-  try {
-    const authToken = await getAuthToken();
-    if (!authToken) {
-      showSessionExpiredBanner();
-      return;
-    }
-
-    const { apiBaseUrl } = await resolveBaseUrls();
-    const ctx = profileContext || {};
-    const mergedName = pickFirstNonEmpty(ctx.fullName, savedRow.fullName);
-    const splitName = splitHumanName(mergedName);
-    const fallbackName = deriveNameFromEmail(savedRow.email);
-    const firstName = pickFirstNonEmpty(
-      ctx.firstName,
-      savedRow.firstName,
-      splitName.firstName,
-      fallbackName.firstName,
-      "Unknown"
-    );
-    const lastName = pickFirstNonEmpty(
-      ctx.lastName,
-      savedRow.lastName,
-      splitName.lastName,
-      fallbackName.lastName,
-      "Contact"
-    );
-    const company = pickFirstNonEmpty(
-      ctx.company,
-      savedRow.company,
-      deriveCompanyFromEmail(savedRow.email),
-      "Unknown Company"
-    );
-    const role = pickFirstNonEmpty(ctx.role, savedRow.role);
-    const linkedinUrl = normalizeLinkedInUrlForApi(
-      pickFirstNonEmpty(ctx.profileUrl, savedRow.profileUrl)
-    );
-    const inferredEmail = pickFirstNonEmpty(savedRow.email);
-
-    const body = {
-      firstName,
-      lastName,
-      company,
-      role: role || undefined,
-      inferredEmail: inferredEmail || undefined,
-      linkedinUrl: linkedinUrl || undefined,
-      source: "extension",
-    };
-
-    // Remove undefined keys so the API schema validation doesn't choke on them
-    Object.keys(body).forEach((k) => {
-      if (body[k] === undefined) delete body[k];
+  const payload = buildContactSyncPayload(savedRow, profileContext);
+  if (!payload.email) {
+    await updateSavedRowSyncState(savedRow, CONTACT_SYNC_STATE.FAILED, {
+      syncError: "Missing email address",
     });
-
-    const postContact = async (payload) => {
-      let res = await postContactToBackendPath(apiBaseUrl, "/api/contacts", payload, authToken);
-
-      // Some deployments only expose the versioned route. Retry there before failing.
-      if (!res.ok && (res.status === 404 || res.status === 405)) {
-        res = await postContactToBackendPath(apiBaseUrl, "/api/v1/contacts", payload, authToken);
-      }
-
-      return res;
+    await setSyncStatus("failed", {
+      lastErrorType: "validation",
+      lastErrorMessage: "Missing email address",
+    });
+    return {
+      ok: false,
+      status: CONTACT_SYNC_STATE.FAILED,
+      error: "Missing email address",
     };
+  }
 
-    let response = await postContact(body);
+  try {
+    const response = await sendRuntimeMessage({
+      type: "SAVE_CONTACT_TO_SUPABASE",
+      localId: String(savedRow?.localId || "").trim(),
+      contactData: payload,
+    });
+    const result = response && typeof response === "object" ? response : {};
+    const status = String(result?.status || "").trim();
+    const errorMessage = String(result?.error || "").trim();
+    const queueCount = Number(result?.queueCount);
 
-    if (response.status === 400) {
-      // Retry once with only required + safest fields when optional validation fails.
-      const minimalBody = {
-        firstName,
-        lastName,
-        company,
-        inferredEmail: inferredEmail || undefined,
-        source: "extension",
-      };
-      Object.keys(minimalBody).forEach((k) => {
-        if (minimalBody[k] === undefined) delete minimalBody[k];
-      });
-
-      response = await postContact(minimalBody);
-    }
-
-    if (response.status === 401) {
-      // Auth token expired — show the session-expired banner
-      showSessionExpiredBanner();
-      await setSyncStatus("failed");
-      return;
-    }
-
-    if (response.status === 409) {
-      // Already exists in backend — treat as success
-      console.log("[Sidepanel] Contact already exists in backend (409).");
-      await markSavedRowSynced(savedRow, "existing");
-      await setSyncStatus("success");
-      return;
-    }
-
-    if (!response.ok) {
-      let responseBody = "";
-      try {
-        responseBody = await response.text();
-      } catch {
-        // Ignore response parse errors for diagnostics.
-      }
-      console.warn(
-        "[Sidepanel] syncContactToBackend: non-OK status",
-        response.status,
-        responseBody ? responseBody.slice(0, 220) : ""
+    if (status === CONTACT_SYNC_STATE.SYNCED && result?.ok) {
+      const backendId = String(
+        result?.data?.id ||
+          result?.data?.contact?.id ||
+          savedRow?.backendId ||
+          "synced"
       );
-      await setSyncStatus("failed");
-      return;
+      await updateSavedRowSyncState(savedRow, CONTACT_SYNC_STATE.SYNCED, {
+        backendId,
+        syncedAt: new Date().toISOString(),
+      });
+      await setSyncStatus("success", {
+        queueCount: Number.isFinite(queueCount) ? queueCount : 0,
+        lastErrorType: null,
+        lastErrorMessage: null,
+      });
+      return {
+        ok: true,
+        status: CONTACT_SYNC_STATE.SYNCED,
+        data: result?.data || null,
+      };
     }
 
-    let data = null;
-    try {
-      data = await response.json();
-    } catch {
-      await setSyncStatus("failed");
-      return;
+    if (status === CONTACT_SYNC_STATE.QUEUED) {
+      await updateSavedRowSyncState(savedRow, CONTACT_SYNC_STATE.QUEUED, {
+        syncError: errorMessage || "Queued for sync retry",
+      });
+      await setSyncStatus("queued", {
+        queueCount: Number.isFinite(queueCount) ? queueCount : 1,
+        lastErrorType: "network",
+        lastErrorMessage: errorMessage || "Queued for sync retry",
+      });
+      return {
+        ok: false,
+        status: CONTACT_SYNC_STATE.QUEUED,
+        error: errorMessage || "Queued for sync retry",
+      };
     }
 
-    const backendId =
-      data?.contact?.id ||
-      data?.data?.contact?.id ||
-      data?.id ||
-      "synced";
-    await markSavedRowSynced(savedRow, String(backendId));
+    if (status === CONTACT_SYNC_STATE.AUTH_FAILED) {
+      showSessionExpiredBanner();
+      await updateSavedRowSyncState(savedRow, CONTACT_SYNC_STATE.AUTH_FAILED, {
+        syncError: errorMessage || "Authentication required",
+      });
+      await setSyncStatus("auth_failed", {
+        queueCount: Number.isFinite(queueCount) ? queueCount : 0,
+        lastErrorType: "auth",
+        lastErrorMessage: errorMessage || "Authentication required",
+      });
+      return {
+        ok: false,
+        status: CONTACT_SYNC_STATE.AUTH_FAILED,
+        error: errorMessage || "Authentication required",
+      };
+    }
 
-    await setSyncStatus("success");
+    await updateSavedRowSyncState(savedRow, CONTACT_SYNC_STATE.FAILED, {
+      syncError: errorMessage || "Supabase sync failed",
+    });
+    await setSyncStatus("failed", {
+      queueCount: Number.isFinite(queueCount) ? queueCount : 0,
+      lastErrorType: "unknown",
+      lastErrorMessage: errorMessage || "Supabase sync failed",
+    });
+    return {
+      ok: false,
+      status: CONTACT_SYNC_STATE.FAILED,
+      error: errorMessage || "Supabase sync failed",
+    };
   } catch (err) {
+    const message = String(err?.message || "Supabase sync failed");
     console.warn("[Sidepanel] syncContactToBackend failed:", err);
-    await setSyncStatus("failed");
+    await updateSavedRowSyncState(savedRow, CONTACT_SYNC_STATE.FAILED, {
+      syncError: message,
+    });
+    await setSyncStatus("failed", {
+      lastErrorType: "runtime",
+      lastErrorMessage: message,
+    });
+    return {
+      ok: false,
+      status: CONTACT_SYNC_STATE.FAILED,
+      error: message,
+    };
+  } finally {
+    await renderQueueCard();
+    await renderSyncStatus();
   }
 }
 
@@ -1808,6 +2006,7 @@ async function saveCurrentResultToContacts() {
   const splitName = splitHumanName(pickFirstNonEmpty(context.fullName));
   const nowIso = new Date().toISOString();
   const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const inferredDomain = getCompanyDomainFromEmail(result.email);
   const savedRow = {
     localId,
     email: String(result.email),
@@ -1820,6 +2019,15 @@ async function saveCurrentResultToContacts() {
     lastName: pickFirstNonEmpty(context.lastName, splitName.lastName),
     company: pickFirstNonEmpty(context.company),
     role: pickFirstNonEmpty(context.role),
+    headline: pickFirstNonEmpty(context.headline),
+    photoUrl: pickFirstNonEmpty(context.photoUrl),
+    emailSource: pickFirstNonEmpty(result.source, "extension"),
+    companyDomain: inferredDomain,
+    emailVerified: false,
+    syncState: emailFinderState.isAuthenticated
+      ? CONTACT_SYNC_STATE.QUEUED
+      : CONTACT_SYNC_STATE.AUTH_FAILED,
+    syncUpdatedAt: nowIso,
     createdAt: nowIso,
   };
 
@@ -1827,13 +2035,27 @@ async function saveCurrentResultToContacts() {
   const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
   list.unshift(savedRow);
   await storageSet({ [SAVED_CONTACTS_KEY]: list.slice(0, 250) });
-  await setSyncStatus("failed");
+  await renderQueueCard();
 
-  showToast("Saved to contacts.", "success");
-  void renderQueueCard();
+  if (!emailFinderState.isAuthenticated) {
+    await setSyncStatus("auth_failed", {
+      lastErrorType: "auth",
+      lastErrorMessage: "Authentication required",
+    });
+    showToast("Saved locally (sync failed)", "info");
+    await renderQueueCard();
+    await renderSyncStatus();
+    return;
+  }
 
-  // Best-effort backend sync — never blocks or shows errors to the user
-  void syncContactToBackend(savedRow, emailFinderState.profileContext);
+  const syncResult = await syncContactToBackend(savedRow, emailFinderState.profileContext);
+  if (syncResult?.status === CONTACT_SYNC_STATE.SYNCED) {
+    showToast("Saved to Ellyn \u2713", "success");
+  } else if (syncResult?.status === CONTACT_SYNC_STATE.QUEUED) {
+    showToast("Working offline \u2014 contacts queued", "info");
+  } else {
+    showToast("Saved locally (sync failed)", "info");
+  }
 }
 
 async function submitFeedback(worked) {
@@ -2505,7 +2727,11 @@ function storageRemove(keys) {
 async function getAuthToken() {
   try {
     const auth = await storageGet(["auth_token"]);
-    return typeof auth.auth_token === "string" ? auth.auth_token : "";
+    const storedToken = typeof auth.auth_token === "string" ? auth.auth_token : "";
+    if (storedToken) return storedToken;
+
+    const runtimeToken = await sendRuntimeMessage({ type: "GET_AUTH_TOKEN" });
+    return typeof runtimeToken === "string" ? runtimeToken : "";
   } catch {
     return "";
   }
@@ -2580,13 +2806,55 @@ function renderStages() {
  * Shows the empty-state (from empty-states.js) when no contacts exist.
  * Shows the populated view with count + contact rows otherwise.
  */
+function resolveQueueContactSyncState(contact, queuedLocalIds, lastSyncStatus = "") {
+  const localId = String(contact?.localId || "").trim();
+  const rowSyncState = String(contact?.syncState || "").trim();
+  if (isSavedContactSynced(contact)) return CONTACT_SYNC_STATE.SYNCED;
+  if (localId && queuedLocalIds.has(localId)) return CONTACT_SYNC_STATE.QUEUED;
+  if (
+    rowSyncState === CONTACT_SYNC_STATE.QUEUED &&
+    localId &&
+    !queuedLocalIds.has(localId) &&
+    lastSyncStatus === "success"
+  ) {
+    return CONTACT_SYNC_STATE.SYNCED;
+  }
+  if (rowSyncState === CONTACT_SYNC_STATE.AUTH_FAILED) return CONTACT_SYNC_STATE.AUTH_FAILED;
+  if (rowSyncState === CONTACT_SYNC_STATE.FAILED) return CONTACT_SYNC_STATE.FAILED;
+  if (rowSyncState === CONTACT_SYNC_STATE.QUEUED) return CONTACT_SYNC_STATE.QUEUED;
+  return emailFinderState.isAuthenticated ? CONTACT_SYNC_STATE.QUEUED : CONTACT_SYNC_STATE.AUTH_FAILED;
+}
+
+function getQueueSyncBadgeMeta(syncState) {
+  if (syncState === CONTACT_SYNC_STATE.SYNCED) {
+    return { dotColor: "#22c55e", label: "Synced" };
+  }
+  if (syncState === CONTACT_SYNC_STATE.QUEUED) {
+    return { dotColor: "#eab308", label: "Queued" };
+  }
+  if (syncState === CONTACT_SYNC_STATE.AUTH_FAILED) {
+    return { dotColor: "#ef4444", label: "Sign in required" };
+  }
+  return { dotColor: "#ef4444", label: "Sync failed" };
+}
+
 async function renderQueueCard() {
   if (!elements.queueEmptyState || !elements.queuePopulatedView) return;
 
-  const stored = await storageGet([SAVED_CONTACTS_KEY]);
+  const stored = await storageGet([SAVED_CONTACTS_KEY, SYNC_QUEUE_KEY, SYNC_STATUS_KEY]);
   const contacts = Array.isArray(stored?.[SAVED_CONTACTS_KEY])
     ? stored[SAVED_CONTACTS_KEY]
     : [];
+  const queue = Array.isArray(stored?.[SYNC_QUEUE_KEY]) ? stored[SYNC_QUEUE_KEY] : [];
+  const syncStatus = stored?.[SYNC_STATUS_KEY] && typeof stored[SYNC_STATUS_KEY] === "object"
+    ? stored[SYNC_STATUS_KEY]
+    : {};
+  const lastSyncStatus = String(syncStatus?.lastSyncStatus || "").trim();
+  const queuedLocalIds = new Set(
+    queue
+      .map((entry) => String(entry?.localId || "").trim())
+      .filter(Boolean)
+  );
   const isEmpty = contacts.length === 0;
 
   elements.queueEmptyState.classList.toggle("hidden", !isEmpty);
@@ -2614,8 +2882,14 @@ async function renderQueueCard() {
         const email = escapeHtml(String(c.email || "\u2014"));
         const rawEmail = String(c.email || "").trim();
         const emailAttr = rawEmail.replace(/"/g, "&quot;");
+        const resolvedSyncState = resolveQueueContactSyncState(c, queuedLocalIds, lastSyncStatus);
+        const badgeMeta = getQueueSyncBadgeMeta(resolvedSyncState);
         return `<div class="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:12px;color:#334155">${email}</span>
+          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
+            <span aria-hidden="true" style="flex-shrink:0;width:8px;height:8px;border-radius:999px;background:${badgeMeta.dotColor};"></span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:12px;color:#334155">${email}</span>
+          </div>
+          <span style="flex-shrink:0;font-size:10px;font-weight:600;color:#64748b;white-space:nowrap">${badgeMeta.label}</span>
           <button
             type="button"
             class="queue-copy-btn"
@@ -2912,3 +3186,4 @@ function _hideStatsView() {
   elements.statsViewContainer.innerHTML = "";
   elements.statsViewContainer.classList.add("hidden");
 }
+

@@ -204,6 +204,18 @@ class Analytics {
   }
 
   async getAuthToken() {
+    const bridge = globalThis?.ellynSupabaseAuthBridge;
+    if (bridge && typeof bridge.getAccessToken === 'function') {
+      try {
+        const token = await bridge.getAccessToken();
+        if (typeof token === 'string' && token.length > 0) {
+          return token;
+        }
+      } catch (error) {
+        this.log('getAuthToken failed via Supabase bridge', this.serializeError(error));
+      }
+    }
+
     try {
       const result = await chrome.storage.local.get(['auth_token']);
       return typeof result?.auth_token === 'string' ? result.auth_token : '';

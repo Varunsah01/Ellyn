@@ -202,6 +202,18 @@ class QuotaManager {
   }
 
   async getAuthToken() {
+    const bridge = globalThis?.ellynSupabaseAuthBridge;
+    if (bridge && typeof bridge.getAccessToken === 'function') {
+      try {
+        const token = await bridge.getAccessToken();
+        if (typeof token === 'string' && token.length > 0) {
+          return token;
+        }
+      } catch (error) {
+        this.log('Failed reading Supabase access token', this.serializeError(error));
+      }
+    }
+
     try {
       const result = await chrome.storage.local.get(['auth_token']);
       const token = result?.auth_token;

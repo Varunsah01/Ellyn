@@ -42,9 +42,11 @@ import { cn } from "@/lib/utils";
 import { validatePasswordStrength } from "@/lib/validation/password";
 import {
   AlertTriangle,
+  RefreshCw,
   Link as LinkIcon,
   Lock,
   Mail,
+  Plug,
   Save,
   Shield,
   Trash2,
@@ -95,6 +97,14 @@ interface IntegrationPreferences {
   extension_linked: boolean;
 }
 
+interface ExtensionSyncState {
+  connected: boolean;
+  extensionContactsCount: number;
+  lastSyncAt: string | null;
+  error: string | null;
+  loading: boolean;
+}
+
 const DEFAULT_EMAIL_PREFERENCES: EmailPreferences = {
   fromName: "",
   provider: "gmail",
@@ -127,6 +137,15 @@ const DEFAULT_INTEGRATIONS: IntegrationPreferences = {
   outlook_connected: false,
   extension_linked: false,
 };
+
+const DEFAULT_EXTENSION_SYNC_STATE: ExtensionSyncState = {
+  connected: false,
+  extensionContactsCount: 0,
+  lastSyncAt: null,
+  error: null,
+  loading: true,
+};
+const EXTENSION_CONNECTED_WINDOW_MS = 10 * 60 * 1000;
 
 const TIMEZONES = [
   "America/New_York",
@@ -229,6 +248,27 @@ function normalizeSignatureHtml(value: string): string {
   return collapsed ? value : "";
 }
 
+function formatRelativeTimestamp(value: string | null): string {
+  if (!value) return "Never";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "Never";
+
+  const deltaMs = Math.max(0, Date.now() - parsed.getTime());
+  const deltaMinutes = Math.floor(deltaMs / 60000);
+
+  if (deltaMinutes <= 0) return "just now";
+  if (deltaMinutes === 1) return "1 min ago";
+  if (deltaMinutes < 60) return `${deltaMinutes} min ago`;
+
+  const deltaHours = Math.floor(deltaMinutes / 60);
+  if (deltaHours === 1) return "1 hour ago";
+  if (deltaHours < 24) return `${deltaHours} hours ago`;
+
+  const deltaDays = Math.floor(deltaHours / 24);
+  if (deltaDays === 1) return "1 day ago";
+  return `${deltaDays} days ago`;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -250,6 +290,8 @@ export default function SettingsPage() {
   const [sequencePrefs, setSequencePrefs] = useState<SequencePreferences>(DEFAULT_SEQUENCE_PREFERENCES);
   const [privacyPrefs, setPrivacyPrefs] = useState<PrivacyPreferences>(DEFAULT_PRIVACY_PREFERENCES);
   const [integrations, setIntegrations] = useState<IntegrationPreferences>(DEFAULT_INTEGRATIONS);
+  const [extensionSync, setExtensionSync] = useState<ExtensionSyncState>(DEFAULT_EXTENSION_SYNC_STATE);
+  const [reauthLoading, setReauthLoading] = useState(false);
 
   const [blackoutInput, setBlackoutInput] = useState("");
   const [saveProfileLoading, setSaveProfileLoading] = useState(false);
@@ -312,6 +354,70 @@ export default function SettingsPage() {
     },
     [toast],
   );
+
+  const loadExtensionSyncStatus = useCallback(async (targetUserId: string) => {
+    if (!targetUserId || !isSupabaseConfigured) {
+      setExtensionSync({
+        connected: false,
+        extensionContactsCount: 0,
+        lastSyncAt: null,
+        error: null,
+        loading: false,
+      });
+      return;
+    }
+
+    setExtensionSync((prev) => ({
+      ...prev,
+      loading: true,
+      error: null,
+    }));
+
+    try {
+      const [profileRes, extensionContactsRes] = await Promise.all([
+        supabase
+          .from("user_profiles")
+          .select("extension_last_seen")
+          .eq("id", targetUserId)
+          .maybeSingle(),
+        supabase
+          .from("contacts")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", targetUserId)
+          .eq("source", "extension"),
+      ]);
+
+      if (profileRes.error) {
+        throw profileRes.error;
+      }
+      if (extensionContactsRes.error) {
+        throw extensionContactsRes.error;
+      }
+
+      const lastSyncAt = profileRes.data?.extension_last_seen ?? null;
+      const lastSyncDate = lastSyncAt ? new Date(lastSyncAt) : null;
+      const connected =
+        !!lastSyncDate &&
+        Number.isFinite(lastSyncDate.getTime()) &&
+        Date.now() - lastSyncDate.getTime() <= EXTENSION_CONNECTED_WINDOW_MS;
+
+      setExtensionSync({
+        connected,
+        extensionContactsCount: typeof extensionContactsRes.count === "number" ? extensionContactsRes.count : 0,
+        lastSyncAt,
+        error: null,
+        loading: false,
+      });
+    } catch (error) {
+      setExtensionSync({
+        connected: false,
+        extensionContactsCount: 0,
+        lastSyncAt: null,
+        error: error instanceof Error ? error.message : "Unable to load extension sync status",
+        loading: false,
+      });
+    }
+  }, []);
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
@@ -393,6 +499,7 @@ export default function SettingsPage() {
         outlook_connected: asBool(meta.outlook_connected),
         extension_linked: asBool(meta.extension_linked),
       });
+      await loadExtensionSyncStatus(user.id);
       setMetadata(meta);
       metadataRef.current = meta;
     } catch (error) {
@@ -404,7 +511,7 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [loadExtensionSyncStatus, toast]);
 
   useEffect(() => {
     void loadSettings();
@@ -644,6 +751,119 @@ export default function SettingsPage() {
     },
     [saveMetadataPatch],
   );
+
+  const handleExtensionReauth = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      toast({
+        variant: "destructive",
+        title: "Supabase not configured",
+        description: "Cannot sync extension session.",
+      });
+      return;
+    }
+
+    const extensionIdFromEnv = process.env.NEXT_PUBLIC_CHROME_EXTENSION_ID?.trim() || "";
+    const extensionIdFromStorage =
+      typeof window !== "undefined"
+        ? localStorage.getItem("ellyn_extension_id")?.trim() || ""
+        : "";
+    const extensionId = extensionIdFromEnv || extensionIdFromStorage;
+
+    if (!extensionId) {
+      toast({
+        variant: "destructive",
+        title: "Extension ID missing",
+        description: "Set NEXT_PUBLIC_CHROME_EXTENSION_ID or reconnect the extension first.",
+      });
+      return;
+    }
+
+    const runtime = (
+      typeof window !== "undefined"
+        ? (window as Window & {
+            chrome?: { runtime?: { sendMessage?: unknown; lastError?: unknown } };
+          }).chrome?.runtime
+        : undefined
+    );
+
+    if (typeof runtime?.sendMessage !== "function") {
+      toast({
+        variant: "destructive",
+        title: "Chrome runtime unavailable",
+        description: "Open this page in Chrome with the extension installed.",
+      });
+      return;
+    }
+
+    setReauthLoading(true);
+    try {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+      if (error || !session?.access_token || !session?.refresh_token) {
+        throw new Error(error?.message || "No active session found");
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        (runtime.sendMessage as (
+          extension: string,
+          message: unknown,
+          callback: (response: unknown) => void
+        ) => void)(
+          extensionId,
+          {
+            type: "ELLYN_SET_SESSION",
+            session: {
+              access_token: session.access_token,
+              refresh_token: session.refresh_token,
+            },
+          },
+          (response) => {
+            const lastError = runtime.lastError as { message?: string } | undefined;
+            if (lastError) {
+              reject(new Error(lastError.message || "Extension did not respond"));
+              return;
+            }
+
+            const result = response as { ok?: boolean; error?: string } | undefined;
+            if (!result?.ok) {
+              reject(new Error(result?.error || "Extension rejected session sync"));
+              return;
+            }
+            resolve();
+          }
+        );
+      });
+
+      localStorage.setItem("ellyn_extension_id", extensionId);
+      setIntegrations((prev) => ({ ...prev, extension_linked: true }));
+      setExtensionSync((prev) => ({
+        ...prev,
+        connected: true,
+        lastSyncAt: new Date().toISOString(),
+        error: null,
+      }));
+      toast({
+        title: "Extension session synced",
+        description: "Your dashboard session was sent to the Chrome extension.",
+      });
+
+      if (userId) {
+        window.setTimeout(() => {
+          void loadExtensionSyncStatus(userId);
+        }, 1200);
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Extension re-auth failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setReauthLoading(false);
+    }
+  }, [loadExtensionSyncStatus, toast, userId]);
 
   if (loading) {
     return (
@@ -978,6 +1198,78 @@ export default function SettingsPage() {
                   <div className="rounded-lg border p-4 space-y-2">
                     <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-blue-100 text-blue-700 font-semibold flex items-center justify-center">O</div><div><p className="font-medium">Outlook / Microsoft 365</p><p className="text-sm text-muted-foreground">Connect Outlook for send and scheduling.</p></div></div>{integrations.outlook_connected ? <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Connected</Badge> : <Badge variant="outline">Not Connected</Badge>}</div>
                     {integrations.outlook_connected ? <Button variant="outline" onClick={() => void saveIntegrations({ ...integrations, outlook_connected: false }, "Outlook disconnected.")}>Disconnect</Button> : <Button asChild><Link href="/api/v1/auth/outlook">Connect Outlook</Link></Button>}
+                  </div>
+                  <div className="rounded-lg border p-4 space-y-3 md:col-span-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-10 w-10 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                          <Plug className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="font-medium">Extension Sync</p>
+                          <p className="text-sm text-muted-foreground">Monitor Chrome extension sync and reconnect session when needed.</p>
+                        </div>
+                      </div>
+                      {extensionSync.loading ? (
+                        <Badge variant="outline">Checking...</Badge>
+                      ) : extensionSync.connected ? (
+                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Connected</Badge>
+                      ) : (
+                        <Badge variant="outline">Not Connected</Badge>
+                      )}
+                    </div>
+
+                    <div className="grid gap-3 text-sm sm:grid-cols-3">
+                      <div className="rounded-md border bg-slate-50 px-3 py-2">
+                        <p className="text-xs text-muted-foreground">Connection status</p>
+                        <p className="mt-1 font-medium">
+                          {extensionSync.connected ? "Connected" : "Not connected"}
+                        </p>
+                      </div>
+                      <div className="rounded-md border bg-slate-50 px-3 py-2">
+                        <p className="text-xs text-muted-foreground">Contacts synced via extension</p>
+                        <p className="mt-1 font-medium">
+                          {extensionSync.loading ? "--" : extensionSync.extensionContactsCount}
+                        </p>
+                      </div>
+                      <div className="rounded-md border bg-slate-50 px-3 py-2">
+                        <p className="text-xs text-muted-foreground">Last sync</p>
+                        <p className="mt-1 font-medium">
+                          {extensionSync.lastSyncAt
+                            ? `${formatRelativeTimestamp(extensionSync.lastSyncAt)}`
+                            : "Never"}
+                        </p>
+                        {extensionSync.lastSyncAt ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {new Date(extensionSync.lastSyncAt).toLocaleString()}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {extensionSync.error ? (
+                      <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {extensionSync.error}
+                      </p>
+                    ) : null}
+
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (userId) {
+                            void loadExtensionSyncStatus(userId);
+                          }
+                        }}
+                        disabled={!userId || extensionSync.loading}
+                      >
+                        <RefreshCw className={cn("mr-2 h-4 w-4", extensionSync.loading && "animate-spin")} />
+                        Refresh Status
+                      </Button>
+                      <Button onClick={handleExtensionReauth} disabled={reauthLoading}>
+                        {reauthLoading ? "Re-authenticating..." : "Re-auth Extension"}
+                      </Button>
+                    </div>
                   </div>
                   <div className="rounded-lg border p-4 space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-orange-100 text-orange-700 font-semibold flex items-center justify-center">Z</div><div><p className="font-medium">Zapier</p><p className="text-sm text-muted-foreground">Automation integration for workflows.</p></div></div><Badge variant="secondary">Coming Soon</Badge></div><Button variant="outline" disabled>Coming Soon</Button></div>
                 </CardContent>

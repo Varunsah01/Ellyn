@@ -433,9 +433,9 @@ function initEmailTypeSelectorListeners(container, onChange, contact) {
       );
     });
 
-    // Build draft if templates helper is available
+    // Build draft eagerly for non-AI templates only.
     const draft =
-      contact && typeof generateDraft === "function"
+      value !== "ai_generated" && contact && typeof generateDraft === "function"
         ? generateDraft(contact, /** @type {EmailTemplateType} */ (value))
         : undefined;
 

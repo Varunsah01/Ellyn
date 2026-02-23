@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
@@ -11,44 +11,93 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Users, Mail, Zap, Plus, BarChart3, RefreshCw, CheckCircle2, Circle, Target } from "lucide-react";
 import Link from "next/link";
-import { useDashboardStats, useRecentActivity } from "@/lib/hooks/useAnalytics";
-import { useContacts } from "@/lib/hooks/useContacts";
-import { useSequenceStats, useTopSequences } from "@/lib/hooks/useSequences";
+import { useRecentActivity } from "@/lib/hooks/useAnalytics";
+import { useTopSequences } from "@/lib/hooks/useSequences";
+import { useDashboardMetrics } from "@/lib/hooks/useDashboardMetrics";
+import { createClient } from "@/lib/supabase/client";
+import { useRealtimeContacts } from "@/hooks/useRealtimeContacts";
 import { SmartQuickActions } from "@/components/ContextualActions";
 
 export default function DashboardPage() {
-  // Fetch real data
-  const { stats: dashboardStats, loading: statsLoading, refresh: refreshStats } = useDashboardStats();
-  const [leadsCount, setLeadsCount] = useState(0);
-  const [leadsLoading, setLeadsLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    const supabase = createClient();
+
+    const resolveUser = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (!isMounted) return;
+
+        if (error || !data.user) {
+          setUserId(null);
+          return;
+        }
+
+        setUserId(data.user.id);
+      } finally {
+        if (isMounted) {
+          setUserLoading(false);
+        }
+      }
+    };
+
+    void resolveUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const { metrics, loading: metricsLoading, refresh: refreshMetrics } = useDashboardMetrics(userId);
   const { activities, loading: activityLoading, refresh: refreshActivity } = useRecentActivity(10);
-  const { contacts: recentContacts, loading: contactsLoading } = useContacts({ limit: 5 });
-  const { stats: sequenceStats, loading: sequenceLoading } = useSequenceStats();
+  const {
+    contacts: realtimeContacts,
+    loading: contactsLoading,
+    isLive: contactsLive,
+    refresh: refreshContacts,
+  } = useRealtimeContacts(userId, 50);
   const { sequences: topSequences, loading: seqLoading } = useTopSequences(3);
 
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
 
-  const isLoading = statsLoading || activityLoading || contactsLoading || sequenceLoading;
+  const isLoading = userLoading || metricsLoading || activityLoading || contactsLoading || seqLoading;
+  const metricCardsLoading = userLoading || metricsLoading;
   const hasNoWeeklyProgress =
-    dashboardStats.newContactsThisWeek === 0 &&
-    dashboardStats.emailsSentThisWeek === 0;
+    metrics.newContactsThisWeek === 0 &&
+    metrics.emailsSentThisWeek === 0;
 
-  // Format recent contacts for QuickStats
-  const formattedRecentContacts = recentContacts.map((c) => ({
-    id: c.id,
-    name: c.full_name,
-    company: c.company || 'Unknown',
-    email: c.confirmed_email || c.inferred_email || '',
-    addedAt: new Date(c.created_at),
-  }));
+  const formattedRecentContacts = useMemo(
+    () =>
+      [...realtimeContacts]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 5)
+        .map((contact) => {
+          const fullName =
+            contact.full_name?.trim() ||
+            `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+            "Unknown Contact";
+
+          return {
+            id: contact.id,
+            name: fullName,
+            company: contact.company || "Unknown",
+            email: contact.confirmed_email || contact.inferred_email || "",
+            addedAt: new Date(contact.created_at),
+          };
+        }),
+    [realtimeContacts]
+  );
 
   const nextSteps = [
     {
       key: "contacts",
       title: "Add your first contacts",
       description: "Build a contact base from LinkedIn profiles.",
-      completed: dashboardStats.totalContacts > 0,
+      completed: metrics.totalContacts > 0,
       href: "/dashboard/contacts",
       cta: "Go to Contacts",
     },
@@ -56,7 +105,7 @@ export default function DashboardPage() {
       key: "templates",
       title: "Create reusable templates",
       description: "Save outreach templates so sending is faster.",
-      completed: sequenceStats.totalTemplates > 0,
+      completed: metrics.emailTemplates > 0,
       href: "/dashboard/templates",
       cta: "Manage Templates",
     },
@@ -64,20 +113,9 @@ export default function DashboardPage() {
 
   const completedSteps = nextSteps.filter((step) => step.completed).length;
 
-  // Fetch total leads count
-  useEffect(() => {
-    fetch('/api/v1/leads?limit=1')
-      .then((r) => r.json())
-      .then((d) => {
-        if (typeof d?.pagination?.total === 'number') setLeadsCount(d.pagination.total);
-      })
-      .catch(() => {})
-      .finally(() => setLeadsLoading(false));
-  }, []);
-
   // Handle refresh all data
   const handleRefreshAll = async () => {
-    await Promise.all([refreshStats(), refreshActivity()]);
+    await Promise.all([refreshMetrics(), refreshActivity(), refreshContacts()]);
   };
 
   const extensionUrl =
@@ -87,8 +125,8 @@ export default function DashboardPage() {
     <DashboardShell>
       {/* Smart Quick Actions - show contextual CTAs based on state */}
       <SmartQuickActions
-        totalContacts={dashboardStats.totalContacts}
-        totalSequences={sequenceStats.totalTemplates}
+        totalContacts={metrics.totalContacts}
+        totalSequences={metrics.emailTemplates}
         className="mb-6"
       />
 
@@ -211,16 +249,16 @@ export default function DashboardPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-sm">
                     <span>Contacts added</span>
-                    <span className="font-bold">{dashboardStats.newContactsThisWeek}</span>
+                    <span className="font-bold">{metrics.newContactsThisWeek}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span>Emails sent</span>
-                    <span className="font-bold">{dashboardStats.emailsSentThisWeek}</span>
+                    <span className="font-bold">{metrics.emailsSentThisWeek}</span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span>Response rate</span>
                     <span className="font-bold">
-                      {dashboardStats.emailsSent > 0 ? `${dashboardStats.responseRate}%` : "No data yet"}
+                      {metrics.emailsSent > 0 ? `${metrics.responseRate}%` : "No data yet"}
                     </span>
                   </div>
                 </div>
@@ -230,45 +268,45 @@ export default function DashboardPage() {
 
           <StatCard
             title="Total Contacts"
-            value={statsLoading ? 0 : dashboardStats.totalContacts}
+            value={metricCardsLoading ? 0 : metrics.totalContacts}
             icon={Users}
-            description={`${dashboardStats.newContactsThisWeek} added this week`}
+            description={`${metrics.newContactsThisWeek} added this week`}
             emptyMessage="Add contacts via the Chrome extension"
-            loading={statsLoading}
+            loading={metricCardsLoading}
           />
 
           <StatCard
             title="Discovered Leads"
-            value={leadsLoading ? 0 : leadsCount}
+            value={metricCardsLoading ? 0 : metrics.discoveredLeads}
             icon={Target}
-            description="Leads with discovered emails"
+            description="Contacts added from extension"
             emptyMessage="Discover leads via the extension"
-            loading={leadsLoading}
+            loading={metricCardsLoading}
           />
 
           <StatCard
             title="Email Templates"
-            value={sequenceLoading ? 0 : sequenceStats.totalTemplates}
+            value={metricCardsLoading ? 0 : metrics.emailTemplates}
             icon={Zap}
             description="Reusable outreach templates"
             emptyMessage="Create your first template"
-            loading={sequenceLoading}
+            loading={metricCardsLoading}
           />
 
           <StatCard
             title="Emails Sent"
-            value={statsLoading ? 0 : dashboardStats.emailsSent}
-            {...(dashboardStats.emailsSentThisWeek > 0
-              ? { change: dashboardStats.emailsSentThisWeek, trend: "up" as const }
+            value={metricCardsLoading ? 0 : metrics.emailsSent}
+            {...(metrics.emailsSentThisWeek > 0
+              ? { change: metrics.emailsSentThisWeek, trend: "up" as const }
               : {})}
             icon={Mail}
             description={
-              dashboardStats.emailsSent > 0
-                ? `${dashboardStats.responseRate}% response rate`
+              metrics.emailsSent > 0
+                ? `${metrics.responseRate}% response rate`
                 : "No emails sent yet"
             }
             emptyMessage="No emails sent yet"
-            loading={statsLoading}
+            loading={metricCardsLoading}
           />
         </div>
 
@@ -289,6 +327,8 @@ export default function DashboardPage() {
               recentContacts={formattedRecentContacts}
               topSequences={topSequences}
               loading={seqLoading}
+              contactsLoading={contactsLoading}
+              contactsLive={contactsLive}
             />
           </div>
         </div>

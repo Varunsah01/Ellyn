@@ -11,6 +11,9 @@
     "https://ellyn.app/*",
     "https://www.ellyn.app/*",
     "https://app.ellyn.app/*",
+    "https://app.ellyn.ai/*",
+    "https://www.app.ellyn.ai/*",
+    "https://bgknhoxicrxgqzraregj.supabase.co/*",
     "https://useellyn.com/*",
     "https://www.useellyn.com/*",
     "https://dns.google/*",
@@ -53,7 +56,9 @@
       "https://www.useellyn.com/*",
       "https://ellyn.app/*",
       "https://www.ellyn.app/*",
-      "https://app.ellyn.app/*"
+      "https://app.ellyn.app/*",
+      "https://app.ellyn.ai/*",
+      "https://www.app.ellyn.ai/*"
     ]
   },
   "content_security_policy": {
@@ -63,6 +68,10 @@
     {
       "resources": ["assets/icons/*", "icons/*", "data/university-domains.json"],
       "matches": ["https://linkedin.com/*", "https://*.linkedin.com/*"]
+    },
+    {
+      "resources": ["privacy.html"],
+      "matches": ["<all_urls>"]
     }
   ]
 }

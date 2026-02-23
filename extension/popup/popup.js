@@ -4,6 +4,11 @@ console.log('[Popup] Script loaded');
 const CONFIG = {
   AUTH_BASE_URL: 'https://www.useellyn.com',
 };
+const BUNDLED_PRIVACY_PAGE = 'privacy.html';
+const SYNC_QUEUE_KEY = 'sync_queue';
+const LAST_SYNC_AT_KEY = 'last_sync_at';
+const SUPABASE_SESSION_KEY = 'supabase_session';
+const SYNC_LOG_KEY = 'sync_log';
 
 // DOM elements
 const elements = {
@@ -19,6 +24,14 @@ const elements = {
   upgradeBanner: document.getElementById('upgradeBanner'),
   upgradeMessage: document.getElementById('upgradeMessage'),
   upgradeLink: document.getElementById('upgradeLink'),
+  syncStatus: document.getElementById('syncStatus'),
+  syncStateDot: document.getElementById('syncStateDot'),
+  syncStateText: document.getElementById('syncStateText'),
+  syncStateMeta: document.getElementById('syncStateMeta'),
+  syncRetryBtn: document.getElementById('syncRetryBtn'),
+  syncHistoryList: document.getElementById('syncHistoryList'),
+  syncHistoryEmpty: document.getElementById('syncHistoryEmpty'),
+  privacyLink: document.getElementById('ellyn-privacy-link'),
 };
 
 // ============================================================================
@@ -29,6 +42,8 @@ async function init() {
   console.log('[Popup] Initializing...');
 
   bindRuntimeListeners();
+  bindStorageListeners();
+  await Promise.all([renderSyncStatus(), renderSyncHistory()]);
 
   const isAuthenticated = await checkAuth();
 
@@ -42,6 +57,8 @@ async function init() {
   elements.signInBtn?.addEventListener('click', handleSignIn);
   elements.connectAppBtn?.addEventListener('click', handleConnectApp);
   elements.findEmailBtn?.addEventListener('click', handleFindEmail);
+  elements.syncRetryBtn?.addEventListener('click', handleSyncRetry);
+  elements.privacyLink?.addEventListener('click', handleOpenPrivacyPage);
 }
 
 // ============================================================================
@@ -50,14 +67,251 @@ async function init() {
 
 async function checkAuth() {
   try {
+    const allStorage = await chrome.storage.local.get(null);
+    const hasSupabaseSession = Object.entries(allStorage || {}).some(([key, value]) => {
+      if (!key.startsWith('sb-') || !key.endsWith('-auth-token')) {
+        return false;
+      }
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        return false;
+      }
+      try {
+        const parsed = JSON.parse(value);
+        return typeof parsed?.access_token === 'string' && parsed.access_token.length > 0;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!hasSupabaseSession) {
+      return false;
+    }
+
     const result = await chrome.storage.local.get(['isAuthenticated', 'user', 'auth_token']);
     const hasStructuredAuth = result?.isAuthenticated === true && Boolean(result?.user);
     const hasTokenOnly = typeof result?.auth_token === 'string' && result.auth_token.length > 0;
-    return hasStructuredAuth || hasTokenOnly;
+    if (hasStructuredAuth || hasTokenOnly) {
+      return true;
+    }
+
+    const runtimeToken = await chrome.runtime.sendMessage({ type: 'GET_AUTH_TOKEN' });
+    return typeof runtimeToken === 'string' && runtimeToken.length > 0;
   } catch (error) {
     console.error('[Popup] Error checking auth:', error);
     return false;
   }
+}
+
+function hasAccessTokenInSupabaseSession(value) {
+  if (!value) return false;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed?.access_token === 'string' && parsed.access_token.length > 0;
+    } catch {
+      return false;
+    }
+  }
+  if (typeof value === 'object') {
+    return typeof value?.access_token === 'string' && value.access_token.length > 0;
+  }
+  return false;
+}
+
+function formatRelativeTime(value) {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return '';
+
+  const deltaMs = Math.max(0, Date.now() - parsed.getTime());
+  const deltaMinutes = Math.floor(deltaMs / 60000);
+
+  if (deltaMinutes <= 0) return 'just now';
+  if (deltaMinutes === 1) return '1 min ago';
+  if (deltaMinutes < 60) return `${deltaMinutes} min ago`;
+
+  const deltaHours = Math.floor(deltaMinutes / 60);
+  if (deltaHours === 1) return '1 hour ago';
+  if (deltaHours < 24) return `${deltaHours} hours ago`;
+
+  const deltaDays = Math.floor(deltaHours / 24);
+  if (deltaDays === 1) return '1 day ago';
+  return `${deltaDays} days ago`;
+}
+
+function updateSyncStatusUI({ state, label, meta, showRetry = false, retryLabel = 'Retry', retryDisabled = false }) {
+  if (elements.syncStateDot) {
+    elements.syncStateDot.dataset.state = state;
+  }
+  if (elements.syncStateText) {
+    elements.syncStateText.textContent = label;
+  }
+  if (elements.syncStateMeta) {
+    elements.syncStateMeta.textContent = meta || '';
+  }
+  if (elements.syncRetryBtn) {
+    elements.syncRetryBtn.textContent = retryLabel;
+    elements.syncRetryBtn.disabled = retryDisabled;
+    elements.syncRetryBtn.classList.toggle('hidden', !showRetry);
+  }
+}
+
+async function renderSyncStatus() {
+  try {
+    const syncStorage = await chrome.storage.local.get([
+      SYNC_QUEUE_KEY,
+      LAST_SYNC_AT_KEY,
+      SUPABASE_SESSION_KEY,
+    ]);
+    const queue = Array.isArray(syncStorage?.[SYNC_QUEUE_KEY]) ? syncStorage[SYNC_QUEUE_KEY] : [];
+    const queueCount = queue.length;
+    const lastSyncAt = typeof syncStorage?.[LAST_SYNC_AT_KEY] === 'string'
+      ? syncStorage[LAST_SYNC_AT_KEY]
+      : '';
+    const hasSession = hasAccessTokenInSupabaseSession(syncStorage?.[SUPABASE_SESSION_KEY]);
+    const authenticated = hasSession || (await checkAuth());
+
+    if (!authenticated) {
+      updateSyncStatusUI({
+        state: 'none',
+        label: 'Not authenticated',
+        meta: 'Sign in at app.ellyn.ai to sync',
+        showRetry: false,
+      });
+      return;
+    }
+
+    if (queueCount > 0) {
+      updateSyncStatusUI({
+        state: 'pending',
+        label: `Authenticated • Pending (${queueCount})`,
+        meta: 'Contacts queued for sync',
+        showRetry: true,
+        retryLabel: 'Retry',
+      });
+      return;
+    }
+
+    const relative = formatRelativeTime(lastSyncAt);
+    updateSyncStatusUI({
+      state: 'synced',
+      label: 'Authenticated • Synced',
+      meta: relative ? `Last synced ${relative}` : 'No recent sync activity',
+      showRetry: false,
+    });
+  } catch (error) {
+    console.error('[Popup] Error rendering sync status:', error);
+    updateSyncStatusUI({
+      state: 'error',
+      label: 'Sync status error',
+      meta: 'Unable to read sync state',
+      showRetry: true,
+      retryLabel: 'Retry',
+    });
+  }
+}
+
+function formatSyncHistoryStatus(status) {
+  if (status === 'success') return 'Success';
+  if (status === 'queued') return 'Queued';
+  return 'Failed';
+}
+
+async function renderSyncHistory() {
+  if (!elements.syncHistoryList || !elements.syncHistoryEmpty) return;
+
+  try {
+    const storage = await chrome.storage.local.get([SYNC_LOG_KEY]);
+    const entries = Array.isArray(storage?.[SYNC_LOG_KEY]) ? storage[SYNC_LOG_KEY] : [];
+    const recentEntries = entries.slice(0, 5);
+
+    elements.syncHistoryList.innerHTML = '';
+    elements.syncHistoryEmpty.classList.toggle('hidden', recentEntries.length > 0);
+
+    recentEntries.forEach((entry) => {
+      const status = String(entry?.status || 'failed').trim();
+      const timeLabel = formatRelativeTime(entry?.timestamp);
+      const item = document.createElement('li');
+      item.className = 'sync-history-item';
+      const errorText = typeof entry?.error === 'string' && entry.error.trim().length > 0
+        ? ` • ${entry.error.trim()}`
+        : '';
+      const row = document.createElement('div');
+      row.className = 'sync-history-row';
+
+      const nameNode = document.createElement('span');
+      nameNode.className = 'sync-history-name';
+      nameNode.textContent = String(entry?.contactName || 'Unknown Contact');
+
+      const statusNode = document.createElement('span');
+      statusNode.className = `sync-history-status ${status}`;
+      statusNode.textContent = formatSyncHistoryStatus(status);
+
+      const metaNode = document.createElement('p');
+      metaNode.className = 'sync-history-meta';
+      metaNode.textContent = `${timeLabel || 'just now'}${errorText}`;
+
+      row.appendChild(nameNode);
+      row.appendChild(statusNode);
+      item.appendChild(row);
+      item.appendChild(metaNode);
+      elements.syncHistoryList.appendChild(item);
+    });
+  } catch (error) {
+    console.error('[Popup] Error rendering sync history:', error);
+    elements.syncHistoryList.innerHTML = '';
+    elements.syncHistoryEmpty.textContent = 'Unable to load sync history';
+    elements.syncHistoryEmpty.classList.remove('hidden');
+  }
+}
+
+async function handleSyncRetry() {
+  if (!elements.syncRetryBtn) return;
+  elements.syncRetryBtn.disabled = true;
+  elements.syncRetryBtn.textContent = 'Retrying...';
+
+  try {
+    const result = await chrome.runtime.sendMessage({ type: 'PROCESS_SYNC_QUEUE' });
+    if (result && typeof result === 'object' && result.ok === false) {
+      updateSyncStatusUI({
+        state: 'error',
+        label: 'Sync status error',
+        meta: typeof result.error === 'string' ? result.error : 'Queue retry failed',
+        showRetry: true,
+      });
+    }
+  } catch (error) {
+    console.error('[Popup] Retry failed:', error);
+    updateSyncStatusUI({
+      state: 'error',
+      label: 'Sync status error',
+      meta: 'Queue retry failed',
+      showRetry: true,
+    });
+  } finally {
+    await Promise.all([renderSyncStatus(), renderSyncHistory()]);
+    if (elements.syncRetryBtn) {
+      elements.syncRetryBtn.disabled = false;
+      elements.syncRetryBtn.textContent = 'Retry';
+    }
+  }
+}
+
+function bindStorageListeners() {
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    if (
+      !changes?.[SYNC_QUEUE_KEY] &&
+      !changes?.[LAST_SYNC_AT_KEY] &&
+      !changes?.[SUPABASE_SESSION_KEY] &&
+      !changes?.[SYNC_LOG_KEY]
+    ) {
+      return;
+    }
+
+    void renderSyncStatus();
+    void renderSyncHistory();
+  });
 }
 
 function handleSignIn() {
@@ -72,6 +326,12 @@ function handleConnectApp() {
   const url = `${authBase}/extension-auth?extensionId=${chrome.runtime.id}`;
   chrome.tabs.create({ url });
   window.close();
+}
+
+function handleOpenPrivacyPage(event) {
+  event?.preventDefault?.();
+  const url = chrome.runtime.getURL(BUNDLED_PRIVACY_PAGE);
+  chrome.tabs.create({ url });
 }
 
 // ============================================================================

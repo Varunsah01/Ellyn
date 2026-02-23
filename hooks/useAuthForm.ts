@@ -146,43 +146,83 @@ export function useAuthForm({ searchParams }: UseAuthFormOptions) {
     async (payload: ExtensionPayload) => {
       if (!isExtensionSource || extensionNotifiedRef.current) return;
 
-      const extensionId = extensionIdFromQuery || process.env.NEXT_PUBLIC_EXTENSION_ID;
+      const extensionId =
+        extensionIdFromQuery ||
+        process.env.NEXT_PUBLIC_CHROME_EXTENSION_ID ||
+        process.env.NEXT_PUBLIC_EXTENSION_ID;
       if (!extensionId) return;
 
-      let authToken = "";
+      let accessToken = "";
+      let refreshToken = "";
       try {
         const {
           data: { session },
         } = await supabase.auth.getSession();
-        authToken =
+        accessToken =
           typeof session?.access_token === "string" ? session.access_token.trim() : "";
+        refreshToken =
+          typeof session?.refresh_token === "string" ? session.refresh_token.trim() : "";
       } catch {
-        authToken = "";
+        accessToken = "";
+        refreshToken = "";
       }
 
-      // Extension sync requires a valid bearer token for subsequent API calls.
-      if (!authToken) {
+      if (!accessToken || !refreshToken) {
         return;
       }
 
       const maybeWindow = window as unknown as {
-        chrome?: { runtime?: { sendMessage?: (...args: unknown[]) => void } };
+        chrome?: {
+          runtime?: {
+            sendMessage?: (...args: unknown[]) => void;
+            lastError?: { message?: string };
+          };
+        };
       };
 
       const runtime = maybeWindow.chrome?.runtime;
       if (!runtime || typeof runtime.sendMessage !== "function") return;
 
       extensionNotifiedRef.current = true;
-      const syncPayload: ExtensionPayload = {
+
+      const sendMessageToExtension = (message: unknown) =>
+        new Promise<boolean>((resolve) => {
+          try {
+            runtime.sendMessage!(extensionId, message, (response: unknown) => {
+              if (runtime.lastError) {
+                resolve(false);
+                return;
+              }
+              const res = response as { ok?: boolean } | undefined;
+              resolve(Boolean(res?.ok));
+            });
+          } catch {
+            resolve(false);
+          }
+        });
+
+      const sessionSynced = await sendMessageToExtension({
+        type: "ELLYN_SET_SESSION",
+        session: {
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        },
+      });
+
+      if (sessionSynced) {
+        return;
+      }
+
+      const legacyPayload: ExtensionPayload = {
         ...payload,
-        auth_token: authToken,
+        auth_token: accessToken,
       };
 
       await new Promise<void>((resolve) => {
         try {
           runtime.sendMessage!(
             extensionId,
-            { type: "AUTH_SUCCESS", payload: syncPayload },
+            { type: "AUTH_SUCCESS", payload: legacyPayload },
             () => resolve(),
           );
         } catch {

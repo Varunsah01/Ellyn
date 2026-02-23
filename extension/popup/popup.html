@@ -11,6 +11,14 @@
       <header>
         <h1>Ellyn Email Finder</h1>
         <p class="subtitle">Find professional emails on LinkedIn</p>
+        <div id="syncStatus" class="sync-status" role="status" aria-live="polite">
+          <span id="syncStateDot" class="sync-dot" data-state="none"></span>
+          <div class="sync-copy">
+            <p id="syncStateText" class="sync-state-text">Checking sync status...</p>
+            <p id="syncStateMeta" class="sync-state-meta"></p>
+          </div>
+          <button id="syncRetryBtn" class="sync-retry-btn hidden" type="button">Retry</button>
+        </div>
       </header>
 
       <main id="mainContent">
@@ -20,13 +28,16 @@
         </div>
 
         <div id="authSection">
-          <p>Sign in to start finding emails</p>
+          <p>Sign in at app.ellyn.ai to sync</p>
           <button id="signInBtn" class="primary-btn">Sign In</button>
           <button id="connectAppBtn" class="secondary-btn">Connect to Ellyn App</button>
         </div>
 
         <div id="finderSection" class="hidden">
           <button id="findEmailBtn" class="primary-btn">Find Email</button>
+          <p id="aiDisclosureText" class="ai-disclosure-text">
+            Email drafts are AI-generated
+          </p>
 
           <div id="loadingState" class="hidden">
             <div class="spinner"></div>
@@ -38,12 +49,22 @@
             <div id="profileTypeBadge" class="hidden profile-type-badge"></div>
           </div>
         </div>
+
+        <details id="syncHistorySection" class="sync-history">
+          <summary>Sync History</summary>
+          <ul id="syncHistoryList" class="sync-history-list"></ul>
+          <p id="syncHistoryEmpty" class="sync-history-empty">No sync activity yet.</p>
+        </details>
       </main>
 
       <footer>
         <div class="quota-display">
           <span>Credits: </span>
           <span id="quotaText">--/--</span>
+        </div>
+        <div class="disclosure-footer">
+          <span class="disclosure-copy">AI-assisted · Data stays private</span>
+          <a href="#" id="ellyn-privacy-link" class="disclosure-link">Privacy</a>
         </div>
       </footer>
     </div>

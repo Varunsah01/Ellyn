@@ -95,6 +95,7 @@ export interface UserProfile {
   id: string
   full_name: string | null
   avatar_url: string | null
+  extension_last_seen: string | null
   plan_type: 'free' | 'pro'
   dodo_customer_id: string | null
   dodo_subscription_id: string | null
@@ -118,6 +119,7 @@ export interface UserProfileInsert {
   id: string
   full_name?: string
   avatar_url?: string
+  extension_last_seen?: string | null
   plan_type?: 'free' | 'pro'
   dodo_customer_id?: string
   dodo_subscription_id?: string

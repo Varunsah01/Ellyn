@@ -40,6 +40,76 @@ h1 {
   color: #64748b;
 }
 
+.sync-status {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  text-align: left;
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+  flex-shrink: 0;
+}
+
+.sync-dot[data-state="synced"] {
+  background: #16a34a;
+}
+
+.sync-dot[data-state="pending"] {
+  background: #ca8a04;
+}
+
+.sync-dot[data-state="error"] {
+  background: #dc2626;
+}
+
+.sync-dot[data-state="none"] {
+  background: #94a3b8;
+}
+
+.sync-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.sync-state-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.sync-state-meta {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 1px;
+}
+
+.sync-retry-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 8px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.sync-retry-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
 main {
   flex: 1;
   padding: 20px;
@@ -91,6 +161,15 @@ main {
 
 .primary-btn:active {
   transform: translateY(0);
+}
+
+.ai-disclosure-text {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+  color: #94a3b8;
+  letter-spacing: 0.01em;
 }
 
 .secondary-btn {
@@ -157,6 +236,35 @@ footer {
   color: #667eea;
 }
 
+.disclosure-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.disclosure-copy {
+  font-size: 10px;
+  color: #94a3b8;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+
+.disclosure-link {
+  font-size: 10px;
+  color: #94a3b8;
+  text-decoration: none;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.disclosure-link:hover {
+  opacity: 1;
+}
+
 .info {
   margin-top: 12px;
   padding: 12px;
@@ -176,4 +284,85 @@ footer {
   background: #eff6ff;
   border-radius: 4px;
   display: inline-block;
+}
+
+.sync-history {
+  margin-top: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.sync-history summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  list-style: none;
+}
+
+.sync-history summary::-webkit-details-marker {
+  display: none;
+}
+
+.sync-history-list {
+  margin-top: 8px;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.sync-history-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: #f8fafc;
+}
+
+.sync-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sync-history-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-history-status {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.sync-history-status.success {
+  color: #15803d;
+}
+
+.sync-history-status.failed {
+  color: #b91c1c;
+}
+
+.sync-history-status.queued {
+  color: #a16207;
+}
+
+.sync-history-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.sync-history-empty {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #64748b;
 }

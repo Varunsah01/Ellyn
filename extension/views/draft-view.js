@@ -195,6 +195,20 @@ function _ensureDvStyles() {
       border-radius: 1px;
     }
 
+    .dv-ai-disclosure {
+      margin: -4px 2px 0;
+      font-size: 10px;
+      line-height: 1.4;
+      color: #94a3b8;
+      text-align: center;
+      letter-spacing: 0.01em;
+      display: none;
+    }
+
+    .dv-ai-disclosure--visible {
+      display: block;
+    }
+
     /* ── Error banner ──────────────────────────────────────── */
     .dv-error-banner {
       display: flex;
@@ -420,6 +434,9 @@ function renderDraftView(contact) {
     <div class="dv-generate-btn-slot">
       ${generateBtnHtml}
     </div>
+    <p class="dv-ai-disclosure" aria-live="polite">
+      Email drafts are AI-generated
+    </p>
 
     <!-- Error banner (hidden by default) -->
     <div class="dv-error-banner" role="alert" aria-live="assertive">
@@ -496,6 +513,7 @@ async function initDraftView(container, contact) {
   const editorSlot       = root.querySelector(".dv-editor-slot");
   const gmailBtnSlot     = root.querySelector(".dv-gmail-btn-slot");
   const sentBadge        = root.querySelector(".dv-sent-badge");
+  const aiDisclosure     = root.querySelector(".dv-ai-disclosure");
 
   // Per-contact storage key so drafts don't bleed across contacts
   const storageKey = _dvStorageKey(contact);
@@ -530,21 +548,38 @@ async function initDraftView(container, contact) {
 
   /** Called whenever the user picks a different email type. */
   function handleTypeChange({ value, draft, label }) {
+    _setAiDisclosureVisible(value === "ai_generated");
+
     // Analytics: track the selected email type
     if (typeof trackEvent === "function") {
       trackEvent("email_type_selected", { type: value });
     }
 
-    // The email-type-selector already called generateDraft() and passes
-    // the result in detail.draft — use it directly to avoid a second call.
-    if (draft) {
+    // For non-AI templates the selector prebuilds a draft and passes it in detail.draft.
+    if (value !== "ai_generated" && draft) {
       _applyDraft(draft.subject, draft.body ?? draft.message ?? "");
       _dvToast(`Template changed to "${label}"`, "info");
-    } else {
-      // Fallback: generate ourselves (ai_generated returns a placeholder)
-      _generateAndApply(value);
+      return;
     }
+
+    if (value === "ai_generated") {
+      _dvToast("AI mode selected. Click Generate Draft to create a personalised email.", "info");
+      return;
+    }
+
+    // Fallback for non-AI templates if prebuild was unavailable.
+    void _generateAndApply(value);
   }
+
+  function _setAiDisclosureVisible(visible) {
+    aiDisclosure?.classList.toggle("dv-ai-disclosure--visible", visible === true);
+  }
+
+  const initialTypeValue =
+    (typeof getEmailTypeSelectorValue === "function" &&
+      getEmailTypeSelectorValue(typeSelectorSlot)) ??
+    "referral_request";
+  _setAiDisclosureVisible(initialTypeValue === "ai_generated");
 
   // ── 3. Generate draft button ──────────────────────────────────────────────
   let gdbHandle = null;
@@ -562,8 +597,8 @@ async function initDraftView(container, contact) {
       "referral_request";
 
     // Small pause so the loading spinner has time to render
-    setTimeout(() => {
-      const ok = _generateAndApply(typeValue);
+    setTimeout(async () => {
+      const ok = await _generateAndApply(typeValue);
       setState(ok ? "success" : "idle");
     }, 380);
   }
@@ -643,14 +678,28 @@ async function initDraftView(container, contact) {
    * Returns true on success, false on failure.
    *
    * @param {string} typeValue
-   * @returns {boolean}
+   * @returns {Promise<boolean>}
    */
-  function _generateAndApply(typeValue) {
+  async function _generateAndApply(typeValue) {
     try {
-      if (typeof generateDraft !== "function") {
-        throw new Error("generateDraft is not available.");
+      let draft = null;
+
+      if (typeValue === "ai_generated") {
+        if (typeof generateAIDraft !== "function") {
+          throw new Error("generateAIDraft is not available.");
+        }
+        draft = await generateAIDraft(contact);
+      } else {
+        if (typeof generateDraft !== "function") {
+          throw new Error("generateDraft is not available.");
+        }
+        draft = generateDraft(contact, typeValue);
       }
-      const draft = generateDraft(contact, typeValue);
+
+      if (!draft || typeof draft.subject !== "string") {
+        throw new Error("Draft payload is invalid.");
+      }
+
       _applyDraft(draft.subject, draft.body ?? draft.message ?? "");
 
       // Analytics: track whether this was an AI or template generation
@@ -661,9 +710,14 @@ async function initDraftView(container, contact) {
 
       return true;
     } catch (err) {
-      console.error("[DraftView] generateDraft failed:", err);
-      _dvShowError(root, "Could not generate draft. Please try again.");
-      _dvToast("Draft generation failed.", "error");
+      console.error("[DraftView] draft generation failed:", err);
+      if (typeValue === "ai_generated") {
+        _dvShowError(root, "AI draft generation failed. Please try again.");
+        _dvToast("AI draft generation failed.", "error");
+      } else {
+        _dvShowError(root, "Could not generate draft. Please try again.");
+        _dvToast("Draft generation failed.", "error");
+      }
       return false;
     }
   }

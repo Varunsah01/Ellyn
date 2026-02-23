@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { SubscriptionProvider } from "@/context/SubscriptionContext";
 import { QuotaWarningBanner } from "@/components/subscription/QuotaWarningBanner";
 import { AppRefreshProvider } from "@/lib/context/AppRefreshContext";
+import type { Session } from "@supabase/supabase-js";
 
 export default function DashboardLayout({
   children,
@@ -32,6 +33,77 @@ export default function DashboardLayout({
 
   useEffect(() => {
     let isMounted = true;
+    const configuredExtensionId =
+      process.env.NEXT_PUBLIC_CHROME_EXTENSION_ID?.trim() || "";
+
+    const resolveExtensionId = () => {
+      if (configuredExtensionId) return configuredExtensionId;
+      try {
+        return localStorage.getItem("ellyn_extension_id")?.trim() || "";
+      } catch {
+        return "";
+      }
+    };
+
+    const getChromeRuntime = () =>
+      (window as Window & {
+        chrome?: { runtime?: { sendMessage?: unknown; lastError?: unknown } };
+      }).chrome?.runtime;
+
+    const sendSessionToExtension = async (session: Session) => {
+      const extensionId = resolveExtensionId();
+      if (!extensionId) return;
+
+      const accessToken = session.access_token?.trim() || "";
+      const refreshToken = session.refresh_token?.trim() || "";
+      if (!accessToken || !refreshToken) return;
+
+      const runtime = getChromeRuntime();
+      if (typeof runtime?.sendMessage !== "function") return;
+
+      await new Promise<void>((resolve) => {
+        (runtime.sendMessage as (
+          id: string,
+          msg: unknown,
+          cb: (response: unknown) => void
+        ) => void)(
+          extensionId,
+          {
+            type: "ELLYN_SET_SESSION",
+            session: {
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            },
+          },
+          () => {
+            void runtime.lastError;
+            resolve();
+          }
+        );
+      });
+
+      try {
+        localStorage.setItem("ellyn_extension_id", extensionId);
+      } catch {
+        // localStorage may be unavailable in some contexts
+      }
+    };
+
+    const sendLogoutToExtension = () => {
+      const extensionId = resolveExtensionId();
+      if (!extensionId) return;
+
+      const runtime = getChromeRuntime();
+      if (typeof runtime?.sendMessage !== "function") return;
+
+      (runtime.sendMessage as (
+        id: string,
+        msg: unknown,
+        cb: (response: unknown) => void
+      ) => void)(extensionId, { type: "AUTH_LOGOUT" }, () => {
+        void runtime.lastError;
+      });
+    };
 
     const checkAuth = async () => {
       if (!isSupabaseConfigured) {
@@ -54,6 +126,7 @@ export default function DashboardLayout({
 
       setIsAuthenticated(true);
       setAuthChecking(false);
+      void sendSessionToExtension(data.session);
     };
 
     checkAuth();
@@ -69,26 +142,14 @@ export default function DashboardLayout({
 
       if (event === "SIGNED_OUT" || !session) {
         setIsAuthenticated(false);
-
-        // Best-effort: tell the extension the user signed out so it can clear its session
-        try {
-          const extId = localStorage.getItem("ellyn_extension_id");
-          const cr = (window as Window & {
-            chrome?: { runtime?: { sendMessage?: unknown; lastError?: unknown } };
-          }).chrome?.runtime;
-          if (extId && typeof cr?.sendMessage === "function") {
-            (cr.sendMessage as (id: string, msg: unknown, cb: () => void) => void)(
-              extId,
-              { type: "AUTH_LOGOUT_LOCAL" },
-              () => { void (cr.lastError); }
-            );
-          }
-        } catch {
-          // Extension may not be installed; ignore silently
-        }
+        sendLogoutToExtension();
 
         router.replace("/auth/login?next=/dashboard");
+        return;
       }
+
+      setIsAuthenticated(true);
+      void sendSessionToExtension(session);
     });
 
     return () => {

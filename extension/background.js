@@ -1,29 +1,22 @@
 // Service Worker for email finding orchestration + auth bridge
 console.log('[Extension] Service worker loaded');
 
-try {
-  importScripts('utils/quota.js');
-} catch (error) {
-  console.warn('[Extension] Failed to load quota utility script:', error);
+function loadOptionalScript(path, label) {
+  try {
+    importScripts(path);
+  } catch (error) {
+    console.warn(`[Extension] Failed to load ${label}:`, error);
+  }
 }
 
-try {
-  importScripts('utils/analytics.js');
-} catch (error) {
-  console.warn('[Extension] Failed to load analytics utility script:', error);
-}
-
-try {
-  importScripts('background/email-predictor.js');
-} catch (error) {
-  console.warn('[Extension] Failed to load AI email predictor utility script:', error);
-}
-
-try {
-  importScripts('utils/safety.js');
-} catch (e) {
-  console.warn('[Extension] safety.js load failed:', e);
-}
+loadOptionalScript('lib/vendor/supabase.js', 'Supabase UMD library');
+loadOptionalScript('lib/supabase.js', 'Supabase extension auth bridge');
+loadOptionalScript('lib/sync.js', 'Supabase contact sync bridge');
+loadOptionalScript('lib/syncQueue.js', 'Supabase contact sync queue bridge');
+loadOptionalScript('utils/quota.js', 'quota utility script');
+loadOptionalScript('utils/analytics.js', 'analytics utility script');
+loadOptionalScript('background/email-predictor.js', 'AI email predictor utility script');
+loadOptionalScript('utils/safety.js', 'safety utility script');
 
 // Configuration
 const CONFIG = {
@@ -53,8 +46,18 @@ const CSRF_HEADER_NAME = 'X-CSRF-Token';
 const CSRF_REFRESH_PATH = '/api/v1';
 const CSRF_TOKEN_TTL_MS = 5 * 60 * 1000;
 
+const SUPABASE_AUTH_BRIDGE_KEY = 'ellynSupabaseAuthBridge';
+const CONTACT_SYNC_BRIDGE_KEY = 'ellynContactSync';
+const CONTACT_SYNC_QUEUE_BRIDGE_KEY = 'ellynContactSyncQueue';
 const AUTH_SOURCE_ORIGIN_KEY = 'ellyn_auth_origin';
-const AUTH_STORAGE_KEYS = ['isAuthenticated', 'user', 'auth_token', AUTH_SOURCE_ORIGIN_KEY];
+const SUPABASE_SESSION_STORAGE_KEY = 'supabase_session';
+const AUTH_STORAGE_KEYS = [
+  'isAuthenticated',
+  'user',
+  'auth_token',
+  AUTH_SOURCE_ORIGIN_KEY,
+  SUPABASE_SESSION_STORAGE_KEY,
+];
 const COST_STORAGE_KEY = 'api_cost_tracker';
 const OPERATION_STORAGE_PREFIX = 'find_email_op_';
 const OPERATION_ALARM_PREFIX = 'find-email-timeout-';
@@ -109,6 +112,42 @@ async function configureSidePanelBehavior() {
   }
 }
 
+function getContactSyncBridge() {
+  const bridge = globalThis?.[CONTACT_SYNC_BRIDGE_KEY];
+  if (!bridge || typeof bridge !== 'object') return null;
+  return bridge;
+}
+
+function getContactSyncQueueBridge() {
+  const bridge = globalThis?.[CONTACT_SYNC_QUEUE_BRIDGE_KEY];
+  if (!bridge || typeof bridge !== 'object') return null;
+  return bridge;
+}
+
+async function triggerExtensionHeartbeat() {
+  const syncBridge = getContactSyncBridge();
+  if (!syncBridge || typeof syncBridge.sendHeartbeat !== 'function') {
+    return;
+  }
+  try {
+    await syncBridge.sendHeartbeat();
+  } catch (error) {
+    console.warn('[Extension] Failed to record extension heartbeat:', error);
+  }
+}
+
+async function initializeContactSyncQueue() {
+  const queueBridge = getContactSyncQueueBridge();
+  if (!queueBridge || typeof queueBridge.initialize !== 'function') {
+    return;
+  }
+  try {
+    await queueBridge.initialize();
+  } catch (error) {
+    console.warn('[Extension] Failed to initialize contact sync queue:', error);
+  }
+}
+
 if (quotaManager?.config) {
   quotaManager.config.apiBaseUrl = CONFIG.API_BASE_URL;
 }
@@ -118,9 +157,11 @@ if (analyticsClient?.config) {
 }
 
 void configureSidePanelBehavior();
+void initializeContactSyncQueue();
 
 chrome.runtime.onInstalled.addListener(() => {
   void configureSidePanelBehavior();
+  void initializeContactSyncQueue();
 });
 
 // ============================================================================
@@ -132,6 +173,20 @@ function extractAuthToken(payload) {
   if (typeof payload.auth_token === 'string') return payload.auth_token;
   if (typeof payload.access_token === 'string') return payload.access_token;
   return null;
+}
+
+function extractRefreshToken(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  if (typeof payload.refresh_token === 'string') return payload.refresh_token;
+  return null;
+}
+
+function getSupabaseAuthBridge() {
+  const bridge = globalThis?.[SUPABASE_AUTH_BRIDGE_KEY];
+  if (!bridge || typeof bridge !== 'object') {
+    return null;
+  }
+  return bridge;
 }
 
 function normalizeOrigin(value) {
@@ -147,9 +202,63 @@ function normalizeOrigin(value) {
   }
 }
 
-function setAuthenticatedState(payload, sendResponse, context = {}) {
-  const token = String(extractAuthToken(payload) || '').trim();
-  const hasToken = token.length > 0;
+async function persistAuthenticatedState({ token, user, sourceOrigin, payload }) {
+  const normalizedToken = String(token || '').trim();
+  const hasToken = normalizedToken.length > 0;
+  const normalizedUser = user && typeof user === 'object' ? user : null;
+
+  const nextState = {
+    isAuthenticated: hasToken,
+    user: normalizedUser,
+    auth_token: normalizedToken,
+  };
+
+  const normalizedSourceOrigin = normalizeOrigin(sourceOrigin);
+  if (normalizedSourceOrigin) {
+    nextState[AUTH_SOURCE_ORIGIN_KEY] = normalizedSourceOrigin;
+  }
+
+  nextState[SUPABASE_SESSION_STORAGE_KEY] = hasToken
+    ? {
+        access_token: normalizedToken,
+        user_id: normalizedUser?.id || null,
+        persisted_at: new Date().toISOString(),
+      }
+    : null;
+
+  await chrome.storage.local.set(nextState);
+
+  chrome.runtime.sendMessage(
+    {
+      type: hasToken ? 'AUTH_SUCCESS' : 'AUTH_LOGOUT',
+      payload:
+        payload && typeof payload === 'object'
+          ? payload
+          : {
+              user: normalizedUser,
+              auth_token: normalizedToken,
+            },
+    },
+    () => {
+      void chrome.runtime.lastError;
+    }
+  );
+
+  if (hasToken) {
+    void triggerExtensionHeartbeat();
+  }
+
+  return hasToken;
+}
+
+async function clearLocalAuthenticatedState() {
+  await chrome.storage.local.remove(AUTH_STORAGE_KEYS);
+  chrome.runtime.sendMessage({ type: 'AUTH_LOGOUT' }, () => {
+    void chrome.runtime.lastError;
+  });
+}
+
+async function setAuthenticatedState(payload, sendResponse, context = {}) {
   const normalizedUser =
     payload && typeof payload === 'object'
       ? payload.user && typeof payload.user === 'object'
@@ -157,28 +266,31 @@ function setAuthenticatedState(payload, sendResponse, context = {}) {
         : payload
       : null;
 
-  const nextState = {
-    isAuthenticated: hasToken,
-    user: normalizedUser,
-    auth_token: token,
-  };
-
-  const sourceOrigin = normalizeOrigin(context?.sourceOrigin);
-  if (sourceOrigin) {
-    nextState[AUTH_SOURCE_ORIGIN_KEY] = sourceOrigin;
+  let token = String(extractAuthToken(payload) || '').trim();
+  const refreshToken = String(extractRefreshToken(payload) || '').trim();
+  if (token && refreshToken) {
+    const bridge = getSupabaseAuthBridge();
+    if (bridge && typeof bridge.setSession === 'function') {
+      try {
+        const session = await bridge.setSession({
+          access_token: token,
+          refresh_token: refreshToken,
+        });
+        if (typeof session?.access_token === 'string' && session.access_token.trim()) {
+          token = session.access_token.trim();
+        }
+      } catch (error) {
+        console.warn('[Extension] Failed to hydrate Supabase session from auth payload:', error);
+      }
+    }
   }
 
-  chrome.storage.local.set(nextState, () => {
-    if (chrome.runtime.lastError) {
-      sendResponse?.({
-        ok: false,
-        error: chrome.runtime.lastError.message,
-      });
-      return;
-    }
-
-    chrome.runtime.sendMessage({ type: hasToken ? 'AUTH_SUCCESS' : 'AUTH_LOGOUT', payload }, () => {
-      void chrome.runtime.lastError;
+  try {
+    const hasToken = await persistAuthenticatedState({
+      token,
+      user: normalizedUser,
+      sourceOrigin: context?.sourceOrigin,
+      payload,
     });
 
     sendResponse?.(
@@ -189,34 +301,362 @@ function setAuthenticatedState(payload, sendResponse, context = {}) {
             error: 'Missing access token from auth payload',
           }
     );
-  });
+  } catch (error) {
+    sendResponse?.({
+      ok: false,
+      error: error?.message || 'Failed to persist auth state',
+    });
+  }
 }
 
-function clearAuthenticatedState(sendResponse) {
-  chrome.storage.local.remove(AUTH_STORAGE_KEYS, () => {
-    if (chrome.runtime.lastError) {
-      sendResponse?.({
-        ok: false,
-        error: chrome.runtime.lastError.message,
+async function setSupabaseSessionFromExternalMessage(message, sendResponse, context = {}) {
+  const bridge = getSupabaseAuthBridge();
+  if (!bridge || typeof bridge.setSession !== 'function') {
+    sendResponse?.({
+      ok: false,
+      error: 'Supabase client unavailable in extension',
+    });
+    return;
+  }
+
+  const accessToken = String(message?.session?.access_token || '').trim();
+  const refreshToken = String(message?.session?.refresh_token || '').trim();
+  if (!accessToken || !refreshToken) {
+    sendResponse?.({
+      ok: false,
+      error: 'Missing access_token or refresh_token',
+    });
+    return;
+  }
+
+  try {
+    const session = await bridge.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    const sessionToken = String(session?.access_token || accessToken).trim();
+    const sessionUser = session?.user && typeof session.user === 'object' ? session.user : null;
+
+    await persistAuthenticatedState({
+      token: sessionToken,
+      user: sessionUser,
+      sourceOrigin: context?.sourceOrigin,
+      payload: {
+        auth_token: sessionToken,
+        user: sessionUser,
+      },
+    });
+
+    sendResponse?.({ ok: true });
+  } catch (error) {
+    sendResponse?.({
+      ok: false,
+      error: error?.message || 'Failed to set Supabase session',
+    });
+  }
+}
+
+async function clearAuthenticatedState(sendResponse) {
+  try {
+    const bridge = getSupabaseAuthBridge();
+    if (bridge?.storageKey) {
+      await chrome.storage.local.remove([bridge.storageKey]);
+    }
+    if (bridge && typeof bridge.clearSession === 'function') {
+      try {
+        await bridge.clearSession();
+      } catch (error) {
+        console.warn('[Extension] Supabase signOut failed during logout cleanup:', error);
+      }
+    }
+
+    await clearLocalAuthenticatedState();
+    sendResponse?.({ ok: true });
+  } catch (error) {
+    sendResponse?.({
+      ok: false,
+      error: error?.message || 'Failed to clear auth state',
+    });
+  }
+}
+
+async function getAuthContext() {
+  const bridge = getSupabaseAuthBridge();
+  let supabaseSession = null;
+  if (bridge && typeof bridge.getSession === 'function') {
+    try {
+      supabaseSession = await bridge.getSession();
+    } catch (error) {
+      console.warn('[Extension] Failed reading Supabase session:', error);
+    }
+  }
+
+  const result = await chrome.storage.local.get(AUTH_STORAGE_KEYS);
+  const supabaseToken =
+    typeof supabaseSession?.access_token === 'string' ? supabaseSession.access_token.trim() : '';
+  const storedToken = typeof result?.auth_token === 'string' ? result.auth_token.trim() : '';
+  const token = supabaseToken || storedToken;
+  const user = supabaseSession?.user || result?.user || null;
+
+  if (supabaseToken && supabaseToken !== storedToken) {
+    await chrome.storage.local.set({
+      isAuthenticated: true,
+      user,
+      auth_token: supabaseToken,
+    });
+  }
+
+  return {
+    isAuthenticated: token.length > 0,
+    user,
+    authToken: token || null,
+  };
+}
+
+function bindSupabaseAuthListeners() {
+  const bridge = getSupabaseAuthBridge();
+  const client = bridge?.client;
+  if (!client?.auth?.onAuthStateChange) {
+    return;
+  }
+
+  client.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_OUT' || !session?.access_token) {
+      void clearLocalAuthenticatedState().catch((error) => {
+        console.warn('[Extension] Failed to clear local auth state after Supabase sign-out:', error);
       });
       return;
     }
 
-    chrome.runtime.sendMessage({ type: 'AUTH_LOGOUT' }, () => {
-      void chrome.runtime.lastError;
+    void persistAuthenticatedState({
+      token: session.access_token,
+      user: session.user || null,
+      payload: {
+        auth_token: session.access_token,
+        user: session.user || null,
+      },
+    }).catch((error) => {
+      console.warn('[Extension] Failed syncing Supabase auth state to extension storage:', error);
     });
-
-    sendResponse?.({ ok: true });
   });
 }
 
-async function getAuthContext() {
-  const result = await chrome.storage.local.get(AUTH_STORAGE_KEYS);
+async function bootstrapAuthStateFromSupabase() {
+  const bridge = getSupabaseAuthBridge();
+  if (!bridge || typeof bridge.getSession !== 'function') {
+    return;
+  }
+
+  try {
+    const session = await bridge.getSession();
+    const token = String(session?.access_token || '').trim();
+    if (!token) {
+      return;
+    }
+
+    await persistAuthenticatedState({
+      token,
+      user: session?.user || null,
+      payload: {
+        auth_token: token,
+        user: session?.user || null,
+      },
+    });
+  } catch (error) {
+    console.warn('[Extension] Failed bootstrapping Supabase auth state:', error);
+  }
+}
+
+bindSupabaseAuthListeners();
+void bootstrapAuthStateFromSupabase();
+
+function normalizeContactSyncInput(value) {
+  if (!value || typeof value !== 'object') return null;
   return {
-    isAuthenticated: result?.isAuthenticated === true,
-    user: result?.user || null,
-    authToken: typeof result?.auth_token === 'string' ? result.auth_token : null,
+    firstName: String(value.firstName || '').trim(),
+    lastName: String(value.lastName || '').trim(),
+    company: String(value.company || '').trim(),
+    designation: String(value.designation || '').trim(),
+    role: String(value.role || '').trim(),
+    linkedinUrl: String(value.linkedinUrl || '').trim(),
+    headline: String(value.headline || '').trim(),
+    photoUrl: String(value.photoUrl || '').trim(),
+    email: String(value.email || '').trim(),
+    emailConfidence: Number(value.emailConfidence),
+    emailVerified: value.emailVerified === true,
+    emailSource: String(value.emailSource || '').trim(),
+    companyDomain: String(value.companyDomain || '').trim(),
   };
+}
+
+async function handleSaveContactToSupabaseMessage(message, sendResponse) {
+  const queueBridge = getContactSyncQueueBridge();
+  if (!queueBridge || typeof queueBridge.saveOrQueueContact !== 'function') {
+    sendResponse?.({
+      ok: false,
+      status: 'failed',
+      error: 'Contact sync queue bridge unavailable',
+    });
+    return;
+  }
+
+  const normalizedContact = normalizeContactSyncInput(message?.contactData);
+  if (!normalizedContact || !normalizedContact.email) {
+    sendResponse?.({
+      ok: false,
+      status: 'failed',
+      error: 'Missing contact data for sync',
+    });
+    return;
+  }
+
+  try {
+    const result = await queueBridge.saveOrQueueContact(normalizedContact, {
+      localId: String(message?.localId || '').trim(),
+    });
+    sendResponse?.(result || { ok: false, status: 'failed', error: 'Unknown sync failure' });
+  } catch (error) {
+    sendResponse?.({
+      ok: false,
+      status: 'failed',
+      error: error?.message || 'Failed to save contact',
+    });
+  }
+}
+
+async function handleProcessSyncQueueMessage(sendResponse) {
+  const queueBridge = getContactSyncQueueBridge();
+  if (!queueBridge || typeof queueBridge.processQueue !== 'function') {
+    sendResponse?.({
+      ok: false,
+      error: 'Contact sync queue bridge unavailable',
+    });
+    return;
+  }
+
+  try {
+    const result = await queueBridge.processQueue();
+    sendResponse?.(result || { ok: false, error: 'Queue processing failed' });
+  } catch (error) {
+    sendResponse?.({
+      ok: false,
+      error: error?.message || 'Queue processing failed',
+    });
+  }
+}
+
+async function handleGetSyncQueueStatusMessage(sendResponse) {
+  const queueBridge = getContactSyncQueueBridge();
+  if (!queueBridge || typeof queueBridge.getQueueCount !== 'function') {
+    sendResponse?.({
+      ok: false,
+      queueCount: 0,
+      error: 'Contact sync queue bridge unavailable',
+    });
+    return;
+  }
+
+  try {
+    const queueCount = await queueBridge.getQueueCount();
+    sendResponse?.({
+      ok: true,
+      queueCount,
+    });
+  } catch (error) {
+    sendResponse?.({
+      ok: false,
+      queueCount: 0,
+      error: error?.message || 'Failed reading queue status',
+    });
+  }
+}
+
+function toOptionalInlineString(value, maxLength) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return undefined;
+  return normalized.length > maxLength ? normalized.slice(0, maxLength) : normalized;
+}
+
+function normalizeAiTemplateType(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  const allowed = new Set(['recruiter', 'referral', 'advice', 'follow-up', 'thank-you', 'custom']);
+  return allowed.has(normalized) ? normalized : 'custom';
+}
+
+function buildAiDraftPayload(rawPayload) {
+  if (!rawPayload || typeof rawPayload !== 'object') return null;
+
+  const context =
+    rawPayload.context && typeof rawPayload.context === 'object'
+      ? rawPayload.context
+      : {};
+
+  const userName = toOptionalInlineString(context.userName, 120);
+  if (!userName) return null;
+
+  return {
+    templateType: normalizeAiTemplateType(rawPayload.templateType),
+    instructions: toOptionalInlineString(rawPayload.instructions, 700),
+    context: {
+      userName,
+      userSchool: toOptionalInlineString(context.userSchool, 120),
+      userMajor: toOptionalInlineString(context.userMajor, 120),
+    },
+    targetRole: toOptionalInlineString(rawPayload.targetRole, 120),
+    targetCompany: toOptionalInlineString(rawPayload.targetCompany, 160),
+  };
+}
+
+async function handleGenerateAiDraftMessage(message, sendResponse) {
+  const payload = buildAiDraftPayload(message?.payload);
+  if (!payload) {
+    sendResponse?.({
+      success: false,
+      error: 'Invalid AI draft payload',
+    });
+    return;
+  }
+
+  try {
+    const authToken = await getAuthToken();
+    let responsePayload = null;
+
+    try {
+      responsePayload = await callBackendPost(
+        '/api/v1/ai/generate-template',
+        payload,
+        authToken || '',
+        35000
+      );
+    } catch (error) {
+      if (Number(error?.status) === 404 || isMethodNotAllowedError(error)) {
+        responsePayload = await callBackendPost(
+          '/api/ai/generate-template',
+          payload,
+          authToken || '',
+          35000
+        );
+      } else {
+        throw error;
+      }
+    }
+
+    const subject = String(responsePayload?.template?.subject || '').trim();
+    const body = String(responsePayload?.template?.body || '').trim();
+    if (!subject || !body) {
+      throw new Error('AI API returned an invalid template payload.');
+    }
+
+    sendResponse?.({
+      success: true,
+      template: { subject, body },
+    });
+  } catch (error) {
+    sendResponse?.({
+      success: false,
+      error: error?.message || 'AI draft generation failed',
+    });
+  }
 }
 
 // ============================================================================
@@ -283,6 +723,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'SAVE_CONTACT_TO_SUPABASE') {
+    void handleSaveContactToSupabaseMessage(message, sendResponse);
+    return true;
+  }
+
+  if (message.type === 'PROCESS_SYNC_QUEUE') {
+    void handleProcessSyncQueueMessage(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'GET_SYNC_QUEUE_STATUS') {
+    void handleGetSyncQueueStatusMessage(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'GENERATE_AI_DRAFT') {
+    void handleGenerateAiDraftMessage(message, sendResponse);
+    return true;
+  }
+
   if (message.type === 'GET_AUTH_TOKEN') {
     getAuthToken()
       .then((token) => sendResponse(token))
@@ -307,17 +767,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'AUTH_LOGOUT_LOCAL') {
-    clearAuthenticatedState(sendResponse);
+    void clearAuthenticatedState(sendResponse);
     return true;
   }
 
   if (message.type === 'AUTH_SUCCESS') {
-    setAuthenticatedState(message.payload || null, sendResponse);
+    void setAuthenticatedState(message.payload || null, sendResponse);
     return true;
   }
 
   if (message.type === 'AUTH_LOGOUT') {
-    clearAuthenticatedState(sendResponse);
+    void clearAuthenticatedState(sendResponse);
     return true;
   }
 });
@@ -326,28 +786,45 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   if (!message || typeof message !== 'object') return;
   const senderOrigin = normalizeOrigin(_sender?.url || _sender?.origin || '');
 
+  if (message.type === 'ELLYN_SET_SESSION') {
+    void setSupabaseSessionFromExternalMessage(message, sendResponse, {
+      sourceOrigin: senderOrigin,
+    });
+    return true;
+  }
+
   if (message.type === 'WEBAPP_AUTH_SYNC') {
-    setAuthenticatedState(message.payload || null, sendResponse, {
+    void setAuthenticatedState(message.payload || null, sendResponse, {
       sourceOrigin: senderOrigin,
     });
     return true;
   }
 
   if (message.type === 'AUTH_SUCCESS') {
-    setAuthenticatedState(message.payload || null, sendResponse, {
+    void setAuthenticatedState(message.payload || null, sendResponse, {
       sourceOrigin: senderOrigin,
     });
     return true;
   }
 
   if (message.type === 'AUTH_LOGOUT') {
-    clearAuthenticatedState(sendResponse);
+    void clearAuthenticatedState(sendResponse);
     return true;
   }
 });
 
 if (chrome.alarms?.onAlarm) {
   chrome.alarms.onAlarm.addListener(async (alarm) => {
+    const queueBridge = getContactSyncQueueBridge();
+    if (alarm?.name && queueBridge?.SYNC_QUEUE_ALARM_NAME && alarm.name === queueBridge.SYNC_QUEUE_ALARM_NAME) {
+      try {
+        await queueBridge.processQueue();
+      } catch (error) {
+        console.warn('[Extension] Contact sync queue processing failed:', error);
+      }
+      return;
+    }
+
     if (!alarm?.name || !alarm.name.startsWith(OPERATION_ALARM_PREFIX)) {
       return;
     }
