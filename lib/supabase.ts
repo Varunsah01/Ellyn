@@ -1,218 +1,310 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-// Initialize Supabase client
-const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || ''
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY?.trim() ||
-  ''
+// Config validation
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? ''
+const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? ''
 
-const isValidSupabaseUrl = (() => {
-  if (!rawSupabaseUrl) return false
+const isValidUrl = (() => {
   try {
-    const parsed = new URL(rawSupabaseUrl)
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+    const protocol = new URL(supabaseUrl).protocol
+    return protocol === 'https:' || protocol === 'http:'
   } catch {
     return false
   }
 })()
 
-const hasPlaceholderValues =
-  rawSupabaseUrl === 'your-supabase-url' ||
-  supabaseAnonKey === 'your-supabase-anon-key'
-
 export const isSupabaseConfigured = Boolean(
-  isValidSupabaseUrl && supabaseAnonKey && !hasPlaceholderValues
+  isValidUrl &&
+    supabaseAnon &&
+    supabaseUrl !== 'your-supabase-url' &&
+    supabaseAnon !== 'your-supabase-anon-key'
 )
 
-// Validate environment variables
 if (!isSupabaseConfigured) {
-  console.warn('Supabase environment variables not configured. Database features will not work.')
+  console.warn(
+    '[Ellyn] Supabase not configured - set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY'
+  )
 }
 
-function createSupabaseStub(): SupabaseClient {
-  return new Proxy({} as SupabaseClient, {
-    get() {
-      throw new Error(
-        'Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY).'
-      )
-    },
+// Client
+export const supabase: SupabaseClient = isSupabaseConfigured
+  ? (createClient<Database>(supabaseUrl, supabaseAnon) as unknown as SupabaseClient)
+  : new Proxy({} as SupabaseClient, {
+      get() {
+        throw new Error('Supabase not configured')
+      },
+    })
+
+// Server-side only (API routes / webhooks) - uses service role to bypass RLS
+export function createServiceClient(): SupabaseClient {
+  if (!isValidUrl) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL is invalid or not set')
+  }
+
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY not set')
+
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
   })
 }
 
-export const supabase: SupabaseClient = isSupabaseConfigured
-  ? createClient(rawSupabaseUrl, supabaseAnonKey)
-  : createSupabaseStub()
-
 // Database Types
-
-// ============================================================================
-// Lead Management (From a previous implementation, may overlap with Contact)
-// ============================================================================
-export interface Lead {
-  id: string;
-  person_name: string;
-  company_name: string;
-  discovered_emails: EmailResult[];
-  selected_email: string | null;
-  status: "discovered" | "sent" | "bounced" | "replied";
-  created_at: string;
-  updated_at: string;
+type TableDef<Row, Insert, Update> = {
+  Row: Row
+  Insert: Insert
+  Update: Update
+  Relationships: []
 }
 
-// ============================================================================
-// Contact Management
-// ============================================================================
+export interface Database {
+  public: {
+    Tables: {
+      [tableName: string]: TableDef<Record<string, any>, Record<string, any>, Record<string, any>>
+      user_profiles: TableDef<UserProfile, UserProfileInsert, Partial<UserProfileInsert>>
+      contacts: TableDef<Contact, ContactInsert, Partial<ContactInsert>>
+      email_templates: TableDef<EmailTemplate, EmailTemplateInsert, Partial<EmailTemplateInsert>>
+      ai_drafts: TableDef<AIDraft, AIDraftInsert, Partial<AIDraftInsert>>
+      user_quotas: TableDef<UserQuota, UserQuotaInsert, Partial<UserQuotaInsert>>
+      api_costs: TableDef<ApiCost, ApiCostInsert, Partial<ApiCostInsert>>
+      email_pattern_cache: TableDef<
+        EmailPatternCache,
+        EmailPatternCacheInsert,
+        Partial<EmailPatternCacheInsert>
+      >
+      dodo_webhook_events: TableDef<
+        DodoWebhookEvent,
+        DodoWebhookEventInsert,
+        Partial<DodoWebhookEventInsert>
+      >
+      // Compatibility tables still used by active routes during migration.
+      leads: TableDef<Lead, LeadInsert, Partial<LeadInsert>>
+      drafts: TableDef<Draft, DraftInsert, Partial<DraftInsert>>
+      pattern_learning: TableDef<PatternLearning, PatternLearningInsert, Partial<PatternLearningInsert>>
+      domain_cache: TableDef<DomainCache, DomainCacheInsert, Partial<DomainCacheInsert>>
+    }
+    Views: Record<string, never>
+    Functions: Record<string, never>
+    Enums: Record<string, never>
+    CompositeTypes: Record<string, never>
+  }
+}
+
+// Row Types
+export interface UserProfile {
+  id: string
+  full_name: string | null
+  avatar_url: string | null
+  plan_type: 'free' | 'pro'
+  dodo_customer_id: string | null
+  dodo_subscription_id: string | null
+  dodo_product_id: string | null
+  subscription_status:
+    | 'active'
+    | 'inactive'
+    | 'cancelled'
+    | 'past_due'
+    | 'trialing'
+    | 'paused'
+    | null
+  subscription_period_start: string | null
+  subscription_period_end: string | null
+  trial_ends_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface UserProfileInsert {
+  id: string
+  full_name?: string
+  avatar_url?: string
+  plan_type?: 'free' | 'pro'
+  dodo_customer_id?: string
+  dodo_subscription_id?: string
+  dodo_product_id?: string
+  subscription_status?: UserProfile['subscription_status']
+  subscription_period_start?: string
+  subscription_period_end?: string
+  trial_ends_at?: string
+}
 
 export interface Contact {
   id: string
   user_id: string
-
-  // Contact Info
   first_name: string
   last_name: string
-  full_name: string // computed field
+  full_name: string
   company: string
   role: string | null
-
-  // Email
+  location: string | null
+  linkedin_url: string | null
+  linkedin_headline: string | null
+  linkedin_photo_url: string | null
   inferred_email: string | null
   email_confidence: number | null
   confirmed_email: string | null
-
-  // Enrichment Data
+  email_pattern: string | null
+  email_verified: boolean
+  email_source: string | null
   company_domain: string | null
   company_industry: string | null
   company_size: string | null
-  linkedin_url: string | null
-
-  // Metadata
+  status: 'new' | 'contacted' | 'replied' | 'no_response'
+  last_contacted_at: string | null
+  response_received: boolean
   source: 'manual' | 'extension' | 'csv_import'
   tags: string[]
   notes: string | null
-  status: 'new' | 'contacted' | 'replied' | 'no_response'
-
-  // Timestamps
+  custom_fields: Record<string, unknown>
   created_at: string
   updated_at: string
-  last_contacted_at: string | null
 }
 
-// ============================================================================
-// Email Drafts
-// ============================================================================
+export type ContactInsert = Omit<Contact, 'id' | 'full_name' | 'created_at' | 'updated_at'>
+
+export interface EmailTemplate {
+  id: string
+  user_id: string
+  name: string
+  subject: string
+  body: string
+  tone: 'professional' | 'casual' | 'formal' | 'friendly'
+  use_case: string | null
+  is_default: boolean
+  usage_count: number
+  // Backward-compatible metadata fields used in current dashboard routes.
+  category: string | null
+  tags: string[] | null
+  icon: string | null
+  use_count: number | null
+  created_at: string
+  updated_at: string
+}
+
+export type EmailTemplateInsert = Omit<
+  EmailTemplate,
+  'id' | 'created_at' | 'updated_at' | 'usage_count' | 'use_count'
+> & {
+  usage_count?: number
+  use_count?: number
+}
+
+export interface AIDraft {
+  id: string
+  user_id: string
+  contact_id: string | null
+  template_id: string | null
+  subject: string
+  body: string
+  status: 'draft' | 'sent' | 'scheduled' | 'archived'
+  scheduled_for: string | null
+  sent_at: string | null
+  model_used: string | null
+  tokens_used: number | null
+  generation_cost_usd: number | null
+  personalization_vars: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export type AIDraftInsert = Omit<AIDraft, 'id' | 'created_at' | 'updated_at'>
+
+export interface UserQuota {
+  id: string
+  user_id: string
+  ai_generations_used: number
+  ai_generations_limit: number
+  email_lookups_used: number
+  email_lookups_limit: number
+  period_start: string
+  period_end: string
+  updated_at: string
+}
+
+export type UserQuotaInsert = Omit<UserQuota, 'id' | 'updated_at'>
+
+export interface ApiCost {
+  id: string
+  user_id: string
+  service: string
+  action: string
+  cost_usd: number
+  tokens_used: number | null
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export type ApiCostInsert = Omit<ApiCost, 'id' | 'created_at'>
+
+export interface EmailPatternCache {
+  id: string
+  domain: string
+  patterns: string[]
+  confidence: number | null
+  verified_count: number
+  sample_size: number
+  last_verified: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type EmailPatternCacheInsert = Omit<EmailPatternCache, 'id' | 'created_at' | 'updated_at'>
+
+export interface DodoWebhookEvent {
+  id: string
+  event_id: string
+  event_type: string
+  payload: Record<string, unknown>
+  processed: boolean
+  processed_at: string | null
+  error: string | null
+  created_at: string
+}
+
+export type DodoWebhookEventInsert = Omit<
+  DodoWebhookEvent,
+  'id' | 'processed' | 'processed_at' | 'error' | 'created_at'
+> & {
+  processed?: boolean
+  processed_at?: string | null
+  error?: string | null
+}
+
+// Compatibility row types for active endpoints still being migrated.
+export interface Lead {
+  id: string
+  user_id: string
+  person_name: string
+  company_name: string
+  discovered_emails: Array<{
+    email: string
+    pattern: string
+    confidence: number
+  }>
+  selected_email: string | null
+  status: 'discovered' | 'sent' | 'bounced' | 'replied'
+  created_at: string
+  updated_at: string
+}
+
+export type LeadInsert = Omit<Lead, 'id' | 'created_at' | 'updated_at'>
 
 export interface Draft {
   id: string
   user_id: string
   contact_id: string | null
-
-  // Draft Content
+  template_id: string | null
   subject: string
   body: string
-
-  // Template Reference
-  template_id: string | null
-
-  // Status
-  status: 'draft' | 'sent' | 'scheduled'
-
-  // Scheduling
+  status: 'draft' | 'sent' | 'scheduled' | 'archived'
   scheduled_for: string | null
   sent_at: string | null
-
-  // Metadata
-  personalization_variables: Record<string, any>
-
-  // Timestamps
+  personalization_variables: Record<string, unknown>
   created_at: string
   updated_at: string
 }
 
-// ============================================================================
-// Email Templates
-// ============================================================================
-
-export interface EmailTemplate {
-  id: string
-  user_id: string | null
-
-  // Template Content
-  name: string
-  subject: string
-  body: string
-
-  // Metadata
-  category: 'referral' | 'follow_up' | 'coffee_chat' | 'info_interview' | 'custom'
-  is_default: boolean
-  use_count: number
-
-  // Timestamps
-  created_at: string
-  updated_at: string
-}
-
-// ============================================================================
-// API Usage Tracking
-// ============================================================================
-
-export interface ApiUsage {
-  id: string
-  user_id: string
-
-  // API Details
-  api_name: 'bright_data_company_enrichment' | 'bright_data_person_enrichment'
-  endpoint: string
-
-  // Request/Response
-  request_params: Record<string, any> | null
-  response_status: number | null
-  response_time_ms: number | null
-
-  // Cost Tracking
-  cost_usd: number
-  credits_used: number
-
-  // Success/Error
-  success: boolean
-  error_message: string | null
-
-  // Timestamps
-  created_at: string
-}
-
-// ============================================================================
-// User Settings
-// ============================================================================
-
-export interface UserSettings {
-  user_id: string
-
-  // Email Settings
-  default_email_signature: string | null
-  email_send_from: string | null
-
-  // Notification Preferences
-  notify_on_reply: boolean
-  notify_on_bounce: boolean
-  daily_summary_email: boolean
-
-  // API Budget Limits
-  monthly_api_budget_usd: number
-  current_month_spend_usd: number
-
-  // UI Preferences
-  theme: 'light' | 'dark' | 'system'
-  timezone: string
-
-  // Timestamps
-  created_at: string
-  updated_at: string
-}
-
-// ============================================================================
-// Pattern Learning (Machine Learning)
-// ============================================================================
+export type DraftInsert = Omit<Draft, 'id' | 'created_at' | 'updated_at'>
 
 export interface PatternLearning {
   id: string
@@ -226,9 +318,18 @@ export interface PatternLearning {
   updated_at: string
 }
 
-// ============================================================================
-// Supporting Types
-// ============================================================================
+export type PatternLearningInsert = Omit<PatternLearning, 'id' | 'created_at' | 'updated_at'>
+
+export interface DomainCache {
+  company_name: string
+  domain: string
+  verified: boolean
+  mx_records: unknown
+  email_provider: string | null
+  last_verified: string
+}
+
+export type DomainCacheInsert = DomainCache
 
 export interface EmailResult {
   email: string
@@ -239,20 +340,4 @@ export interface EmailResult {
     attempts: number
     successRate: number
   }
-}
-
-export interface DomainCache {
-  company_name: string
-  domain: string
-  mx_records: any
-  last_verified: string
-}
-
-export interface GmailCredentials {
-  user_id: string
-  client_id: string
-  client_secret: string
-  access_token: string | null
-  refresh_token: string | null
-  created_at: string
 }

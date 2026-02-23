@@ -1,42 +1,14 @@
-import "server-only";
+import 'server-only'
 
-import {
-  type BillingCycle,
-  type PricingRegion,
-  normalizePricingRegion,
-} from "@/lib/pricing-config";
-
-const STRIPE_PRO_PRICE_IDS: Record<PricingRegion, Record<BillingCycle, string>> = {
-  IN: {
-    monthly: process.env.STRIPE_PRICE_PRO_IN_MONTHLY ?? "",
-    yearly: process.env.STRIPE_PRICE_PRO_IN_YEARLY ?? "",
-  },
-  GLOBAL: {
-    monthly: process.env.STRIPE_PRICE_PRO_GLOBAL_MONTHLY ?? "",
-    yearly: process.env.STRIPE_PRICE_PRO_GLOBAL_YEARLY ?? "",
-  },
-};
+import { type BillingCycle, type PricingRegion, getDodoProductId } from '@/lib/pricing-config'
 
 /**
- * Get validated pro stripe price id.
- * @param {PricingRegion} region - Region input.
- * @param {BillingCycle} billingCycle - Billing cycle input.
- * @returns {unknown} Computed unknown.
- * @example
- * getValidatedProStripePriceId({}, {})
+ * Get validated Dodo product id.
+ * Note: billing cycle is used by the checkout API payload, not product ID resolution.
  */
-export function getValidatedProStripePriceId(
+export function getValidatedProProductId(
   region: PricingRegion,
-  billingCycle: BillingCycle,
-) {
-  const safeRegion = normalizePricingRegion(region);
-  const priceId = STRIPE_PRO_PRICE_IDS[safeRegion][billingCycle];
-
-  if (!priceId) {
-    throw new Error(
-      `Missing Stripe price configuration for region=${safeRegion}, cycle=${billingCycle}`,
-    );
-  }
-
-  return priceId;
+  _billingCycle: BillingCycle
+): string {
+  return getDodoProductId(region)
 }

@@ -12,11 +12,11 @@ export async function GET(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from('user_profiles')
-      .select('stripe_customer_id')
+      .select('dodo_customer_id')
       .eq('id', user.id)
       .single()
 
-    const customerId = profile?.stripe_customer_id as string | null
+    const customerId = profile?.dodo_customer_id as string | null
     if (!customerId) {
       return NextResponse.json([])
     }

@@ -24,11 +24,11 @@ export async function POST(request: NextRequest) {
     // Look up existing Dodo customer ID
     const { data: profile } = await supabase
       .from('user_profiles')
-      .select('stripe_customer_id')
+      .select('dodo_customer_id')
       .eq('id', user.id)
       .single()
 
-    const existingCustomerId = profile?.stripe_customer_id as string | null
+    const existingCustomerId = profile?.dodo_customer_id as string | null
 
     // Build customer object for the subscription request
     const customerPayload = existingCustomerId
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     if (newCustomerId && !existingCustomerId) {
       await supabase
         .from('user_profiles')
-        .update({ stripe_customer_id: newCustomerId })
+        .update({ dodo_customer_id: newCustomerId })
         .eq('id', user.id)
     }
 

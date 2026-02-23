@@ -36,19 +36,35 @@ export async function POST(request: NextRequest) {
   const supabase = await createServiceRoleClient()
   const data = event.data
 
+  const metadata =
+    data.metadata && typeof data.metadata === 'object'
+      ? (data.metadata as Record<string, unknown>)
+      : null
+  const userId =
+    (typeof metadata?.user_id === 'string' && metadata.user_id) ||
+    (typeof metadata?.userId === 'string' && metadata.userId) ||
+    null
+  const customerId =
+    (typeof data.customer_id === 'string' && data.customer_id) ||
+    (typeof data.customer === 'string' && data.customer) ||
+    null
+  const subscriptionId =
+    (typeof data.subscription_id === 'string' && data.subscription_id) ||
+    (typeof data.id === 'string' && data.id) ||
+    null
+  const productId = (typeof data.product_id === 'string' && data.product_id) || null
+
   try {
     switch (event.type) {
-      case 'subscription.active': {
-        const customerId = data.customer_id as string
-        const subscriptionId = data.subscription_id as string
-        const userId = (data.metadata as Record<string, string> | null)?.userId
-
+      case 'subscription.active':
+      case 'subscription.activated': {
         if (userId) {
           await supabase
             .from('user_profiles')
             .update({
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
+              dodo_customer_id: customerId,
+              dodo_subscription_id: subscriptionId,
+              dodo_product_id: productId,
               plan_type: 'pro',
               subscription_status: 'active',
             })
@@ -57,57 +73,89 @@ export async function POST(request: NextRequest) {
           await supabase
             .from('user_profiles')
             .update({
-              stripe_subscription_id: subscriptionId,
+              dodo_subscription_id: subscriptionId,
+              dodo_product_id: productId,
               plan_type: 'pro',
               subscription_status: 'active',
             })
-            .eq('stripe_customer_id', customerId)
+            .eq('dodo_customer_id', customerId)
         }
         break
       }
 
       case 'subscription.renewed': {
-        const subscriptionId = data.subscription_id as string
-        await supabase
-          .from('user_profiles')
-          .update({ subscription_status: 'active' })
-          .eq('stripe_subscription_id', subscriptionId)
+        if (subscriptionId) {
+          await supabase
+            .from('user_profiles')
+            .update({ subscription_status: 'active' })
+            .eq('dodo_subscription_id', subscriptionId)
+        }
         break
       }
 
       case 'subscription.updated': {
-        const subscriptionId = data.subscription_id as string
         const rawStatus = data.status as string | undefined
         const status =
-          rawStatus === 'active' ? 'active' : rawStatus === 'on_hold' ? 'past_due' : 'canceled'
-        await supabase
-          .from('user_profiles')
-          .update({ subscription_status: status })
-          .eq('stripe_subscription_id', subscriptionId)
+          rawStatus === 'active'
+            ? 'active'
+            : rawStatus === 'on_hold' || rawStatus === 'past_due'
+              ? 'past_due'
+              : rawStatus === 'paused'
+                ? 'paused'
+                : 'cancelled'
+        if (subscriptionId) {
+          await supabase
+            .from('user_profiles')
+            .update({ subscription_status: status })
+            .eq('dodo_subscription_id', subscriptionId)
+        }
         break
       }
 
       case 'subscription.on_hold': {
-        const subscriptionId = data.subscription_id as string
-        await supabase
-          .from('user_profiles')
-          .update({ subscription_status: 'past_due' })
-          .eq('stripe_subscription_id', subscriptionId)
+        if (subscriptionId) {
+          await supabase
+            .from('user_profiles')
+            .update({ subscription_status: 'past_due' })
+            .eq('dodo_subscription_id', subscriptionId)
+        }
+        break
+      }
+
+      case 'subscription.paused': {
+        if (subscriptionId) {
+          await supabase
+            .from('user_profiles')
+            .update({ subscription_status: 'paused' })
+            .eq('dodo_subscription_id', subscriptionId)
+        }
+        break
+      }
+
+      case 'payment.failed': {
+        if (customerId) {
+          await supabase
+            .from('user_profiles')
+            .update({ subscription_status: 'past_due' })
+            .eq('dodo_customer_id', customerId)
+        }
         break
       }
 
       case 'subscription.cancelled':
       case 'subscription.expired':
       case 'subscription.failed': {
-        const subscriptionId = data.subscription_id as string
-        await supabase
-          .from('user_profiles')
-          .update({
-            plan_type: 'free',
-            subscription_status: 'canceled',
-            stripe_subscription_id: null,
-          })
-          .eq('stripe_subscription_id', subscriptionId)
+        if (subscriptionId) {
+          await supabase
+            .from('user_profiles')
+            .update({
+              plan_type: 'free',
+              subscription_status: 'cancelled',
+              dodo_subscription_id: null,
+              dodo_product_id: null,
+            })
+            .eq('dodo_subscription_id', subscriptionId)
+        }
         break
       }
 
