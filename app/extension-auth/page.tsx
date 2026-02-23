@@ -20,13 +20,23 @@ function ExtensionAuthInner() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+      const extensionId = searchParams.get("extensionId")?.trim() || "";
+      const requestedMode = searchParams.get("mode") === "signup" ? "signup" : "login";
 
       if (!session) {
-        router.replace("/auth/login?next=/extension-auth");
+        const nextTarget = extensionId
+          ? `/extension-auth?extensionId=${encodeURIComponent(extensionId)}`
+          : "/extension-auth";
+        const params = new URLSearchParams({
+          source: "extension",
+          next: nextTarget,
+        });
+        if (extensionId) {
+          params.set("extensionId", extensionId);
+        }
+        router.replace(`/auth/${requestedMode}?${params.toString()}`);
         return;
       }
-
-      const extensionId = searchParams.get("extensionId");
 
       if (!extensionId) {
         setStatus("error");

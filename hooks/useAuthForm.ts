@@ -8,6 +8,7 @@ export type ExtensionPayload = {
   id: string;
   email: string;
   name: string;
+  auth_token?: string;
 };
 
 type AuthUser = {
@@ -148,6 +149,22 @@ export function useAuthForm({ searchParams }: UseAuthFormOptions) {
       const extensionId = extensionIdFromQuery || process.env.NEXT_PUBLIC_EXTENSION_ID;
       if (!extensionId) return;
 
+      let authToken = "";
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        authToken =
+          typeof session?.access_token === "string" ? session.access_token.trim() : "";
+      } catch {
+        authToken = "";
+      }
+
+      // Extension sync requires a valid bearer token for subsequent API calls.
+      if (!authToken) {
+        return;
+      }
+
       const maybeWindow = window as unknown as {
         chrome?: { runtime?: { sendMessage?: (...args: unknown[]) => void } };
       };
@@ -156,12 +173,16 @@ export function useAuthForm({ searchParams }: UseAuthFormOptions) {
       if (!runtime || typeof runtime.sendMessage !== "function") return;
 
       extensionNotifiedRef.current = true;
+      const syncPayload: ExtensionPayload = {
+        ...payload,
+        auth_token: authToken,
+      };
 
       await new Promise<void>((resolve) => {
         try {
           runtime.sendMessage!(
             extensionId,
-            { type: "AUTH_SUCCESS", payload },
+            { type: "AUTH_SUCCESS", payload: syncPayload },
             () => resolve(),
           );
         } catch {
@@ -250,4 +271,3 @@ export function useAuthForm({ searchParams }: UseAuthFormOptions) {
     handleAuthenticatedUser,
   };
 }
-

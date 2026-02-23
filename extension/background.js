@@ -148,15 +148,20 @@ function normalizeOrigin(value) {
 }
 
 function setAuthenticatedState(payload, sendResponse, context = {}) {
-  const token = extractAuthToken(payload);
-  const nextState = {
-    isAuthenticated: true,
-    user: payload || null,
-  };
+  const token = String(extractAuthToken(payload) || '').trim();
+  const hasToken = token.length > 0;
+  const normalizedUser =
+    payload && typeof payload === 'object'
+      ? payload.user && typeof payload.user === 'object'
+        ? payload.user
+        : payload
+      : null;
 
-  if (token) {
-    nextState.auth_token = token;
-  }
+  const nextState = {
+    isAuthenticated: hasToken,
+    user: normalizedUser,
+    auth_token: token,
+  };
 
   const sourceOrigin = normalizeOrigin(context?.sourceOrigin);
   if (sourceOrigin) {
@@ -172,11 +177,18 @@ function setAuthenticatedState(payload, sendResponse, context = {}) {
       return;
     }
 
-    chrome.runtime.sendMessage({ type: 'AUTH_SUCCESS', payload }, () => {
+    chrome.runtime.sendMessage({ type: hasToken ? 'AUTH_SUCCESS' : 'AUTH_LOGOUT', payload }, () => {
       void chrome.runtime.lastError;
     });
 
-    sendResponse?.({ ok: true });
+    sendResponse?.(
+      hasToken
+        ? { ok: true }
+        : {
+            ok: false,
+            error: 'Missing access token from auth payload',
+          }
+    );
   });
 }
 

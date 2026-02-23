@@ -5,7 +5,7 @@ const DEFAULT_APP_BASE_URL = "https://app.ellyn.app";
 const BASE_URL_OVERRIDE_KEY = "ellyn_base_url_override";
 const AUTH_SOURCE_ORIGIN_KEY = "ellyn_auth_origin";
 const LOCAL_DEV_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"];
-const AUTH_STORAGE_KEYS = ["isAuthenticated", "user", "auth_token"];
+const AUTH_STORAGE_KEYS = ["isAuthenticated", "user", "auth_token", AUTH_SOURCE_ORIGIN_KEY];
 const SAVED_CONTACTS_KEY = "saved_contact_results";
 const FEEDBACK_QUEUE_KEY = "feedback_queue";
 const SYNC_STATUS_KEY = "sync_status";
@@ -47,6 +47,7 @@ const emailFinderState = {
   profileRefreshInFlight: false,
   lastProfileKey: "",
   profileListenersBound: false,
+  pendingSyncInFlight: false,
 };
 
 const elements = {
@@ -549,9 +550,8 @@ function hideLegacyStages() {
 
 async function syncAuthStateFromStorage() {
   const auth = await storageGet(AUTH_STORAGE_KEYS);
-  const isAuthenticated =
-    auth?.isAuthenticated === true ||
-    (typeof auth?.auth_token === "string" && auth.auth_token.length > 0);
+  const authToken = typeof auth?.auth_token === "string" ? auth.auth_token.trim() : "";
+  const isAuthenticated = authToken.length > 0;
 
   emailFinderState.isAuthenticated = isAuthenticated;
   emailFinderState.user = auth?.user || null;
@@ -587,6 +587,9 @@ async function syncAuthStateFromStorage() {
     } else {
       setStatus("Profile ready.", "success");
     }
+
+    // Best effort: once auth is valid, flush any contacts waiting for backend sync.
+    void syncPendingContactsQuietly();
   } else {
     setStatus("Sign in to use the email finder.", "neutral");
   }
@@ -1523,6 +1526,26 @@ async function retryPendingContacts() {
     if (elements.syncActionBtn) {
       elements.syncActionBtn.disabled = false;
     }
+    await renderSyncStatus();
+  }
+}
+
+async function syncPendingContactsQuietly() {
+  if (!emailFinderState.isAuthenticated) return;
+  if (emailFinderState.pendingSyncInFlight) return;
+
+  emailFinderState.pendingSyncInFlight = true;
+  try {
+    const existing = await storageGet([SAVED_CONTACTS_KEY]);
+    const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
+    const pending = list.filter((entry) => !entry?.backendId);
+    if (pending.length === 0) return;
+
+    for (const entry of pending) {
+      await syncContactToBackend(entry, null);
+    }
+  } finally {
+    emailFinderState.pendingSyncInFlight = false;
     await renderSyncStatus();
   }
 }
