@@ -1,7 +1,9 @@
-const AUTH_REDIRECT_URL = "https://www.useellyn.com/auth";
+const DEFAULT_AUTH_BASE_URL = "https://www.useellyn.com";
 const PRICING_URL = "https://www.useellyn.com/pricing";
-const API_BASE_URL = "https://www.useellyn.com";
-const APP_BASE_URL = "https://app.ellyn.app";
+const DEFAULT_API_BASE_URL = "https://www.useellyn.com";
+const DEFAULT_APP_BASE_URL = "https://app.ellyn.app";
+const BASE_URL_OVERRIDE_KEY = "ellyn_base_url_override";
+const LOCAL_DEV_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"];
 const AUTH_STORAGE_KEYS = ["isAuthenticated", "user", "auth_token"];
 const SAVED_CONTACTS_KEY = "saved_contact_results";
 const FEEDBACK_QUEUE_KEY = "feedback_queue";
@@ -162,6 +164,84 @@ function getDefaultProfileContext() {
   };
 }
 
+function normalizeOrigin(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw);
+    if (!["https:", "http:"].includes(parsed.protocol)) {
+      return "";
+    }
+    return parsed.origin;
+  } catch {
+    return "";
+  }
+}
+
+async function findLocalAppOriginFromOpenTabs() {
+  if (!chrome?.tabs?.query) {
+    return "";
+  }
+
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const origin of LOCAL_DEV_ORIGINS) {
+      const originWithSlash = `${origin}/`;
+      const match = tabs.some((tab) => {
+        const tabUrl = String(tab?.url || "");
+        return tabUrl === origin || tabUrl.startsWith(originWithSlash);
+      });
+      if (match) {
+        return origin;
+      }
+    }
+  } catch {
+    // Ignore tab-query failures and fall back to defaults.
+  }
+
+  return "";
+}
+
+async function resolveBaseUrls() {
+  try {
+    const stored = await storageGet([BASE_URL_OVERRIDE_KEY]);
+    const overrideOrigin = normalizeOrigin(stored?.[BASE_URL_OVERRIDE_KEY]);
+    if (overrideOrigin) {
+      return {
+        apiBaseUrl: overrideOrigin,
+        appBaseUrl: overrideOrigin,
+        authBaseUrl: overrideOrigin,
+      };
+    }
+  } catch {
+    // Ignore storage read failures and continue.
+  }
+
+  const localOrigin = await findLocalAppOriginFromOpenTabs();
+  if (localOrigin) {
+    return {
+      apiBaseUrl: localOrigin,
+      appBaseUrl: localOrigin,
+      authBaseUrl: localOrigin,
+    };
+  }
+
+  return {
+    apiBaseUrl: DEFAULT_API_BASE_URL,
+    appBaseUrl: DEFAULT_APP_BASE_URL,
+    authBaseUrl: DEFAULT_AUTH_BASE_URL,
+  };
+}
+
+async function openDashboardPath(pathname) {
+  const normalizedPath = String(pathname || "").startsWith("/")
+    ? String(pathname || "")
+    : `/${String(pathname || "")}`;
+  const { appBaseUrl } = await resolveBaseUrls();
+  chrome.tabs.create({ url: `${appBaseUrl}${normalizedPath}` });
+}
+
 function cacheElements() {
   elements.statusText = document.getElementById("statusText");
   elements.authHeaderActions = document.getElementById("authHeaderActions");
@@ -290,16 +370,25 @@ function bindEvents() {
   elements.refreshProfileContextBtn?.addEventListener("click", () => {
     void refreshProfileContext("manual");
   });
+  elements.queueContactsList?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const copyBtn = target.closest(".queue-copy-btn");
+    if (!(copyBtn instanceof HTMLElement)) return;
+    const email = String(copyBtn.dataset.email || "").trim();
+    if (!email) return;
+    void copyTextWithFeedback(email, copyBtn);
+  });
 
   // ── Dashboard footer nav ─────────────────────────────────────────────────
   elements.dashNavContacts?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/contacts` });
+    void openDashboardPath("/dashboard/contacts");
   });
   elements.dashNavAnalytics?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/analytics` });
+    void openDashboardPath("/dashboard/analytics");
   });
   elements.dashNavSettings?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/settings` });
+    void openDashboardPath("/dashboard/settings");
   });
 
   // ── Stage 2 — sent callout ───────────────────────────────────────────────
@@ -307,7 +396,7 @@ function bindEvents() {
     showSentCallout();
   });
   elements.sentCalloutAction?.addEventListener("click", () => {
-    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/analytics` });
+    void openDashboardPath("/dashboard/analytics");
     dismissSentCallout();
   });
   elements.sentCalloutDismiss?.addEventListener("click", dismissSentCallout);
@@ -315,7 +404,7 @@ function bindEvents() {
   // ── Stage 2 — view all in dashboard link ────────────────────────────────
   elements.viewAllInDashboard?.addEventListener("click", (e) => {
     e.preventDefault();
-    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard/contacts?status=contacted` });
+    void openDashboardPath("/dashboard/contacts?status=contacted");
   });
 
   // ── Issue 1: Discover Email button gate ─────────────────────────────────
@@ -391,7 +480,7 @@ function bindEvents() {
     void switchToStatsView();
   });
   elements.draftViewContainer?.addEventListener("dv-profile-clicked", () => {
-    chrome.tabs.create({ url: `${APP_BASE_URL}/dashboard` });
+    void openDashboardPath("/dashboard");
   });
   elements.draftViewContainer?.addEventListener("dv-sent", (e) => {
     console.log("[Sidepanel] Draft sent via Gmail:", e.detail);
@@ -829,6 +918,63 @@ function splitHumanName(fullName) {
   };
 }
 
+function normalizeInline(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pickFirstNonEmpty(...values) {
+  for (const value of values) {
+    const normalized = normalizeInline(value);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function toDisplayCase(value) {
+  return String(value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function deriveNameFromEmail(email) {
+  const localPart = String(email || "")
+    .split("@")[0]
+    .toLowerCase();
+  const parts = localPart
+    .split(/[._-]+/)
+    .map((part) => part.replace(/[^a-z]/g, ""))
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return { firstName: "Unknown", lastName: "Contact" };
+  }
+
+  const firstName = toDisplayCase(parts[0]) || "Unknown";
+  const lastName = toDisplayCase(parts.slice(1).join(" ")) || "Contact";
+  return { firstName, lastName };
+}
+
+function deriveCompanyFromEmail(email) {
+  const domain = String(email || "")
+    .split("@")[1]
+    ?.toLowerCase()
+    .trim();
+  if (!domain) return "Unknown Company";
+
+  const parts = domain.split(".").filter(Boolean);
+  if (parts.length === 0) return "Unknown Company";
+
+  const companyToken = (parts.length >= 2 ? parts[parts.length - 2] : parts[0])
+    .replace(/[^a-z0-9_-]/g, "")
+    .replace(/[_-]+/g, " ");
+  const displayName = toDisplayCase(companyToken);
+  return displayName || "Unknown Company";
+}
+
 function getProfileContextGateStatus() {
   const context = emailFinderState.profileContext;
   if (!context || !Number.isFinite(context.tabId)) {
@@ -999,7 +1145,8 @@ async function openAuth(mode, button) {
   if (button) button.disabled = true;
 
   try {
-    const authUrl = new URL(AUTH_REDIRECT_URL);
+    const { authBaseUrl } = await resolveBaseUrls();
+    const authUrl = new URL("/auth", `${authBaseUrl}/`);
     authUrl.searchParams.set("source", "extension");
     authUrl.searchParams.set("extensionId", chrome.runtime.id);
     authUrl.searchParams.set("mode", mode === "signup" ? "signup" : "signin");
@@ -1311,13 +1458,15 @@ async function renderSyncStatus() {
   }
 
   // Authenticated — read persisted sync state
-  const stored = await storageGet([SYNC_STATUS_KEY]);
+  const stored = await storageGet([SYNC_STATUS_KEY, SAVED_CONTACTS_KEY]);
   const syncState = stored?.[SYNC_STATUS_KEY] || null;
   const status = syncState?.lastSyncStatus || null;
+  const contacts = Array.isArray(stored?.[SAVED_CONTACTS_KEY]) ? stored[SAVED_CONTACTS_KEY] : [];
+  const hasPendingSync = contacts.some((entry) => !entry?.backendId);
 
   elements.syncStatusRow.classList.remove("hidden");
 
-  if (status === "failed") {
+  if (status === "failed" || hasPendingSync) {
     // Yellow dot — sync pending
     if (elements.syncDot) elements.syncDot.dataset.status = "failed";
     if (elements.syncLabel) elements.syncLabel.textContent = "Sync pending";
@@ -1337,7 +1486,8 @@ async function renderSyncStatus() {
 async function handleSyncAction() {
   const action = elements.syncActionBtn?.dataset.action;
   if (action === "connect") {
-    const url = `${API_BASE_URL}/extension-auth?extensionId=${chrome.runtime.id}`;
+    const { apiBaseUrl } = await resolveBaseUrls();
+    const url = `${apiBaseUrl}/extension-auth?extensionId=${chrome.runtime.id}`;
     chrome.tabs.create({ url });
   } else if (action === "retry") {
     await retryPendingContacts();
@@ -1375,14 +1525,42 @@ async function syncContactToBackend(savedRow, profileContext) {
       return;
     }
 
+    const { apiBaseUrl } = await resolveBaseUrls();
     const ctx = profileContext || {};
+    const mergedName = pickFirstNonEmpty(ctx.fullName, savedRow.fullName);
+    const splitName = splitHumanName(mergedName);
+    const fallbackName = deriveNameFromEmail(savedRow.email);
+    const firstName = pickFirstNonEmpty(
+      ctx.firstName,
+      savedRow.firstName,
+      splitName.firstName,
+      fallbackName.firstName,
+      "Unknown"
+    );
+    const lastName = pickFirstNonEmpty(
+      ctx.lastName,
+      savedRow.lastName,
+      splitName.lastName,
+      fallbackName.lastName,
+      "Contact"
+    );
+    const company = pickFirstNonEmpty(
+      ctx.company,
+      savedRow.company,
+      deriveCompanyFromEmail(savedRow.email),
+      "Unknown Company"
+    );
+    const role = pickFirstNonEmpty(ctx.role, savedRow.role);
+    const linkedinUrl = pickFirstNonEmpty(ctx.profileUrl, savedRow.profileUrl);
+    const inferredEmail = pickFirstNonEmpty(savedRow.email);
+
     const body = {
-      firstName: String(ctx.firstName || "").trim() || undefined,
-      lastName: String(ctx.lastName || "").trim() || undefined,
-      company: String(ctx.company || "").trim() || undefined,
-      role: String(ctx.role || "").trim() || undefined,
-      inferredEmail: String(savedRow.email || "").trim() || undefined,
-      linkedinUrl: String(ctx.profileUrl || savedRow.profileUrl || "").trim() || undefined,
+      firstName,
+      lastName,
+      company,
+      role: role || undefined,
+      inferredEmail: inferredEmail || undefined,
+      linkedinUrl: linkedinUrl || undefined,
       source: "extension",
     };
 
@@ -1392,7 +1570,7 @@ async function syncContactToBackend(savedRow, profileContext) {
     });
 
     const response = await fetchWithTimeout(
-      `${API_BASE_URL}/api/contacts`,
+      `${apiBaseUrl}/api/contacts`,
       {
         method: "POST",
         headers: {
@@ -1420,7 +1598,17 @@ async function syncContactToBackend(savedRow, profileContext) {
     }
 
     if (!response.ok) {
-      console.warn("[Sidepanel] syncContactToBackend: non-OK status", response.status);
+      let responseBody = "";
+      try {
+        responseBody = await response.text();
+      } catch {
+        // Ignore response parse errors for diagnostics.
+      }
+      console.warn(
+        "[Sidepanel] syncContactToBackend: non-OK status",
+        response.status,
+        responseBody ? responseBody.slice(0, 220) : ""
+      );
       await setSyncStatus("failed");
       return;
     }
@@ -1464,13 +1652,20 @@ async function saveCurrentResultToContacts() {
     return;
   }
 
+  const context = emailFinderState.profileContext || {};
+  const splitName = splitHumanName(pickFirstNonEmpty(context.fullName));
   const nowIso = new Date().toISOString();
   const savedRow = {
     email: String(result.email),
     pattern: String(result.pattern || ""),
     confidence: toConfidencePercent(result.confidence),
-    source: String(result.source || "unknown"),
-    profileUrl: String(result.profileUrl || ""),
+    source: "extension",
+    profileUrl: pickFirstNonEmpty(context.profileUrl, result.profileUrl),
+    fullName: pickFirstNonEmpty(context.fullName),
+    firstName: pickFirstNonEmpty(context.firstName, splitName.firstName),
+    lastName: pickFirstNonEmpty(context.lastName, splitName.lastName),
+    company: pickFirstNonEmpty(context.company),
+    role: pickFirstNonEmpty(context.role),
     createdAt: nowIso,
   };
 
@@ -1478,6 +1673,7 @@ async function saveCurrentResultToContacts() {
   const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
   list.unshift(savedRow);
   await storageSet({ [SAVED_CONTACTS_KEY]: list.slice(0, 250) });
+  await setSyncStatus("failed");
 
   showToast("Saved to contacts.", "success");
   void renderQueueCard();
@@ -1508,20 +1704,21 @@ async function submitFeedback(worked) {
   };
 
   try {
+    const { apiBaseUrl } = await resolveBaseUrls();
     const headers = {
       "Content-Type": "application/json",
       Accept: "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    let response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/email-feedback`, {
+    let response = await fetchWithTimeout(`${apiBaseUrl}/api/v1/email-feedback`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
     });
 
     if (!response.ok && (response.status === 404 || response.status === 405)) {
-      response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/pattern-feedback`, {
+      response = await fetchWithTimeout(`${apiBaseUrl}/api/v1/pattern-feedback`, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
@@ -2041,15 +2238,18 @@ async function renderQueueCard() {
       .slice(0, 20)
       .map((c) => {
         const email = escapeHtml(String(c.email || "\u2014"));
-        const dateStr = c.createdAt
-          ? new Date(c.createdAt).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-            })
-          : "";
+        const rawEmail = String(c.email || "").trim();
+        const emailAttr = rawEmail.replace(/"/g, "&quot;");
         return `<div class="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
           <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:12px;color:#334155">${email}</span>
-          <span style="flex-shrink:0;font-size:11px;color:#94a3b8">${dateStr}</span>
+          <button
+            type="button"
+            class="queue-copy-btn"
+            data-email="${emailAttr}"
+            style="flex-shrink:0;border:1px solid #e2e8f0;background:#f8fafc;color:#334155;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;line-height:1.1;cursor:pointer"
+          >
+            Copy
+          </button>
         </div>`;
       })
       .join("");

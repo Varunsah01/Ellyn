@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { fadeInUp } from "@/lib/animations";
 import {
@@ -8,65 +8,31 @@ import {
   FREE_PLAN_FEATURES,
   PRO_PLAN_FEATURES,
   getFreeDisplayPrice,
-  getPricingRegionDisplayLabel,
   getProDisplayPrice,
+  getQuarterlySavingsLabel,
   getYearlySavingsLabel,
-  normalizePricingRegion,
 } from "@/lib/pricing-config";
 import { PricingCard } from "@/components/landing/pricing/PricingCard";
 import { PricingToggle } from "@/components/landing/pricing/PricingToggle";
 
 export function PricingSection() {
   const [billingCycle, setBillingCycle] = useState("monthly");
-  const [region, setRegion] = useState(DEFAULT_PRICING_REGION);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadPricingRegion() {
-      try {
-        const response = await fetch("/api/v1/pricing-region", {
-          method: "GET",
-          cache: "no-store",
-          headers: {
-            Accept: "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to load pricing region (${response.status})`);
-        }
-
-        const payload = await response.json();
-        const nextRegion = normalizePricingRegion(payload?.region);
-
-        if (isMounted) {
-          setRegion(nextRegion);
-        }
-      } catch (error) {
-        console.error("Failed to detect pricing region, defaulting to GLOBAL.", error);
-        if (isMounted) {
-          setRegion(DEFAULT_PRICING_REGION);
-        }
-      }
-    }
-
-    loadPricingRegion();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const freePrice = useMemo(() => getFreeDisplayPrice(region), [region]);
-  const proPrice = useMemo(
-    () => getProDisplayPrice(region, billingCycle),
-    [region, billingCycle],
+  const freePrice = useMemo(
+    () => getFreeDisplayPrice(DEFAULT_PRICING_REGION),
+    [],
   );
-  const yearlySavingsLabel = useMemo(() => getYearlySavingsLabel(region), [region]);
-  const regionDisplayLabel = useMemo(
-    () => getPricingRegionDisplayLabel(region),
-    [region],
+  const proPrice = useMemo(
+    () => getProDisplayPrice(DEFAULT_PRICING_REGION, billingCycle),
+    [billingCycle],
+  );
+  const quarterlySavingsLabel = useMemo(
+    () => getQuarterlySavingsLabel(DEFAULT_PRICING_REGION),
+    [],
+  );
+  const yearlySavingsLabel = useMemo(
+    () => getYearlySavingsLabel(DEFAULT_PRICING_REGION),
+    [],
   );
 
   return (
@@ -93,6 +59,7 @@ export function PricingSection() {
         <PricingToggle
           billingCycle={billingCycle}
           onBillingCycleChange={setBillingCycle}
+          quarterlySavingsLabel={quarterlySavingsLabel}
           yearlySavingsLabel={yearlySavingsLabel}
         />
 
@@ -106,7 +73,7 @@ export function PricingSection() {
             ctaLabel="Start Free"
             ctaHref="/auth/signup"
             supportText="No credit card required"
-            priceKey={`${region}-free`}
+            priceKey="global-free"
           />
 
           <PricingCard
@@ -120,12 +87,11 @@ export function PricingSection() {
             isPopular
             badgeLabel="Most Popular"
             underPriceText="Unlimited outreach subject to fair use policy."
-            savingsBadge={billingCycle === "yearly" ? proPrice.savingsLabel : ""}
-            priceKey={`${region}-${billingCycle}-pro`}
+            savingsBadge={proPrice.savingsLabel || ""}
+            priceKey={`global-${billingCycle}-pro`}
           />
         </div>
       </div>
     </section>
   );
 }
-

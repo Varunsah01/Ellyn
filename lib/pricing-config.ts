@@ -7,6 +7,7 @@ export type PricingRegion = (typeof PRICING_REGION)[keyof typeof PRICING_REGION]
 
 export const BILLING_CYCLE = {
   monthly: "monthly",
+  quarterly: "quarterly",
   yearly: "yearly",
 } as const;
 
@@ -44,138 +45,137 @@ export const PRO_PLAN_FEATURES = [
   "Early access to new features",
 ] as const;
 
-const FREE_PRICING_BY_REGION = {
-  IN: {
-    amountLabel: "₹0",
-    periodLabel: "",
-  },
-  GLOBAL: {
-    amountLabel: "$0",
-    periodLabel: "",
-  },
+const FREE_PRICING_GLOBAL = {
+  amountLabel: "$0",
+  periodLabel: "",
 } as const;
 
-const PRO_PRICING_BY_REGION = {
-  IN: {
-    monthly: {
-      amountLabel: "₹349",
-      periodLabel: "/month",
-      savingsLabel: "",
-    },
-    yearly: {
-      amountLabel: "₹2,999",
-      periodLabel: "/year",
-      savingsLabel: "Save 28%",
-    },
+const PRO_PRICING_GLOBAL = {
+  monthly: {
+    amountLabel: "$12",
+    periodLabel: "/month",
+    savingsLabel: "",
   },
-  GLOBAL: {
-    monthly: {
-      amountLabel: "$12",
-      periodLabel: "/month",
-      savingsLabel: "",
-    },
-    yearly: {
-      amountLabel: "$99",
-      periodLabel: "/year",
-      savingsLabel: "Save 31%",
-    },
+  quarterly: {
+    amountLabel: "$24.99",
+    periodLabel: "/quarter",
+    savingsLabel: "Save 31%",
+  },
+  yearly: {
+    amountLabel: "$99",
+    periodLabel: "/year",
+    savingsLabel: "Save 31%",
   },
 } as const;
 
 /**
  * Normalize pricing region.
- * @param {unknown} region - Region input.
- * @returns {PricingRegion} Computed PricingRegion.
- * @example
- * normalizePricingRegion({})
+ * India pricing is currently disabled and all users are mapped to GLOBAL.
  */
 export function normalizePricingRegion(region: unknown): PricingRegion {
-  if (region === PRICING_REGION.IN) {
-    return PRICING_REGION.IN;
-  }
-
+  void region;
   return DEFAULT_PRICING_REGION;
 }
 
 /**
  * Resolve pricing region from country.
- * @param {string | null} countryCode - Country code input.
- * @returns {PricingRegion} Computed PricingRegion.
- * @example
- * resolvePricingRegionFromCountry('countryCode')
+ * India pricing is currently disabled and all users are mapped to GLOBAL.
  */
 export function resolvePricingRegionFromCountry(
   countryCode?: string | null,
 ): PricingRegion {
-  const normalizedCountryCode = countryCode?.trim().toUpperCase();
-  if (normalizedCountryCode === "IN") {
-    return PRICING_REGION.IN;
-  }
-
+  void countryCode;
   return DEFAULT_PRICING_REGION;
 }
 
 /**
  * Get free display price.
- * @param {PricingRegion} region - Region input.
- * @returns {unknown} Computed unknown.
- * @example
- * getFreeDisplayPrice({})
  */
 export function getFreeDisplayPrice(region: PricingRegion) {
-  return FREE_PRICING_BY_REGION[region];
+  void region;
+  return FREE_PRICING_GLOBAL;
 }
 
 /**
  * Get pro display price.
- * @param {PricingRegion} region - Region input.
- * @param {BillingCycle} billingCycle - Billing cycle input.
- * @returns {unknown} Computed unknown.
- * @example
- * getProDisplayPrice({}, {})
  */
 export function getProDisplayPrice(
   region: PricingRegion,
   billingCycle: BillingCycle,
 ) {
-  return PRO_PRICING_BY_REGION[region][billingCycle];
+  void region;
+  return PRO_PRICING_GLOBAL[billingCycle];
+}
+
+/**
+ * Get quarterly savings label.
+ */
+export function getQuarterlySavingsLabel(region: PricingRegion) {
+  void region;
+  return PRO_PRICING_GLOBAL.quarterly.savingsLabel;
 }
 
 /**
  * Get yearly savings label.
- * @param {PricingRegion} region - Region input.
- * @returns {unknown} Computed unknown.
- * @example
- * getYearlySavingsLabel({})
  */
 export function getYearlySavingsLabel(region: PricingRegion) {
-  return PRO_PRICING_BY_REGION[region].yearly.savingsLabel;
+  void region;
+  return PRO_PRICING_GLOBAL.yearly.savingsLabel;
 }
 
 /**
  * Get pricing region display label.
- * @param {PricingRegion} region - Region input.
- * @returns {unknown} Computed unknown.
- * @example
- * getPricingRegionDisplayLabel({})
  */
 export function getPricingRegionDisplayLabel(region: PricingRegion) {
-  if (region === PRICING_REGION.IN) {
-    return "India";
-  }
-
-  return "Rest of World";
+  void region;
+  return "Global";
 }
 
 /**
- * Get Dodo Payments product ID for the given region.
- * Dodo Products encompass both billing cycles; cycle is passed separately to the API.
- * @param {PricingRegion} region - Pricing region.
- * @returns {string} Dodo product ID.
+ * Get Dodo Payments product ID for the given billing cycle.
+ * Priority is cycle-specific global IDs, then legacy global ID fallback.
  */
-export function getDodoProductId(region: PricingRegion): string {
-  const key = region === PRICING_REGION.IN ? 'DODO_PRO_PRODUCT_ID_IN' : 'DODO_PRO_PRODUCT_ID_GLOBAL'
-  const id = process.env[key]
-  if (!id) throw new Error(`Missing env var: ${key}`)
-  return id
+export function getDodoProductId(
+  region: PricingRegion,
+  billingCycle: BillingCycle = "monthly",
+): string {
+  void region;
+
+  const envCandidatesByCycle: Record<BillingCycle, readonly string[]> = {
+    monthly: [
+      "DODO_PRO_PRODUCT_ID_GLOBAL_MONTHLY",
+      "DODO_PRO_PRODUCT_ID_MONTHLY",
+      "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID_MONTHLY",
+      "DODO_PRO_PRODUCT_ID_GLOBAL",
+      "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID",
+      "DODO_PRO_PRODUCT_ID_IN",
+    ],
+    quarterly: [
+      "DODO_PRO_PRODUCT_ID_GLOBAL_QUARTERLY",
+      "DODO_PRO_PRODUCT_ID_QUARTERLY",
+      "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID_QUARTERLY",
+      "DODO_PRO_PRODUCT_ID_GLOBAL",
+      "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID",
+      "DODO_PRO_PRODUCT_ID_IN",
+    ],
+    yearly: [
+      "DODO_PRO_PRODUCT_ID_GLOBAL_YEARLY",
+      "DODO_PRO_PRODUCT_ID_YEARLY",
+      "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID_YEARLY",
+      "DODO_PRO_PRODUCT_ID_GLOBAL",
+      "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID",
+      "DODO_PRO_PRODUCT_ID_IN",
+    ],
+  };
+
+  for (const envKey of envCandidatesByCycle[billingCycle]) {
+    const value = process.env[envKey];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  throw new Error(
+    `Missing Dodo product ID env vars for "${billingCycle}". Expected one of: ${envCandidatesByCycle[billingCycle].join(", ")}`,
+  );
 }

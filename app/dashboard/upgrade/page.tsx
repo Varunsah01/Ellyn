@@ -11,12 +11,12 @@ import { Button } from '@/components/ui/Button'
 import { showToast } from '@/lib/toast'
 import {
   type BillingCycle,
-  type PricingRegion,
+  DEFAULT_PRICING_REGION,
   FREE_PLAN_FEATURES,
   PRO_PLAN_FEATURES,
   getFreeDisplayPrice,
   getProDisplayPrice,
-  getDodoProductId,
+  getQuarterlySavingsLabel,
   getYearlySavingsLabel,
 } from '@/lib/pricing-config'
 import { useSubscription } from '@/context/SubscriptionContext'
@@ -26,7 +26,6 @@ export default function UpgradePage() {
   const { plan_type, isLoading } = useSubscription()
 
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly')
-  const [region, setRegion] = useState<PricingRegion>('GLOBAL')
   const [isCheckingOut, setIsCheckingOut] = useState(false)
   const [canceledBanner, setCanceledBanner] = useState(false)
 
@@ -36,30 +35,13 @@ export default function UpgradePage() {
     }
   }, [searchParams])
 
-  useEffect(() => {
-    fetch('/api/v1/pricing-region')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d?.region === 'IN') setRegion('IN')
-      })
-      .catch(() => {})
-  }, [])
-
   const handleUpgrade = async () => {
     setIsCheckingOut(true)
     try {
-      let productId: string
-      try {
-        productId = getDodoProductId(region)
-      } catch {
-        showToast.error('Dodo product IDs are not configured.')
-        return
-      }
-
       const res = await fetch('/api/v1/subscription/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, billingCycle }),
+        body: JSON.stringify({ billingCycle }),
       })
 
       const data = await res.json()
@@ -86,9 +68,10 @@ export default function UpgradePage() {
     }
   }
 
-  const freePricing = getFreeDisplayPrice(region)
-  const proPricing = getProDisplayPrice(region, billingCycle)
-  const savingsLabel = getYearlySavingsLabel(region)
+  const freePricing = getFreeDisplayPrice(DEFAULT_PRICING_REGION)
+  const proPricing = getProDisplayPrice(DEFAULT_PRICING_REGION, billingCycle)
+  const quarterlySavingsLabel = getQuarterlySavingsLabel(DEFAULT_PRICING_REGION)
+  const yearlySavingsLabel = getYearlySavingsLabel(DEFAULT_PRICING_REGION)
 
   return (
     <DashboardShell>
@@ -131,7 +114,8 @@ export default function UpgradePage() {
             <PricingToggle
               billingCycle={billingCycle}
               onBillingCycleChange={(cycle: BillingCycle) => setBillingCycle(cycle)}
-              yearlySavingsLabel={savingsLabel}
+              quarterlySavingsLabel={quarterlySavingsLabel}
+              yearlySavingsLabel={yearlySavingsLabel}
             />
 
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -163,8 +147,8 @@ export default function UpgradePage() {
                 badgeLabel="Most Popular"
                 supportText={null}
                 underPriceText={null}
-                savingsBadge={billingCycle === 'yearly' ? proPricing.savingsLabel : null}
-                priceKey={`${region}-${billingCycle}`}
+                savingsBadge={proPricing.savingsLabel || null}
+                priceKey={`global-${billingCycle}`}
               />
             </div>
 

@@ -8,7 +8,7 @@ import { type BillingCycle, type PricingRegion, getDodoProductId } from '@/lib/p
  */
 export function getValidatedProProductId(
   region: PricingRegion,
-  _billingCycle: BillingCycle
+  billingCycle: BillingCycle
 ): string {
-  return getDodoProductId(region)
+  return getDodoProductId(region, billingCycle)
 }

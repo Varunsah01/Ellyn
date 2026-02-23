@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth/helpers'
 import { dodo } from '@/lib/dodo'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import {
+  BILLING_CYCLE,
+  DEFAULT_PRICING_REGION,
+  getDodoProductId,
+  type BillingCycle,
+} from '@/lib/pricing-config'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
@@ -11,10 +17,18 @@ export async function POST(request: NextRequest) {
     const supabase = await createServiceRoleClient()
 
     const body = await request.json()
-    const { productId, billingCycle } = body as { productId: string; billingCycle?: string }
+    const { billingCycle } = body as { billingCycle?: string }
+    const selectedCycle: BillingCycle =
+      billingCycle && Object.prototype.hasOwnProperty.call(BILLING_CYCLE, billingCycle)
+        ? (billingCycle as BillingCycle)
+        : 'monthly'
 
-    if (!productId) {
-      return NextResponse.json({ error: 'Missing productId' }, { status: 400 })
+    let productId: string
+    try {
+      productId = getDodoProductId(DEFAULT_PRICING_REGION, selectedCycle)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Product configuration missing'
+      return NextResponse.json({ error: message }, { status: 500 })
     }
 
     const baseUrl =
@@ -43,7 +57,7 @@ export async function POST(request: NextRequest) {
       return_url: `${baseUrl}/dashboard/settings/billing?success=true`,
       metadata: {
         userId: user.id,
-        billingCycle: billingCycle ?? 'monthly',
+        billingCycle: selectedCycle,
       },
       billing: { country: 'US' },
     })
