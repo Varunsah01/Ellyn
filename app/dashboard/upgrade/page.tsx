@@ -8,6 +8,7 @@ import { PricingToggle } from '@/components/landing/pricing/PricingToggle'
 import { PricingCard } from '@/components/landing/pricing/PricingCard'
 import { DashboardShell } from '@/components/dashboard/DashboardShell'
 import { Button } from '@/components/ui/Button'
+import { supabaseAuthedFetch } from '@/lib/auth/client-fetch'
 import { showToast } from '@/lib/toast'
 import {
   type BillingCycle,
@@ -38,7 +39,7 @@ export default function UpgradePage() {
   const handleUpgrade = async () => {
     setIsCheckingOut(true)
     try {
-      const res = await fetch('/api/v1/subscription/checkout', {
+      const res = await supabaseAuthedFetch('/api/v1/subscription/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ billingCycle }),
@@ -59,7 +60,7 @@ export default function UpgradePage() {
   }
 
   const handleManage = async () => {
-    const res = await fetch('/api/v1/subscription/portal', { method: 'POST' })
+    const res = await supabaseAuthedFetch('/api/v1/subscription/portal', { method: 'POST' })
     const data = await res.json()
     if (data.url) {
       window.location.href = data.url
@@ -141,8 +142,10 @@ export default function UpgradePage() {
                 priceLabel={proPricing.amountLabel}
                 billingLabel={proPricing.periodLabel}
                 features={[...PRO_PLAN_FEATURES]}
-                ctaLabel={isCheckingOut ? 'Redirecting…' : 'Upgrade to Pro'}
+                ctaLabel={isCheckingOut ? 'Redirecting...' : 'Upgrade to Pro'}
                 ctaHref="#"
+                ctaOnClick={handleUpgrade}
+                ctaDisabled={isCheckingOut}
                 isPopular
                 badgeLabel="Most Popular"
                 supportText={null}
@@ -160,8 +163,8 @@ export default function UpgradePage() {
                 className="min-w-[180px]"
               >
                 {isCheckingOut
-                  ? 'Redirecting…'
-                  : `Upgrade to Pro — ${proPricing.amountLabel}${proPricing.periodLabel}`}
+                  ? 'Redirecting...'
+                  : `Upgrade to Pro - ${proPricing.amountLabel}${proPricing.periodLabel}`}
               </Button>
             </div>
 
@@ -181,9 +184,9 @@ export default function UpgradePage() {
                     ['AI draft generations / month', '15', 'Unlimited'],
                     ['Contact storage', 'Limited', 'Unlimited'],
                     ['Outreach tracking', 'Basic', 'Full dashboard'],
-                    ['Data export', '✗', '✓'],
-                    ['Priority sync', '✗', '✓'],
-                    ['Early access to features', '✗', '✓'],
+                    ['Data export', 'No', 'Yes'],
+                    ['Priority sync', 'No', 'Yes'],
+                    ['Early access to features', 'No', 'Yes'],
                   ].map(([feature, free, pro]) => (
                     <tr key={feature} className="hover:bg-muted/30">
                       <td className="px-4 py-3 text-foreground">{feature}</td>

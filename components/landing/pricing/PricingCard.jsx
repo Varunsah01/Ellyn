@@ -7,21 +7,51 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { cn } from "@/lib/utils";
 
-export function PricingCard({
-  planName,
-  planSubtitle,
-  priceLabel,
-  billingLabel,
-  features,
-  ctaLabel,
-  ctaHref,
-  isPopular = false,
-  badgeLabel,
-  supportText,
-  underPriceText,
-  priceKey,
-  savingsBadge,
-}) {
+/**
+ * @param {{
+ *   planName: string
+ *   planSubtitle: string
+ *   priceLabel: string
+ *   billingLabel?: string | null
+ *   features: string[]
+ *   ctaLabel: string
+ *   ctaHref: string
+ *   isPopular?: boolean
+ *   badgeLabel?: string | null
+ *   supportText?: string | null
+ *   underPriceText?: string | null
+ *   priceKey: string
+ *   savingsBadge?: string | null
+ *   ctaOnClick?: (() => void) | null
+ *   ctaDisabled?: boolean
+ * }} props
+ */
+export function PricingCard(props) {
+  const {
+    planName,
+    planSubtitle,
+    priceLabel,
+    billingLabel,
+    features,
+    ctaLabel,
+    ctaHref,
+    isPopular = false,
+    badgeLabel,
+    supportText,
+    underPriceText,
+    priceKey,
+    savingsBadge,
+    ctaOnClick = null,
+    ctaDisabled = false,
+  } = props;
+
+  const buttonClassName = cn(
+    "h-11 w-full font-dm-sans",
+    isPopular
+      ? "bg-primary text-white hover:bg-primary/90"
+      : "bg-secondary text-foreground hover:bg-secondary/80",
+  );
+
   return (
     <motion.div
       whileHover={{ y: -4 }}
@@ -96,19 +126,23 @@ export function PricingCard({
           ) : null}
 
           <div className="mt-auto">
-            <Link href={ctaHref} className="block">
+            {typeof ctaOnClick === "function" ? (
               <Button
                 size="lg"
-                className={cn(
-                  "h-11 w-full font-dm-sans",
-                  isPopular
-                    ? "bg-primary text-white hover:bg-primary/90"
-                    : "bg-secondary text-foreground hover:bg-secondary/80",
-                )}
+                className={buttonClassName}
+                type="button"
+                onClick={ctaOnClick}
+                disabled={ctaDisabled}
               >
                 {ctaLabel}
               </Button>
-            </Link>
+            ) : (
+              <Link href={ctaHref} className="block">
+                <Button size="lg" className={buttonClassName}>
+                  {ctaLabel}
+                </Button>
+              </Link>
+            )}
           </div>
         </CardContent>
       </Card>

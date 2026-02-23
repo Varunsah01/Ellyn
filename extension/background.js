@@ -53,7 +53,8 @@ const CSRF_HEADER_NAME = 'X-CSRF-Token';
 const CSRF_REFRESH_PATH = '/api/v1';
 const CSRF_TOKEN_TTL_MS = 5 * 60 * 1000;
 
-const AUTH_STORAGE_KEYS = ['isAuthenticated', 'user', 'auth_token'];
+const AUTH_SOURCE_ORIGIN_KEY = 'ellyn_auth_origin';
+const AUTH_STORAGE_KEYS = ['isAuthenticated', 'user', 'auth_token', AUTH_SOURCE_ORIGIN_KEY];
 const COST_STORAGE_KEY = 'api_cost_tracker';
 const OPERATION_STORAGE_PREFIX = 'find_email_op_';
 const OPERATION_ALARM_PREFIX = 'find-email-timeout-';
@@ -133,7 +134,20 @@ function extractAuthToken(payload) {
   return null;
 }
 
-function setAuthenticatedState(payload, sendResponse) {
+function normalizeOrigin(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    if (!['https:', 'http:'].includes(parsed.protocol)) return '';
+    return parsed.origin;
+  } catch {
+    return '';
+  }
+}
+
+function setAuthenticatedState(payload, sendResponse, context = {}) {
   const token = extractAuthToken(payload);
   const nextState = {
     isAuthenticated: true,
@@ -142,6 +156,11 @@ function setAuthenticatedState(payload, sendResponse) {
 
   if (token) {
     nextState.auth_token = token;
+  }
+
+  const sourceOrigin = normalizeOrigin(context?.sourceOrigin);
+  if (sourceOrigin) {
+    nextState[AUTH_SOURCE_ORIGIN_KEY] = sourceOrigin;
   }
 
   chrome.storage.local.set(nextState, () => {
@@ -293,14 +312,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== 'object') return;
+  const senderOrigin = normalizeOrigin(_sender?.url || _sender?.origin || '');
 
   if (message.type === 'WEBAPP_AUTH_SYNC') {
-    setAuthenticatedState(message.payload || null, sendResponse);
+    setAuthenticatedState(message.payload || null, sendResponse, {
+      sourceOrigin: senderOrigin,
+    });
     return true;
   }
 
   if (message.type === 'AUTH_SUCCESS') {
-    setAuthenticatedState(message.payload || null, sendResponse);
+    setAuthenticatedState(message.payload || null, sendResponse, {
+      sourceOrigin: senderOrigin,
+    });
     return true;
   }
 
@@ -538,9 +562,10 @@ async function extractProfileReadOnlyFromPage(tabId) {
       const looksLikeRole = (value) => {
         const text = clean(value);
         if (!text) return false;
+        if (looksLikeRoleNoiseLine(text)) return false;
 
         const roleKeywords =
-          /\b(co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|executive|administrator|officer|head of|chief)\b/i;
+          /\b(co-?founder|founder|ceo|cto|cfo|coo|vp|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|executive|administrator|officer|head of|chief|owner|entrepreneur|advisor|researcher|professor)\b/i;
         if (!roleKeywords.test(text)) return false;
         if (/\b(?:at|@)\b/i.test(text)) return false;
 
@@ -549,6 +574,32 @@ async function extractProfileReadOnlyFromPage(tabId) {
         if (companyIndicators.test(text)) return false;
 
         return text.split(/\s+/).length <= 8;
+      };
+
+      const looksLikeRoleNoiseLine = (value) => {
+        const text = clean(value);
+        if (!text) return true;
+        if (/^\.\.\.$/.test(text)) return true;
+        if (/^see more$/i.test(text)) return true;
+        if (/\+\s*\d+\s*skills?\b/i.test(text)) return true;
+        if (/^\d+\s*skills?\b/i.test(text)) return true;
+        if (/\bendorsement(?:s)?\b/i.test(text)) return true;
+        if (/\b(?:followers|connections|contact info)\b/i.test(text)) return true;
+        return false;
+      };
+
+      const isExperienceMetaLine = (value) => {
+        const text = clean(value);
+        if (!text) return true;
+        if (looksLikeRoleNoiseLine(text)) return true;
+        if (/\b(full[- ]?time|part[- ]?time|contract|freelance|self[- ]?employed|internship)\b/i.test(text)) return true;
+        if (/\b(current|present)\b/i.test(text) && /\b\d+\s*(?:yr|yrs|year|years|mo|mos|month|months)\b/i.test(text)) return true;
+        if (/\b\d+\s*(?:yr|yrs|year|years|mo|mos|month|months)\b/i.test(text)) return true;
+        if (/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i.test(text) && /\b\d{4}\b/.test(text)) return true;
+        if (/\b\d{4}\s*-\s*(?:present|current|\d{4})\b/i.test(text)) return true;
+        if (/\b(on-site|onsite|hybrid|remote)\b/i.test(text)) return true;
+        if (/^\([^)]{2,80}\)$/.test(text)) return true;
+        return false;
       };
 
       const isLikelyCompany = (value) => {
@@ -636,6 +687,37 @@ async function extractProfileReadOnlyFromPage(tabId) {
         if (!experienceSection) return '';
 
         const rows = experienceSection.querySelectorAll('li, div[class*="pvs-list__item"]');
+        let fallbackRole = '';
+
+        const pickBestRoleFromLines = (lines, companyCandidate = '') => {
+          let bestRole = '';
+          let bestScore = Number.NEGATIVE_INFINITY;
+
+          for (let idx = 0; idx < lines.length; idx += 1) {
+            const line = clean(lines[idx]);
+            if (!line) continue;
+            if (companyCandidate && line.toLowerCase() === companyCandidate.toLowerCase()) continue;
+            if (isExperienceMetaLine(line)) continue;
+            if (isLikelyCompany(line)) continue;
+            if (!looksLikeRole(line) && !/[,/&-]/.test(line)) continue;
+
+            let score = 0;
+            if (idx === 0) score += 4;
+            else if (idx === 1) score += 2;
+            if (looksLikeRole(line)) score += 3;
+            if (/[,&/]/.test(line)) score += 1;
+            if (/\+\s*\d+\s*skills?\b/i.test(line)) score -= 8;
+            if (/\bskills?\b/i.test(line)) score -= 4;
+
+            if (score > bestScore) {
+              bestScore = score;
+              bestRole = line;
+            }
+          }
+
+          return bestRole;
+        };
+
         for (const row of rows) {
           const rowText = clean(row?.innerText || '');
           if (!rowText) continue;
@@ -649,24 +731,46 @@ async function extractProfileReadOnlyFromPage(tabId) {
             .filter(Boolean);
           if (lines.length === 0) continue;
 
-          // In LinkedIn experience rows, line 1 is typically the designation.
-          const primary = clean(lines[0] || '');
-          if (
-            primary &&
-            !isLikelyCompany(primary) &&
-            !/\b(full[- ]?time|part[- ]?time|self[- ]?employed|internship|contract)\b/i.test(primary)
-          ) {
-            return primary;
+          const companyLink = row.querySelector('a[href*="/company/"], a[data-field="experience_company_logo"]');
+          const companyCandidate = clean(companyLink?.textContent || '');
+
+          const roleSelectors = [
+            'span[aria-hidden="true"].mr1.t-bold',
+            'span.mr1.t-bold span[aria-hidden="true"]',
+            'div.t-bold span[aria-hidden="true"]',
+            'div[class*="display-flex"][class*="align-items-center"] span[aria-hidden="true"]',
+          ];
+
+          for (const selector of roleSelectors) {
+            let nodes = [];
+            try {
+              nodes = row.querySelectorAll(selector);
+            } catch {
+              continue;
+            }
+
+            for (const node of nodes) {
+              const roleText = clean(node?.textContent || '');
+              if (!roleText) continue;
+              if (companyCandidate && roleText.toLowerCase() === companyCandidate.toLowerCase()) continue;
+              if (isExperienceMetaLine(roleText)) continue;
+              if (looksLikeRole(roleText)) {
+                return roleText;
+              }
+            }
           }
 
-          for (const line of lines) {
-            if (!line || isLikelyCompany(line)) continue;
-            if (/\b(current|present|yrs?|mos?|full[- ]?time|part[- ]?time|contract)\b/i.test(line)) continue;
-            if (looksLikeRole(line)) return line;
+          const bestFromLines = pickBestRoleFromLines(lines, companyCandidate);
+          if (bestFromLines) {
+            return bestFromLines;
+          }
+
+          if (!fallbackRole) {
+            fallbackRole = pickBestRoleFromLines(lines, '');
           }
         }
 
-        return '';
+        return fallbackRole;
       };
 
       const parseCompanyFromUrl = (href) => {

@@ -1301,6 +1301,7 @@ class LinkedInExtractor {
     }
 
     let fallback = null;
+    let fallbackWithTitle = null;
 
     for (const entry of entries) {
       const allText = entry.innerText || '';
@@ -1331,22 +1332,9 @@ class LinkedInExtractor {
         }
       }
 
-      let titleCandidate = '';
-      for (const line of lines) {
-        const normalized = this.cleanText(line);
-        if (!normalized) continue;
-        if (
-          companyCandidate &&
-          normalized.toLowerCase() === companyCandidate.toLowerCase()
-        ) {
-          continue;
-        }
-        if (this.looksLikeExperienceMetaLine(normalized)) continue;
-        const role = this.cleanRoleCandidate(normalized);
-        if (role) {
-          titleCandidate = role;
-          break;
-        }
+      let titleCandidate = this.extractRoleFromExperienceEntryNode(entry, companyCandidate);
+      if (!titleCandidate) {
+        titleCandidate = this.pickBestRoleFromExperienceLines(lines, companyCandidate);
       }
 
       if (!companyCandidate) {
@@ -1375,14 +1363,82 @@ class LinkedInExtractor {
       if (!fallback && (result.title || result.company)) {
         fallback = result;
       }
+      if (!fallbackWithTitle && result.title) {
+        fallbackWithTitle = result;
+      }
 
-      if (isCurrent && result.company) {
+      if (isCurrent && result.title) {
         this.log('Current experience found', result);
         return result;
       }
     }
 
-    return fallback;
+    return fallbackWithTitle || fallback;
+  }
+
+  extractRoleFromExperienceEntryNode(entry, companyCandidate = '') {
+    const selectors = [
+      'span[aria-hidden="true"].mr1.t-bold',
+      'span.mr1.t-bold span[aria-hidden="true"]',
+      'div.t-bold span[aria-hidden="true"]',
+      'div[class*="display-flex"][class*="align-items-center"] span[aria-hidden="true"]',
+    ];
+
+    for (const selector of selectors) {
+      let nodes = [];
+      try {
+        nodes = entry.querySelectorAll(selector);
+      } catch {
+        continue;
+      }
+
+      for (const node of nodes) {
+        const normalized = this.cleanText(node?.textContent || '');
+        if (!normalized) continue;
+        if (companyCandidate && normalized.toLowerCase() === companyCandidate.toLowerCase()) continue;
+        if (this.looksLikeExperienceMetaLine(normalized) || this.looksLikeRoleNoiseLine(normalized)) continue;
+
+        const role = this.cleanRoleCandidate(normalized);
+        if (role) return role;
+      }
+    }
+
+    return '';
+  }
+
+  pickBestRoleFromExperienceLines(lines, companyCandidate = '') {
+    if (!Array.isArray(lines) || lines.length === 0) return '';
+
+    let bestRole = '';
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const normalized = this.cleanText(lines[i]);
+      if (!normalized) continue;
+      if (companyCandidate && normalized.toLowerCase() === companyCandidate.toLowerCase()) continue;
+      if (this.looksLikeExperienceMetaLine(normalized) || this.looksLikeRoleNoiseLine(normalized)) continue;
+
+      const role = this.cleanRoleCandidate(normalized);
+      if (!role) continue;
+
+      let score = 0;
+      if (i === 0) score += 4;
+      else if (i === 1) score += 2;
+      if (this.looksLikeRole(role)) score += 3;
+      if (/[,&/]/.test(role)) score += 1;
+
+      const tokenCount = role.split(/\s+/).filter(Boolean).length;
+      if (tokenCount >= 2 && tokenCount <= 6) score += 1;
+      if (/\+\s*\d+\s*skills?\b/i.test(role)) score -= 8;
+      if (/\bskills?\b/i.test(role)) score -= 4;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestRole = role;
+      }
+    }
+
+    return bestRole;
   }
 
   // Normalization / Validation ----------------------------------------------
@@ -1604,7 +1660,7 @@ class LinkedInExtractor {
     if (!text) return false;
 
     const roleKeywords =
-      /\b(co-?founder|founder|ceo|cto|cfo|coo|vp|vice president|president|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|executive|administrator|officer|head of|chief|investor|partner|principal)\b/i;
+      /\b(co-?founder|founder|ceo|cto|cfo|coo|vp|vice president|president|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|executive|administrator|officer|head of|chief|investor|partner|principal|owner|entrepreneur|advisor|researcher|professor)\b/i;
     if (!roleKeywords.test(text)) return false;
 
     if (/\b(?:at|@)\b/i.test(text)) return false;
@@ -1680,6 +1736,7 @@ class LinkedInExtractor {
     if (!text || text.length < 2 || text.length > 160) return false;
     if (/linkedin|followers|connections|contact info/i.test(text)) return false;
     if (/^[0-9]+$/.test(text)) return false;
+    if (this.looksLikeRoleNoiseLine(text)) return false;
     if (this.looksLikeExperienceMetaLine(text)) return false;
     if (this.looksLikeEducation(text)) return false;
     if (this.isLikelyCompany(text)) return false;
@@ -1692,18 +1749,38 @@ class LinkedInExtractor {
     const tokenCount = text.split(/\s+/).filter(Boolean).length;
     if (tokenCount > 10) return false;
 
-    return this.looksLikeRole(text) || tokenCount <= 6;
+    if (this.looksLikeRole(text)) return true;
+
+    const hasRoleLikeShape = /[,/&-]/.test(text);
+    return tokenCount <= 6 && hasRoleLikeShape;
+  }
+
+  looksLikeRoleNoiseLine(value) {
+    const text = this.cleanText(value);
+    if (!text) return true;
+
+    if (/^\.\.\.$/.test(text)) return true;
+    if (/^see more$/i.test(text)) return true;
+    if (/\+\s*\d+\s*skills?\b/i.test(text)) return true;
+    if (/^\d+\s*skills?\b/i.test(text)) return true;
+    if (/\bendorsement(?:s)?\b/i.test(text)) return true;
+    if (/\b(?:followers|connections|contact info)\b/i.test(text)) return true;
+
+    return false;
   }
 
   looksLikeExperienceMetaLine(value) {
     const text = this.cleanText(value);
     if (!text) return false;
 
+    if (this.looksLikeRoleNoiseLine(text)) return true;
     if (/\b(full-time|part-time|contract|freelance|self-employed)\b/i.test(text)) return true;
     if (/\b(present|current)\b/i.test(text) && /\b\d+\s*(?:yr|yrs|year|years|mo|mos|month|months)\b/i.test(text)) return true;
     if (/\b\d+\s*(?:yr|yrs|year|years|mo|mos|month|months)\b/i.test(text)) return true;
     if (/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b/i.test(text) && /\b\d{4}\b/.test(text)) return true;
     if (/\b\d{4}\s*-\s*(?:present|current|\d{4})\b/i.test(text)) return true;
+    if (/\b(on-site|onsite|hybrid|remote)\b/i.test(text)) return true;
+    if (/^\([^)]{2,80}\)$/.test(text)) return true;
 
     return false;
   }

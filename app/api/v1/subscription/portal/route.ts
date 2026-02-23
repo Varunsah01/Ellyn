@@ -1,13 +1,13 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
-import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { dodo } from '@/lib/dodo'
 import { captureApiException } from '@/lib/monitoring/sentry'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser()
+    const user = await getAuthenticatedUserFromRequest(request)
     const supabase = await createServiceRoleClient()
 
     const { data: profile } = await supabase

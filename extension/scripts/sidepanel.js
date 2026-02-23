@@ -3,6 +3,7 @@ const PRICING_URL = "https://www.useellyn.com/pricing";
 const DEFAULT_API_BASE_URL = "https://www.useellyn.com";
 const DEFAULT_APP_BASE_URL = "https://app.ellyn.app";
 const BASE_URL_OVERRIDE_KEY = "ellyn_base_url_override";
+const AUTH_SOURCE_ORIGIN_KEY = "ellyn_auth_origin";
 const LOCAL_DEV_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"];
 const AUTH_STORAGE_KEYS = ["isAuthenticated", "user", "auth_token"];
 const SAVED_CONTACTS_KEY = "saved_contact_results";
@@ -205,13 +206,22 @@ async function findLocalAppOriginFromOpenTabs() {
 
 async function resolveBaseUrls() {
   try {
-    const stored = await storageGet([BASE_URL_OVERRIDE_KEY]);
+    const stored = await storageGet([BASE_URL_OVERRIDE_KEY, AUTH_SOURCE_ORIGIN_KEY]);
     const overrideOrigin = normalizeOrigin(stored?.[BASE_URL_OVERRIDE_KEY]);
     if (overrideOrigin) {
       return {
         apiBaseUrl: overrideOrigin,
         appBaseUrl: overrideOrigin,
         authBaseUrl: overrideOrigin,
+      };
+    }
+
+    const authOrigin = normalizeOrigin(stored?.[AUTH_SOURCE_ORIGIN_KEY]);
+    if (authOrigin) {
+      return {
+        apiBaseUrl: authOrigin,
+        appBaseUrl: authOrigin,
+        authBaseUrl: authOrigin,
       };
     }
   } catch {
@@ -1517,6 +1527,34 @@ async function retryPendingContacts() {
   }
 }
 
+async function markSavedRowSynced(savedRow, backendId = "synced") {
+  const existing = await storageGet([SAVED_CONTACTS_KEY]);
+  const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
+  const idx = list.findIndex(
+    (entry) => entry.email === savedRow.email && entry.createdAt === savedRow.createdAt
+  );
+  if (idx !== -1) {
+    list[idx] = { ...list[idx], backendId };
+    await storageSet({ [SAVED_CONTACTS_KEY]: list });
+  }
+}
+
+async function postContactToBackendPath(apiBaseUrl, path, body, authToken) {
+  return fetchWithTimeout(
+    `${apiBaseUrl}${path}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(body),
+    },
+    10000
+  );
+}
+
 async function syncContactToBackend(savedRow, profileContext) {
   try {
     const authToken = await getAuthToken();
@@ -1569,19 +1607,12 @@ async function syncContactToBackend(savedRow, profileContext) {
       if (body[k] === undefined) delete body[k];
     });
 
-    const response = await fetchWithTimeout(
-      `${apiBaseUrl}/api/contacts`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: `Bearer ${authToken}`,
-        },
-        body: JSON.stringify(body),
-      },
-      10000
-    );
+    let response = await postContactToBackendPath(apiBaseUrl, "/api/contacts", body, authToken);
+
+    // Some deployments only expose the versioned route. Retry there before failing.
+    if (!response.ok && (response.status === 404 || response.status === 405)) {
+      response = await postContactToBackendPath(apiBaseUrl, "/api/v1/contacts", body, authToken);
+    }
 
     if (response.status === 401) {
       // Auth token expired — show the session-expired banner
@@ -1593,6 +1624,7 @@ async function syncContactToBackend(savedRow, profileContext) {
     if (response.status === 409) {
       // Already exists in backend — treat as success
       console.log("[Sidepanel] Contact already exists in backend (409).");
+      await markSavedRowSynced(savedRow, "existing");
       await setSyncStatus("success");
       return;
     }
@@ -1621,22 +1653,12 @@ async function syncContactToBackend(savedRow, profileContext) {
       return;
     }
 
-    const backendId = data?.contact?.id;
-    if (!backendId) {
-      await setSyncStatus("failed");
-      return;
-    }
-
-    // Patch the local entry with the backend-assigned ID
-    const existing = await storageGet([SAVED_CONTACTS_KEY]);
-    const list = Array.isArray(existing?.[SAVED_CONTACTS_KEY]) ? existing[SAVED_CONTACTS_KEY] : [];
-    const idx = list.findIndex(
-      (entry) => entry.email === savedRow.email && entry.createdAt === savedRow.createdAt
-    );
-    if (idx !== -1) {
-      list[idx] = { ...list[idx], backendId };
-      await storageSet({ [SAVED_CONTACTS_KEY]: list });
-    }
+    const backendId =
+      data?.contact?.id ||
+      data?.data?.contact?.id ||
+      data?.id ||
+      "synced";
+    await markSavedRowSynced(savedRow, String(backendId));
 
     await setSyncStatus("success");
   } catch (err) {

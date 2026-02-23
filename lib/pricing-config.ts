@@ -62,9 +62,9 @@ const PRO_PRICING_GLOBAL = {
     savingsLabel: "Save 31%",
   },
   yearly: {
-    amountLabel: "$99",
+    amountLabel: "$89.99",
     periodLabel: "/year",
-    savingsLabel: "Save 31%",
+    savingsLabel: "Save 38%",
   },
 } as const;
 
