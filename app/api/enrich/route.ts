@@ -7,7 +7,6 @@ import {
 } from '@/lib/domain-lookup';
 import { predictDomainWithLLM } from '@/lib/llm-domain-prediction';
 import { verifyDomainMX } from '@/lib/mx-verification';
-import { validateEmailAbstract } from '@/lib/abstract-email-validation';
 import {
   generateSmartEmailPatternsCached,
   estimateCompanySize,
@@ -25,12 +24,12 @@ import { captureApiException } from '@/lib/monitoring/sentry'
 
 function buildFailureSuggestion(layers: LayerAttempt[]): string {
   if (layers.some(l => l.errorType === 'circuit_open'))
-    return 'Some lookup services are temporarily unavailable — please try again in a few minutes'
+    return 'Some lookup services are temporarily unavailable â€” please try again in a few minutes'
   const errors = layers.filter(l => l.result === 'error').map(l => l.errorType)
   if (errors.includes('rate_limit'))
-    return 'API rate limits reached — please wait a moment and try again'
+    return 'API rate limits reached â€” please wait a moment and try again'
   if (errors.includes('timeout'))
-    return 'Domain lookup timed out — try using the full legal company name'
+    return 'Domain lookup timed out â€” try using the full legal company name'
   return 'Please provide the company website URL directly (e.g. "acme.com")'
 }
 
@@ -107,7 +106,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Step 3.5: LLM prediction (Claude Haiku — cheap, fast, handles acronyms/rebrands)
+    // Step 3.5: LLM prediction (Claude Haiku â€” cheap, fast, handles acronyms/rebrands)
     if (!domain) {
       try {
         const llmResult = await predictDomainWithLLM(companyName);
@@ -222,33 +221,9 @@ export async function POST(request: NextRequest) {
       emailPatterns = applyLearning(emailPatterns, learnedPatterns);
     }
 
-    // 7. Optional: Abstract Email Validation
-    // Only runs if ABSTRACT_EMAIL_VALIDATION_API_KEY is set
-    const abstractEnabled = !!process.env.ABSTRACT_EMAIL_VALIDATION_API_KEY;
-    let abstractValidations: Map<string, any> | null = null;
-
-    if (abstractEnabled) {
-      console.log('[Enrich] Running Abstract email validation...');
-      abstractValidations = new Map();
-
-      // Validate top 3 patterns only (to save costs)
-      const topPatterns = emailPatterns.slice(0, 3);
-
-      for (const pattern of topPatterns) {
-        const validation = await validateEmailAbstract(pattern.email);
-        if (validation) {
-          abstractValidations.set(pattern.email, validation);
-
-          // Apply confidence boost
-          pattern.confidence = Math.max(0, Math.min(95,
-            pattern.confidence + validation.confidenceBoost
-          ));
-        }
-      }
-
-      // Re-sort after validation adjustments
-      emailPatterns.sort((a, b) => b.confidence - a.confidence);
-    }
+    // 7. No address-level verification here.
+    // SMTP probe verification is handled in the extension pipeline.
+    const abstractEnabled = false;
 
     // 8. Log resolution outcome asynchronously (non-blocking)
     logDomainResolution({
@@ -263,7 +238,7 @@ export async function POST(request: NextRequest) {
     // 9. Return enriched data
     return NextResponse.json({
       success: true,
-      cost: abstractEnabled ? emailPatterns.slice(0, 3).length * 0.001 : 0,
+      cost: 0,
       source: domainSource,
       enrichment: {
         domain,
@@ -277,7 +252,7 @@ export async function POST(request: NextRequest) {
       verification: {
         mxVerified: mxInfo.verified,
         abstractEnabled,
-        abstractValidated: abstractEnabled ? emailPatterns.slice(0, 3).length : 0
+        abstractValidated: 0
       },
       confidence: {
         domainAccuracy: confidenceScore,

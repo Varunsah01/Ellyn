@@ -3029,15 +3029,6 @@ async function predictPatterns(input, authToken) {
   );
 }
 
-async function verifyEmailCandidate(email, authToken) {
-  return callBackendPost(
-    '/api/v1/verify-email',
-    { email },
-    authToken,
-    CONFIG.STAGE_TIMEOUT_MS.verifyEmail
-  );
-}
-
 async function verifyDomainMx(domain) {
   console.log('[MX Debug] Checking MX for domain:', domain);
   const url = `https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`;
@@ -3327,7 +3318,7 @@ async function cacheVerifiedPattern(domain, pattern, confidence) {
       pattern,
       confidence,
       verified: true,
-      verifiedBy: 'abstract_api',
+      verifiedBy: 'smtp_probe',
       successCount: 1,
       timestamp: Date.now(),
     },
@@ -3531,7 +3522,7 @@ async function handleFindEmail(data, sender, sendResponse) {
         return;
       }
 
-      // No university domain match — fall through to professional pipeline
+      // No university domain match â€” fall through to professional pipeline
       console.log('[Extension] Student routing: no university match, falling through to professional pipeline');
     }
 
@@ -3680,7 +3671,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       const corrected = normalizeDomain(geminiResult.correctedDomain);
       if (corrected && corrected !== domain) {
         if (domainMatchesCompany(corrected, input.company, companyPageUrl)) {
-          console.log('[ELLYN] Gemini corrected domain:', domain, '→', corrected);
+          console.log('[ELLYN] Gemini corrected domain:', domain, 'â†’', corrected);
           domainWarnings.push(
             `Gemini corrected domain from ${domain} to ${corrected}. Reason: ${geminiResult.reason}`
           );
@@ -3794,7 +3785,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       }
 
       if (mxPassed.length === 0) {
-        // Graceful "not found" — not an error
+        // Graceful "not found" â€” not an error
         console.log('[ELLYN Stage 4] No MX-passing candidates. Returning not-found.');
         await completeOperation(operationId, 'completed', {
           stage: 'mx_verification',
@@ -3826,83 +3817,109 @@ async function handleFindEmail(data, sender, sendResponse) {
 
     console.log('[ELLYN Stage 4] MX passed:', mxVerifiedCount, '/', candidates.length, 'Provider:', mxProvider);
 
-    // STAGE 5: Abstract verification on all MX-passed candidates
-    stage = 'abstract_verification';
+    // STAGE 5: Layered verification â€” SMTP probe â†’ pattern fallback
+    stage = 'verify_candidates';
     await updateOperation(operationId, { stage });
-    console.log('[ELLYN Stage 5] Abstract verification on', mxPassed.length, 'MX-passed candidates');
+    console.log('[ELLYN Stage 5] Layered verification â€” SMTP first, pattern fallback');
 
     let selected = null;
-    const verificationResults = [];
     const alternativesFromVerification = [];
+    const verificationResults = [];
 
-    for (const candidate of mxPassed) {
-      try {
-        const verification = await verifyEmailCandidate(candidate.email, authToken);
-        const rawDeliverability = String(
-          verification?.deliverability || (verification?.deliverable === true ? 'DELIVERABLE' : 'UNKNOWN')
-        ).toUpperCase();
+    // Probe all candidates (up to 6) in parallel via SMTP
+    const candidatesToProbe = candidates.slice(0, 6);
 
-        totalCost = toRoundedMoney(totalCost + CONFIG.COSTS.verifyEmail);
-        await trackApiCost(CONFIG.COSTS.verifyEmail);
-
-        verificationResults.push({
-          email: candidate.email,
-          deliverable: rawDeliverability === 'DELIVERABLE',
-          deliverability: rawDeliverability,
-          details: verification,
-        });
-
-        if (rawDeliverability === 'DELIVERABLE') {
-          if (!selected) {
-            selected = {
-              ...candidate,
-              source: 'abstract_verified',
-              confidence: 0.95,
-              tier: 'primary',
-            };
-          } else {
-            alternativesFromVerification.push({
-              email: candidate.email,
-              pattern: candidate.pattern,
-              confidence: 0.95,
-              tier: 'primary',
-            });
-          }
-        } else if (rawDeliverability === 'RISKY') {
-          alternativesFromVerification.push({
-            email: candidate.email,
-            pattern: candidate.pattern,
-            confidence: 0.65,
-            tier: 'alternative',
-          });
+    const smtpSettled = await Promise.allSettled(
+      candidatesToProbe.map(async (candidate) => {
+        try {
+          const result = await callBackendPost(
+            '/api/v1/smtp-probe',
+            { email: candidate.email },
+            authToken,
+            CONFIG.STAGE_TIMEOUT_MS.verifyEmail
+          );
+          return { candidate, smtp: result };
+        } catch (err) {
+          console.warn('[ELLYN Stage 5] SMTP probe error for', candidate.email, err?.message);
+          return {
+            candidate,
+            smtp: { email: candidate.email, deliverability: 'UNKNOWN', reason: 'probe_request_failed', skipped: true },
+          };
         }
-        // UNDELIVERABLE: excluded entirely
-      } catch (error) {
-        console.warn('[ELLYN Stage 5] verify-email failed for candidate:', candidate.email, error);
+      })
+    );
+
+    // Classify each candidate by SMTP result
+    const needsAbstract = [];
+
+    for (const settled of smtpSettled) {
+      const value = settled.status === 'fulfilled'
+        ? settled.value
+        : { candidate: candidatesToProbe[smtpSettled.indexOf(settled)],
+            smtp: { deliverability: 'UNKNOWN', reason: 'promise_rejected', skipped: true } };
+
+      const { candidate, smtp } = value;
+      const deliverability = String(smtp?.deliverability || 'UNKNOWN').toUpperCase();
+
+      verificationResults.push({
+        email: candidate.email,
+        method: smtp?.skipped ? 'skipped' : 'smtp',
+        deliverable: deliverability === 'DELIVERABLE',
+        deliverability,
+        reason: smtp?.reason,
+        mxHost: smtp?.mxHost,
+        stage: smtp?.stage,
+      });
+
+      if (deliverability === 'DELIVERABLE') {
+        if (!selected) {
+          selected = { ...candidate, source: 'smtp_verified', confidence: 0.92, tier: 'primary' };
+        } else {
+          alternativesFromVerification.push({ ...candidate, confidence: 0.92, tier: 'primary' });
+        }
+      } else if (deliverability === 'UNDELIVERABLE') {
+        console.log('[ELLYN Stage 5] SMTP confirmed UNDELIVERABLE, excluding:', candidate.email);
+        // Excluded entirely
+      } else {
+        // UNKNOWN or SKIPPED â€” needs pattern fallback
+        needsAbstract.push(candidate);
       }
     }
 
-    // If no DELIVERABLE found, pick first RISKY as primary
-    if (!selected && alternativesFromVerification.length > 0) {
-      const firstAlt = alternativesFromVerification.shift();
-      selected = {
-        email: firstAlt.email,
-        pattern: firstAlt.pattern,
-        confidence: firstAlt.confidence,
-        source: 'abstract_risky',
-        tier: firstAlt.tier,
-      };
+    const smtpVerifiedCount = verificationResults.filter(r => r.method === 'smtp' && r.deliverable).length;
+    console.log('[ELLYN Stage 5] SMTP: verified=' + smtpVerifiedCount +
+      ', needs_pattern_fallback=' + needsAbstract.length);
+
+    // Last resort: if SMTP found no results, promote best candidate by pattern confidence
+    if (!selected && needsAbstract.length > 0) {
+      const bestByConfidence = [...needsAbstract].sort((a, b) => b.confidence - a.confidence)[0];
+      if (bestByConfidence) {
+        selected = {
+          ...bestByConfidence,
+          source: 'pattern_confidence',
+          confidence: Math.min(bestByConfidence.confidence, 0.75),
+          tier: 'primary',
+        };
+        // Add remaining needsAbstract as alternatives
+        for (const alt of needsAbstract.slice(1, 3)) {
+          alternativesFromVerification.push({
+            ...alt,
+            confidence: Math.min(alt.confidence, 0.65),
+            tier: 'alternative',
+          });
+        }
+        console.log('[ELLYN Stage 5] No SMTP confirmation — using best pattern confidence:',
+          selected.email, 'confidence:', selected.confidence);
+      }
     }
 
-    const abstractVerifiedCount = verificationResults.filter(
-      (r) => r.deliverability === 'DELIVERABLE' || r.deliverability === 'RISKY'
-    ).length;
+    const abstractVerifiedCount = 0;
 
     if (!selected) {
-      // No email passed verification — graceful "not found"
+      // No email passed verification â€” graceful "not found"
       console.log('[ELLYN Stage 5] No deliverable/risky candidates. Returning not-found.');
       await completeOperation(operationId, 'completed', {
-        stage: 'abstract_verification',
+        stage: 'verify_candidates',
         result: { found: false, reason: 'undeliverable' },
       });
       // Fire-and-forget quota rollback
@@ -3917,7 +3934,7 @@ async function handleFindEmail(data, sender, sendResponse) {
         domain,
         totalCandidates: candidates.length,
         mxVerifiedCount,
-        abstractVerifiedCount: 0,
+        abstractVerifiedCount,
         type: 'EMAIL_NOT_FOUND',
       });
       return;
@@ -3949,7 +3966,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       email: finalResult.email,
       pattern: finalResult.pattern,
       confidence: Number(finalResult.confidence || 0),
-      source: finalResult.source || 'abstract_verified',
+      source: finalResult.source || 'smtp_verified',
       mxChecked: true,
       mxSelectedHasMx,
       mxSelectedFromAlternative: false,
@@ -3963,6 +3980,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       geminiReason,
       mxVerifiedCount,
       mxProvider,
+      smtpVerifiedCount,
       abstractVerifiedCount,
       totalCandidates: candidates.length,
     };

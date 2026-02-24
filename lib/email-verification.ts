@@ -188,11 +188,11 @@ export function getProviderPatternPreferences(
  * Calculate pattern-based confidence score.
  *
  * Scoring philosophy:
- *  - Pattern matching + provider preferences → honest "pattern probability" score (max 85).
+ *  - Pattern matching + provider preferences â†’ honest "pattern probability" score (max 85).
  *  - MX records only prove the domain has a mail server, not that THIS address exists.
  *    A flat +20 MX bonus inflated every pattern equally and is therefore removed.
  *  - For accurate per-address scoring call calculateDeliverabilityConfidence() after
- *    running the Abstract Email Validation API.
+ *    running the SMTP verification pipeline.
  *
  * Factors applied here:
  *  1. Provider pattern preferences (Google/Microsoft have different common formats).
@@ -217,7 +217,7 @@ export function calculateEnhancedConfidence(
   }
 
   // If the domain is definitively unresolvable (no MX, domain doesn't exist) apply a
-  // mild penalty — the address is unlikely to work regardless of pattern.
+  // mild penalty â€” the address is unlikely to work regardless of pattern.
   // Note: we no longer reward verified domains with +20; that was misleading.
   if (!domainVerified) {
     confidence = Math.max(10, confidence - 15);
@@ -228,25 +228,30 @@ export function calculateEnhancedConfidence(
     confidence = Math.max(5, confidence - 40);
   }
 
-  // Cap at 85 for unverified patterns. 86-95 is reserved for Abstract-confirmed addresses.
+  // Cap at 85 for unverified patterns. 86-95 is reserved for SMTP-confirmed addresses.
   return Math.min(85, Math.max(5, confidence));
 }
 
 /**
- * Apply Abstract Email Validation API deliverability result to a confidence score.
+ * Apply SMTP deliverability result to a confidence score.
  *
- * This is the definitive per-address scoring step and should be called after
- * calculateEnhancedConfidence(), overriding its result for verified patterns.
+ * Confidence score reference:
+ * | Score | Source |
+ * | 95 | Abstract API: DELIVERABLE (DEPRECATED -- kept for historical records) |
+ * | 92 | SMTP probe: DELIVERABLE -- mail server accepted RCPT TO |
+ * | 70-85 | Pattern confidence: high (Google first.last, learned patterns) |
+ * | 50-69 | Pattern confidence: medium |
+ * | 35-45 | SMTP/Abstract: RISKY -- catch-all domain |
+ * | 10-34 | Pattern confidence: low |
+ * | 5 | Abstract API: UNDELIVERABLE (DEPRECATED) |
  *
- * Score mapping:
- *  DELIVERABLE   → 95  (SMTP confirmed the mailbox exists)
- *  RISKY         → 40  (catch-all domain, grey-listed, or spam-trap risk — use with caution)
- *  UNDELIVERABLE → 5   (SMTP confirmed the mailbox does not exist)
- *  UNKNOWN       → baseConfidence (Abstract couldn't determine — keep pattern score)
+ * Maps a verification result to a final confidence score.
+ * Used for both SMTP probe results and legacy Abstract API results.
+ * SMTP DELIVERABLE maps to 92 (slightly below the legacy Abstract 95).
  *
  * @param baseConfidence  Score produced by calculateEnhancedConfidence (0-100).
- * @param deliverability  Deliverability label from the Abstract API response.
- * @param smtpScore       Normalised SMTP quality score from Abstract (0-1).
+ * @param deliverability  Deliverability label from verification response.
+ * @param smtpScore       Normalised SMTP quality score (0-1).
  */
 export function calculateDeliverabilityConfidence(
   baseConfidence: number,
@@ -256,10 +261,10 @@ export function calculateDeliverabilityConfidence(
   switch (deliverability) {
     case 'DELIVERABLE':
       // SMTP handshake confirmed this mailbox accepts mail.
-      return 95;
+      return 92;
 
     case 'UNDELIVERABLE':
-      // SMTP confirmed hard bounce — keep a floor of 5 (don't show 0%).
+      // SMTP confirmed hard bounce â€” keep a floor of 5 (don't show 0%).
       return 5;
 
     case 'RISKY':
@@ -269,7 +274,7 @@ export function calculateDeliverabilityConfidence(
 
     case 'UNKNOWN':
     default:
-      // Abstract couldn't determine deliverability — fall back to pattern score.
+      // Deliverability couldn't be determined â€” fall back to pattern score.
       return baseConfidence;
   }
 }
@@ -313,7 +318,7 @@ export function getVerificationStatusDisplay(verified: boolean, error?: string):
 } {
   if (verified) {
     return {
-      icon: '✓',
+      icon: 'âœ“',
       text: 'Valid domain',
       color: 'text-green-600',
     };
@@ -321,7 +326,7 @@ export function getVerificationStatusDisplay(verified: boolean, error?: string):
 
   if (error?.includes('not exist')) {
     return {
-      icon: '✗',
+      icon: 'âœ—',
       text: 'Invalid domain',
       color: 'text-red-600',
     };
@@ -329,7 +334,7 @@ export function getVerificationStatusDisplay(verified: boolean, error?: string):
 
   if (error?.includes('No MX')) {
     return {
-      icon: '⚠',
+      icon: 'âš ',
       text: 'No mail server',
       color: 'text-yellow-600',
     };

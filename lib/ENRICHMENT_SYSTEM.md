@@ -142,7 +142,7 @@ Runs automatically when `ABSTRACT_API_KEY` is set. Skipped gracefully if the key
    ```env
    ABSTRACT_API_KEY=your-key
    ```
-   Sign up: https://www.abstractapi.com/email-verification-validation-api
+   Sign up: your chosen email verification provider
 
 ## Usage Examples
 

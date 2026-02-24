@@ -1460,13 +1460,14 @@ function displayResults(data) {
   const email = String(data?.email || "").trim();
   const confidencePercent = toConfidencePercent(data?.confidence);
   const confidenceLevel = getConfidenceLevel(confidencePercent);
+  const confidenceDescriptor = getConfidenceDescriptor(confidencePercent);
   const alternatives = Array.isArray(data?.alternativeEmails) ? data.alternativeEmails : [];
 
   if (elements.confidenceBadge) {
     elements.confidenceBadge.dataset.level = confidenceLevel;
   }
   if (elements.confidenceText) {
-    elements.confidenceText.textContent = `Email Found (${confidencePercent}% confidence)`;
+    elements.confidenceText.textContent = `Email Found (${confidencePercent}% - ${confidenceDescriptor})`;
   }
   if (elements.resultEmail) {
     elements.resultEmail.textContent = email || "No email returned";
@@ -1547,7 +1548,7 @@ function displayNotFound(response) {
       "We couldn\u2019t verify a mail server for this company\u2019s domain. This person may use a private or undiscoverable email.";
   } else if (reason === "undeliverable") {
     subtext =
-      "We found this company\u2019s mail server but none of the email patterns we tested were deliverable. The person may use a non-standard format.";
+      "We found this company's mail server but our SMTP probe could not confirm any of the email patterns. The person may use a non-standard format or the server may be blocking verification probes.";
   } else {
     subtext =
       "We couldn\u2019t determine a valid email address for this contact.";
@@ -2650,15 +2651,24 @@ function toConfidencePercent(value) {
 }
 
 function getConfidenceLevel(percent) {
-  if (percent >= 85) return "high";
+  if (percent >= 90) return "high";
   if (percent >= 65) return "medium";
   return "low";
 }
 
+function getConfidenceDescriptor(percent) {
+  if (percent >= 90) return "High confidence";
+  if (percent >= 70) return "Good confidence";
+  if (percent >= 65) return "Medium confidence";
+  return "Low confidence";
+}
+
 function formatSourceLabel(source) {
   const normalized = String(source || "").toLowerCase();
-  if (normalized === "abstract_verified") return "Verified via API";
-  if (normalized === "cache_verified") return "Cache verified";
+  if (normalized === "abstract_verified") return "Verified";
+  if (normalized === "smtp_verified") return "SMTP Verified";
+  if (normalized === "pattern_confidence") return "Pattern Match";
+  if (normalized === "cache_verified") return "Cache Verified";
   if (normalized === "llm_best_guess") return "AI best guess";
   return normalized ? normalized.replace(/_/g, " ") : "Unknown";
 }

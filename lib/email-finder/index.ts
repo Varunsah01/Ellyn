@@ -21,3 +21,5 @@ export type {
   MxVerifyResult,
   ResolvedDomainResult,
 } from './pipeline'
+
+export type { SmtpDeliverability, SmtpProbeResult } from './smtp-types'
