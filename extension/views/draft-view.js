@@ -52,6 +52,12 @@ function _ensureDvStyles() {
       flex-shrink: 0;
     }
 
+    .dv-header-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     .dv-brand {
       display: inline-flex;
       align-items: center;
@@ -60,7 +66,7 @@ function _ensureDvStyles() {
     }
 
     .dv-brand-logo {
-      height: 18px;
+      height: 22px;
       width: auto;
       display: block;
       object-fit: contain;
@@ -375,15 +381,27 @@ function renderDraftView(contact) {
 
   <!-- ── Header ─────────────────────────────────────────── -->
   <header class="dv-header">
-    <span class="dv-brand" aria-label="Ellyn">
-      <img
-        src="assets/icons/logo.svg"
-        alt="Ellyn"
-        class="dv-brand-logo"
-        onerror="this.style.display='none';this.nextElementSibling.style.display='inline';"
-      />
-      <span class="dv-brand-fallback">ELLYN</span>
-    </span>
+    <div class="dv-header-left">
+      <button
+        type="button"
+        class="dv-icon-btn dv-back-btn"
+        aria-label="Back to finder"
+        title="Back"
+      >
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="m15 19-7-7 7-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </button>
+      <span class="dv-brand" aria-label="Ellyn">
+        <img
+          src="assets/icons/Ellynlogo.png"
+          alt="Ellyn"
+          class="dv-brand-logo"
+          onerror="this.style.display='none';this.nextElementSibling.style.display='inline';"
+        />
+        <span class="dv-brand-fallback">ELLYN</span>
+      </span>
+    </div>
     <div class="dv-header-actions" role="toolbar" aria-label="Header actions">
       <button
         type="button"
@@ -654,6 +672,10 @@ async function initDraftView(container, contact) {
   }
 
   // ── 6. Header buttons ─────────────────────────────────────────────────────
+  root.querySelector(".dv-back-btn")?.addEventListener("click", () => {
+    root.dispatchEvent(new CustomEvent("dv-back-clicked", { bubbles: true }));
+  });
+
   root.querySelector(".dv-settings-btn")?.addEventListener("click", () => {
     root.dispatchEvent(new CustomEvent("dv-settings-clicked", { bubbles: true }));
   });

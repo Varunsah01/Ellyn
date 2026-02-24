@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
@@ -16,7 +16,6 @@ import {
   Users,
   Mail,
   Zap,
-  BarChart3,
   Settings,
   Plus,
   Search,
@@ -58,35 +57,28 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           >
             <Home className="mr-2 h-4 w-4" />
             <span>Dashboard</span>
-            <CommandShortcut>⌘H</CommandShortcut>
+            <CommandShortcut>âŒ˜H</CommandShortcut>
           </CommandItem>
           <CommandItem
             onSelect={() => runCommand(() => router.push("/dashboard/contacts"))}
           >
             <Users className="mr-2 h-4 w-4" />
             <span>Contacts</span>
-            <CommandShortcut>⌘C</CommandShortcut>
+            <CommandShortcut>âŒ˜C</CommandShortcut>
           </CommandItem>
           <CommandItem
             onSelect={() => runCommand(() => router.push("/dashboard/sequences"))}
           >
             <Zap className="mr-2 h-4 w-4" />
             <span>Email Templates</span>
-            <CommandShortcut>⌘T</CommandShortcut>
-          </CommandItem>
-          <CommandItem
-            onSelect={() => runCommand(() => router.push("/dashboard/analytics"))}
-          >
-            <BarChart3 className="mr-2 h-4 w-4" />
-            <span>Analytics</span>
-            <CommandShortcut>⌘A</CommandShortcut>
+            <CommandShortcut>âŒ˜T</CommandShortcut>
           </CommandItem>
           <CommandItem
             onSelect={() => runCommand(() => router.push("/compose"))}
           >
             <Mail className="mr-2 h-4 w-4" />
             <span>Compose Email</span>
-            <CommandShortcut>⌘E</CommandShortcut>
+            <CommandShortcut>âŒ˜E</CommandShortcut>
           </CommandItem>
         </CommandGroup>
 
@@ -98,21 +90,21 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           >
             <Plus className="mr-2 h-4 w-4" />
             <span>Add New Contact</span>
-            <CommandShortcut>⌘N</CommandShortcut>
+            <CommandShortcut>âŒ˜N</CommandShortcut>
           </CommandItem>
           <CommandItem
             onSelect={() => runCommand(() => router.push("/compose?action=new"))}
           >
             <Plus className="mr-2 h-4 w-4" />
             <span>Create New Template</span>
-            <CommandShortcut>⌘⇧T</CommandShortcut>
+            <CommandShortcut>âŒ˜â‡§T</CommandShortcut>
           </CommandItem>
           <CommandItem
             onSelect={() => runCommand(() => router.push("/dashboard/contacts?view=search"))}
           >
             <Search className="mr-2 h-4 w-4" />
             <span>Search Contacts</span>
-            <CommandShortcut>⌘F</CommandShortcut>
+            <CommandShortcut>âŒ˜F</CommandShortcut>
           </CommandItem>
         </CommandGroup>
 
@@ -130,7 +122,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           >
             <Settings className="mr-2 h-4 w-4" />
             <span>Settings</span>
-            <CommandShortcut>⌘,</CommandShortcut>
+            <CommandShortcut>âŒ˜,</CommandShortcut>
           </CommandItem>
         </CommandGroup>
       </CommandList>
@@ -145,3 +137,4 @@ function CommandShortcut({ children }: { children: React.ReactNode }) {
     </span>
   );
 }
+

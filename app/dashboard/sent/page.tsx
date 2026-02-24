@@ -40,9 +40,18 @@ export default function SentPage() {
                       <span className="font-semibold text-foreground truncate">
                         {email.subject || "(No Subject)"}
                       </span>
-                      <span className="text-muted-foreground text-sm">
-                        to {email.contacts?.full_name || "Unknown"}
-                      </span>
+                      {email.contact_id ? (
+                        <Link
+                          href={`/dashboard/contacts/${email.contact_id}`}
+                          className="text-muted-foreground text-sm hover:text-foreground hover:underline"
+                        >
+                          to {email.contacts?.full_name || "Unknown"}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">
+                          to {email.contacts?.full_name || "Unknown"}
+                        </span>
+                      )}
                     </div>
                     <div className="bg-secondary/30 p-3 rounded-md mb-3 mt-2">
                        <p className="text-muted-foreground text-sm line-clamp-3 font-dm-sans">

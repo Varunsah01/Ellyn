@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { AnimatedCard } from "@/components/ui/AnimatedCard";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Users, Mail, Zap, Plus, BarChart3, RefreshCw, CheckCircle2, Circle, Target } from "lucide-react";
+import { Users, Mail, Zap, Plus, RefreshCw, CheckCircle2, Circle, Target } from "lucide-react";
 import Link from "next/link";
 import { useRecentActivity } from "@/lib/hooks/useAnalytics";
 import { useTopSequences } from "@/lib/hooks/useSequences";
@@ -28,6 +28,13 @@ export default function DashboardPage() {
 
     const resolveUser = async () => {
       try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!isMounted) return;
+
+        if (sessionData.session?.user?.id) {
+          setUserId(sessionData.session.user.id);
+        }
+
         const { data, error } = await supabase.auth.getUser();
         if (!isMounted) return;
 
@@ -46,8 +53,17 @@ export default function DashboardPage() {
 
     void resolveUser();
 
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+      setUserId(session?.user?.id ?? null);
+      setUserLoading(false);
+    });
+
     return () => {
       isMounted = false;
+      subscription.unsubscribe();
     };
   }, []);
 
@@ -152,11 +168,6 @@ export default function DashboardPage() {
             <Button asChild>
               <Link href="/dashboard/contacts">
                 <Plus className="mr-2 h-4 w-4" />Add Contact
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/analytics">
-                <BarChart3 className="mr-2 h-4 w-4" />Analytics
               </Link>
             </Button>
           </div>

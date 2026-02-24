@@ -47,7 +47,6 @@ export function Header({ breadcrumbs }: HeaderProps) {
       "/dashboard/contacts": "Contacts",
       "/dashboard/templates": "Templates",
       "/dashboard/sequences": "Sequences",
-      "/dashboard/analytics": "Analytics",
       "/dashboard/sent": "Sent Emails",
       "/dashboard/settings": "Settings",
     };

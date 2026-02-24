@@ -109,13 +109,6 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
       url: "/dashboard/sent",
     },
     {
-      id: "page-analytics",
-      type: "page",
-      title: "Analytics",
-      subtitle: "Performance and response trends",
-      url: "/dashboard/analytics",
-    },
-    {
       id: "page-settings",
       type: "page",
       title: "Settings",
@@ -350,7 +343,7 @@ export function GlobalSearch({ open, onOpenChange }: GlobalSearchProps) {
               <p className="text-sm">No results found</p>
               {query && (
                 <p className="text-xs mt-1">
-                  Try "contacts", "templates", "sequences", or "analytics"
+                  Try &quot;contacts&quot;, &quot;templates&quot;, or &quot;sequences&quot;
                 </p>
               )}
             </div>

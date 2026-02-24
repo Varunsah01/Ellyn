@@ -1949,6 +1949,9 @@ function generateEmailFromPattern(firstName, lastName, pattern, domain) {
     case 'last.first':
       localPart = `${last}.${first}`;
       break;
+    case 'lastfirst':
+      localPart = `${last}${first}`;
+      break;
     case 'firstl':
       localPart = `${first}${lastInitial}`;
       break;
@@ -3067,11 +3070,109 @@ async function verifyDomainMx(domain) {
   };
 }
 
+function detectMxProvider(mxHostname) {
+  const mx = String(mxHostname || '').toLowerCase();
+  if (mx.includes('google') || mx.includes('gmail')) return 'Google Workspace / Gmail';
+  if (mx.includes('outlook') || mx.includes('microsoft')) return 'Microsoft 365 / Outlook';
+  if (mx.includes('yahoo')) return 'Yahoo Mail';
+  if (mx.includes('amazonses')) return 'Amazon SES';
+  return 'Custom';
+}
+
+async function verifyEmailMx(email, domainCache) {
+  const domain = extractDomainFromEmail(email);
+  if (!domain) {
+    return { email, domain: null, mxPassed: false, mxRecords: [], mxProvider: null };
+  }
+
+  // Use domain-level cache to avoid duplicate DNS queries for the same domain
+  if (domainCache && domainCache.has(domain)) {
+    const cached = domainCache.get(domain);
+    return { email, ...cached };
+  }
+
+  try {
+    const mxResult = await verifyDomainMx(domain);
+    if (!mxResult?.hasMx) {
+      const result = { domain, mxPassed: false, mxRecords: [], mxProvider: null };
+      if (domainCache) domainCache.set(domain, result);
+      return { email, ...result };
+    }
+
+    const mxAnswers = Array.isArray(mxResult.answers) ? mxResult.answers : [];
+    const mxRecords = mxAnswers
+      .filter((a) => Number(a?.type) === 15)
+      .map((a) => {
+        const parts = String(a?.data || '').split(/\s+/);
+        return parts[parts.length - 1]?.replace(/\.$/, '') || '';
+      })
+      .filter(Boolean);
+
+    const mxProvider = mxRecords.length > 0 ? detectMxProvider(mxRecords[0]) : null;
+
+    // Verify at least one MX hostname has a real A record
+    let hasARecord = false;
+    for (const mxHost of mxRecords) {
+      try {
+        const aUrl = `https://dns.google/resolve?name=${encodeURIComponent(mxHost)}&type=A`;
+        const { response: aResponse, payload: aPayload } = await fetchJson(aUrl, {
+          method: 'GET',
+          signal: createTimeoutSignal(3000),
+          cache: 'no-store',
+        });
+        if (aResponse.ok) {
+          const aAnswers = Array.isArray(aPayload?.Answer) ? aPayload.Answer : [];
+          if (aAnswers.some((a) => Number(a?.type) === 1)) {
+            hasARecord = true;
+            break;
+          }
+        }
+      } catch {
+        // Continue to next MX hostname
+      }
+    }
+
+    const result = { domain, mxPassed: hasARecord, mxRecords, mxProvider };
+    if (domainCache) domainCache.set(domain, result);
+    return { email, ...result };
+  } catch (error) {
+    console.warn('[ELLYN Stage 4] MX verification error for', email, error);
+    const result = { domain, mxPassed: false, mxRecords: [], mxProvider: null };
+    if (domainCache) domainCache.set(domain, result);
+    return { email, ...result };
+  }
+}
+
+async function confirmDomainWithGemini(companyName, domain, authToken) {
+  try {
+    const result = await callBackendPost(
+      '/api/v1/confirm-domain',
+      { companyName, domain },
+      authToken,
+      5000
+    );
+    return {
+      confirmed: result?.confirmed !== false,
+      correctedDomain: result?.correctedDomain || null,
+      confidence: typeof result?.confidence === 'number' ? result.confidence : null,
+      reason: result?.reason || '',
+    };
+  } catch (error) {
+    console.warn('[ELLYN Stage 1.5] Gemini domain confirmation failed, treating as confirmed.', error);
+    return { confirmed: true, correctedDomain: null, confidence: null, reason: 'gemini_unavailable' };
+  }
+}
+
 function getFallbackPatterns() {
   return [
-    { template: 'first.last', confidence: 0.7 },
-    { template: 'flast', confidence: 0.2 },
-    { template: 'first', confidence: 0.1 },
+    { template: 'first.last', confidence: 0.35 },
+    { template: 'flast', confidence: 0.20 },
+    { template: 'firstlast', confidence: 0.12 },
+    { template: 'first', confidence: 0.10 },
+    { template: 'last.first', confidence: 0.08 },
+    { template: 'lastfirst', confidence: 0.07 },
+    { template: 'first_last', confidence: 0.05 },
+    { template: 'f.last', confidence: 0.03 },
   ];
 }
 
@@ -3311,11 +3412,13 @@ async function handleFindEmail(data, sender, sendResponse) {
 
     let totalCost = 0;
     let domain = '';
+    let geminiConfirmed = true;
+    let geminiReason = '';
 
     // STAGE 0: Cache lookup
     stage = 'cache_lookup';
     await updateOperation(operationId, { stage, profile: input });
-    console.log('[Extension] STAGE 0 - Cache lookup');
+    console.log('[ELLYN Stage 0] Cache lookup');
 
     const cachedHit = await getCachedPatternHit(input.company, input.firstName, input.lastName);
     const shouldUseCachedHit =
@@ -3389,7 +3492,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     if (input.profileType?.type === 'STUDENT') {
       stage = 'student_routing';
       await updateOperation(operationId, { stage });
-      console.log('[Extension] STAGE 0.5 - Student routing');
+      console.log('[ELLYN Stage 0.5] Student routing');
 
       const institution = input.education?.institution;
       if (institution) {
@@ -3435,7 +3538,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     // STAGE 1: Domain resolution
     stage = 'resolve_domain';
     await updateOperation(operationId, { stage });
-    console.log('[Extension] STAGE 1 - Domain resolution');
+    console.log('[ELLYN Stage 1] Domain resolution');
 
     let domainResult = null;
     let companyPageUrl = String(input.companyPageUrl || '').trim();
@@ -3564,10 +3667,39 @@ async function handleFindEmail(data, sender, sendResponse) {
       Number(domainResult?.confidence || 0)
     );
 
+    // STAGE 1.5: Gemini domain confirmation
+    stage = 'gemini_domain_confirmation';
+    await updateOperation(operationId, { stage, domain });
+    console.log('[ELLYN Stage 1.5] Gemini domain confirmation for', domain);
+
+    const geminiResult = await confirmDomainWithGemini(input.company, domain, authToken);
+    geminiConfirmed = geminiResult.confirmed;
+    geminiReason = geminiResult.reason || 'gemini_unavailable';
+
+    if (!geminiConfirmed && geminiResult.correctedDomain) {
+      const corrected = normalizeDomain(geminiResult.correctedDomain);
+      if (corrected && corrected !== domain) {
+        if (domainMatchesCompany(corrected, input.company, companyPageUrl)) {
+          console.log('[ELLYN] Gemini corrected domain:', domain, '→', corrected);
+          domainWarnings.push(
+            `Gemini corrected domain from ${domain} to ${corrected}. Reason: ${geminiResult.reason}`
+          );
+          domain = corrected;
+
+          // Re-cache the corrected domain
+          await cacheResolvedDomain(input.company, domain, 'gemini_corrected', geminiResult.confidence || 0.85);
+        } else {
+          console.log('[ELLYN] Gemini suggested domain', corrected, 'but it does not match company. Keeping', domain);
+        }
+      }
+    } else if (geminiConfirmed) {
+      console.log('[ELLYN] Gemini confirmed domain:', domain, '(confidence:', geminiResult.confidence, ')');
+    }
+
     // STAGE 2: LLM pattern prediction
     stage = 'predict_patterns';
     await updateOperation(operationId, { stage, domain });
-    console.log('[Extension] STAGE 2 - LLM pattern prediction');
+    console.log('[ELLYN Stage 2] LLM pattern prediction');
 
     let predictedPatterns = [];
     try {
@@ -3601,7 +3733,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     // STAGE 3: Email generation
     stage = 'generate_candidates';
     await updateOperation(operationId, { stage });
-    console.log('[Extension] STAGE 3 - Email generation');
+    console.log('[ELLYN Stage 3] Email generation');
 
     let candidates = buildCandidates(
       input.firstName,
@@ -3614,153 +3746,225 @@ async function handleFindEmail(data, sender, sendResponse) {
       throw new Error('Failed to generate email candidates from predicted patterns.');
     }
 
-    // STAGE 4: MX verification
+    // STAGE 4: Per-email MX verification
     stage = 'mx_verification';
     await updateOperation(operationId, { stage });
-    console.log('[Extension] STAGE 4 - MX verification');
+    console.log('[ELLYN Stage 4] Per-email MX verification');
 
+    const mxDomainCache = new Map();
+    const mxPassed = [];
     const mxByDomain = new Map();
-    const mxResult = await verifyDomainMx(domain);
-    mxByDomain.set(domain, mxResult?.hasMx === true);
-    if (!mxResult?.hasMx) {
-      const recoveredDomain = await recoverDomainForMismatch(input.company, domain, companyPageUrl);
-      if (recoveredDomain) {
-        domainWarnings.push(
-          `Resolved domain ${domain} has no MX records. Switched to alternative domain ${recoveredDomain}.`
-        );
-        domain = recoveredDomain;
-        mxByDomain.set(recoveredDomain, true);
-        candidates = buildCandidates(
-          input.firstName,
-          input.lastName,
-          domain,
-          predictedPatterns
-        );
-        if (candidates.length === 0) {
-          throw new Error('Failed to generate email candidates from predicted patterns.');
-        }
-      } else {
-        throw buildPipelineError(
-          'NO_MX_RECORDS',
-          `Domain ${domain} has no mail exchange (MX) records.`,
-          { isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true }
-        );
+
+    // Run MX verification on all candidates (domain-level cache prevents duplicate DNS queries)
+    const mxResults = await Promise.allSettled(
+      candidates.map((c) => verifyEmailMx(c.email, mxDomainCache))
+    );
+
+    for (let i = 0; i < candidates.length; i++) {
+      const result = mxResults[i];
+      if (result.status === 'fulfilled' && result.value.mxPassed) {
+        mxPassed.push(candidates[i]);
+        mxByDomain.set(result.value.domain, true);
+      } else if (result.status === 'fulfilled') {
+        mxByDomain.set(result.value.domain || extractDomainFromEmail(candidates[i].email), false);
       }
     }
 
-    // STAGE 5: Abstract verification
+    if (mxPassed.length === 0) {
+      // Recovery: try alternative domain
+      const recoveredDomain = await recoverDomainForMismatch(input.company, domain, companyPageUrl);
+      if (recoveredDomain) {
+        domainWarnings.push(
+          `All candidates for ${domain} failed MX. Switched to ${recoveredDomain}.`
+        );
+        domain = recoveredDomain;
+        candidates = buildCandidates(input.firstName, input.lastName, domain, predictedPatterns);
+
+        const retryMxCache = new Map();
+        const retryMxResults = await Promise.allSettled(
+          candidates.map((c) => verifyEmailMx(c.email, retryMxCache))
+        );
+        for (let i = 0; i < candidates.length; i++) {
+          const result = retryMxResults[i];
+          if (result.status === 'fulfilled' && result.value.mxPassed) {
+            mxPassed.push(candidates[i]);
+            mxByDomain.set(result.value.domain, true);
+          }
+        }
+      }
+
+      if (mxPassed.length === 0) {
+        // Graceful "not found" — not an error
+        console.log('[ELLYN Stage 4] No MX-passing candidates. Returning not-found.');
+        await completeOperation(operationId, 'completed', {
+          stage: 'mx_verification',
+          result: { found: false, reason: 'no_mx' },
+        });
+        // Fire-and-forget quota rollback
+        void callBackendPost('/api/v1/quota/rollback', {}, authToken, 5000).catch((err) =>
+          console.warn('[ELLYN] Quota rollback failed:', err)
+        );
+        sendResponse({
+          success: false,
+          found: false,
+          reason: 'no_mx',
+          message: 'No email ID found for this contact.',
+          domain,
+          totalCandidates: candidates.length,
+          type: 'EMAIL_NOT_FOUND',
+        });
+        return;
+      }
+    }
+
+    const mxVerifiedCount = mxPassed.length;
+    // Extract MX provider from first passing result
+    const firstMxResult = mxResults.find(
+      (r) => r.status === 'fulfilled' && r.value.mxPassed
+    );
+    const mxProvider = firstMxResult?.status === 'fulfilled' ? firstMxResult.value.mxProvider : null;
+
+    console.log('[ELLYN Stage 4] MX passed:', mxVerifiedCount, '/', candidates.length, 'Provider:', mxProvider);
+
+    // STAGE 5: Abstract verification on all MX-passed candidates
     stage = 'abstract_verification';
     await updateOperation(operationId, { stage });
-    console.log('[Extension] STAGE 5 - Abstract verification');
-
-    const verificationOrder = [];
-    if (candidates[0]) verificationOrder.push(candidates[0]);
-    if (candidates[1]) verificationOrder.push(candidates[1]);
-    if (candidates[2]) verificationOrder.push(candidates[2]);
+    console.log('[ELLYN Stage 5] Abstract verification on', mxPassed.length, 'MX-passed candidates');
 
     let selected = null;
     const verificationResults = [];
+    const alternativesFromVerification = [];
 
-    for (let i = 0; i < verificationOrder.length; i += 1) {
-      const candidate = verificationOrder[i];
-
+    for (const candidate of mxPassed) {
       try {
         const verification = await verifyEmailCandidate(candidate.email, authToken);
-        verificationResults.push({
-          email: candidate.email,
-          deliverable: verification?.deliverable === true,
-          details: verification,
-        });
+        const rawDeliverability = String(
+          verification?.deliverability || (verification?.deliverable === true ? 'DELIVERABLE' : 'UNKNOWN')
+        ).toUpperCase();
 
         totalCost = toRoundedMoney(totalCost + CONFIG.COSTS.verifyEmail);
         await trackApiCost(CONFIG.COSTS.verifyEmail);
 
-        if (verification?.deliverable === true) {
-          selected = {
-            ...candidate,
-            source: 'abstract_verified',
-            confidence: Math.max(candidate.confidence || 0, 0.98),
-          };
-          break;
+        verificationResults.push({
+          email: candidate.email,
+          deliverable: rawDeliverability === 'DELIVERABLE',
+          deliverability: rawDeliverability,
+          details: verification,
+        });
+
+        if (rawDeliverability === 'DELIVERABLE') {
+          if (!selected) {
+            selected = {
+              ...candidate,
+              source: 'abstract_verified',
+              confidence: 0.95,
+              tier: 'primary',
+            };
+          } else {
+            alternativesFromVerification.push({
+              email: candidate.email,
+              pattern: candidate.pattern,
+              confidence: 0.95,
+              tier: 'primary',
+            });
+          }
+        } else if (rawDeliverability === 'RISKY') {
+          alternativesFromVerification.push({
+            email: candidate.email,
+            pattern: candidate.pattern,
+            confidence: 0.65,
+            tier: 'alternative',
+          });
         }
+        // UNDELIVERABLE: excluded entirely
       } catch (error) {
-        console.warn('[Extension] verify-email stage failed for candidate:', candidate.email, error);
+        console.warn('[ELLYN Stage 5] verify-email failed for candidate:', candidate.email, error);
       }
     }
+
+    // If no DELIVERABLE found, pick first RISKY as primary
+    if (!selected && alternativesFromVerification.length > 0) {
+      const firstAlt = alternativesFromVerification.shift();
+      selected = {
+        email: firstAlt.email,
+        pattern: firstAlt.pattern,
+        confidence: firstAlt.confidence,
+        source: 'abstract_risky',
+        tier: firstAlt.tier,
+      };
+    }
+
+    const abstractVerifiedCount = verificationResults.filter(
+      (r) => r.deliverability === 'DELIVERABLE' || r.deliverability === 'RISKY'
+    ).length;
+
+    if (!selected) {
+      // No email passed verification — graceful "not found"
+      console.log('[ELLYN Stage 5] No deliverable/risky candidates. Returning not-found.');
+      await completeOperation(operationId, 'completed', {
+        stage: 'abstract_verification',
+        result: { found: false, reason: 'undeliverable' },
+      });
+      // Fire-and-forget quota rollback
+      void callBackendPost('/api/v1/quota/rollback', {}, authToken, 5000).catch((err) =>
+        console.warn('[ELLYN] Quota rollback failed:', err)
+      );
+      sendResponse({
+        success: false,
+        found: false,
+        reason: 'undeliverable',
+        message: 'No email ID found for this contact.',
+        domain,
+        totalCandidates: candidates.length,
+        mxVerifiedCount,
+        abstractVerifiedCount: 0,
+        type: 'EMAIL_NOT_FOUND',
+      });
+      return;
+    }
+
+    console.log('[ELLYN Stage 5] Selected:', selected.email, '| Alternatives:', alternativesFromVerification.length);
 
     // STAGE 6: Cache result
     stage = 'cache_result';
     await updateOperation(operationId, { stage });
-    console.log('[Extension] STAGE 6 - Cache result');
+    console.log('[ELLYN Stage 6] Cache result');
 
-    const mxSelection = await selectMxBackedCandidate(candidates, domain, 8, true);
-    mergeMxMaps(mxByDomain, mxSelection.mxByDomain);
+    const finalResult = selected;
+    const verifiedDomain = extractDomainFromEmail(finalResult.email) || domain;
+    await cacheVerifiedPattern(verifiedDomain, finalResult.pattern, finalResult.confidence);
 
-    let finalResult = selected;
-    if (!finalResult) {
-      if (!mxSelection?.candidate) {
-        throw buildPipelineError(
-          'NO_MX_RECORDS',
-          'None of the generated email candidate domains has mail exchange (MX) records.',
-          { isRecoverable: CONFIG.HEURISTIC_FALLBACK.allowOnNoMx === true }
-        );
-      }
-
-      finalResult = {
-        ...mxSelection.candidate,
-        source: 'llm_best_guess',
-      };
-
-      const primaryCandidate = candidates[0];
-      if (primaryCandidate && primaryCandidate.email !== finalResult.email) {
-        const primaryDomain = extractDomainFromEmail(primaryCandidate.email) || domain;
-        const selectedDomain = extractDomainFromEmail(finalResult.email) || domain;
-        domainWarnings.push(
-          `Primary AI best guess domain ${primaryDomain} failed MX. Switched to alternative ${selectedDomain}.`
-        );
-      }
-    } else {
-      const verifiedDomain = extractDomainFromEmail(finalResult.email) || domain;
-      await cacheVerifiedPattern(verifiedDomain, finalResult.pattern, finalResult.confidence);
-    }
-
-    const finalDomain = extractDomainFromEmail(finalResult.email) || domain;
-    if (!mxByDomain.has(finalDomain)) {
-      try {
-        const finalMx = await verifyDomainMx(finalDomain);
-        mxByDomain.set(finalDomain, finalMx?.hasMx === true);
-      } catch {
-        mxByDomain.set(finalDomain, false);
-      }
-    }
+    const finalDomain = verifiedDomain;
     const mxSelectedHasMx = mxByDomain.get(finalDomain) === true;
 
-    const alternativeEmails = candidates
-      .filter((c) => c.email !== finalResult.email)
-      .map((c) => ({
-        email: c.email,
-        pattern: c.pattern,
-        confidence: c.confidence,
-        hasMx: mxByDomain.get(extractDomainFromEmail(c.email)),
-      }));
+    const alternativeEmails = alternativesFromVerification.map((alt) => ({
+      email: alt.email,
+      pattern: alt.pattern,
+      confidence: alt.confidence,
+      tier: alt.tier,
+      hasMx: true,
+    }));
 
     const payload = {
       email: finalResult.email,
       pattern: finalResult.pattern,
       confidence: Number(finalResult.confidence || 0),
-      source: finalResult.source || 'llm_best_guess',
+      source: finalResult.source || 'abstract_verified',
       mxChecked: true,
       mxSelectedHasMx,
-      mxSelectedFromAlternative:
-        finalResult.source === 'llm_best_guess' &&
-        Boolean(candidates[0]?.email) &&
-        candidates[0].email !== finalResult.email,
+      mxSelectedFromAlternative: false,
       alternativeEmails,
       cost: toRoundedMoney(totalCost),
       domain: finalDomain,
       verificationResults,
       profileUrl: input.profileUrl || '',
       warnings: domainWarnings,
+      geminiConfirmed,
+      geminiReason,
+      mxVerifiedCount,
+      mxProvider,
+      abstractVerifiedCount,
+      totalCandidates: candidates.length,
     };
 
     await trackLookupAnalytics({
@@ -3782,7 +3986,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       stage,
       result: payload,
     });
-    console.log('[Extension] STAGE 7 - Return result');
+    console.log('[ELLYN Stage 7] Return result');
 
     await completeOperation(operationId, 'completed', {
       stage: 'done',

@@ -32,12 +32,6 @@ const tourSteps: TourStep[] = [
     description: "Build multi-step email sequences to stay organized and consistent.",
     selector: '[data-tour="sequences"]',
   },
-  {
-    id: "analytics",
-    title: "Track Your Progress",
-    description: "See opens, replies, and conversion metrics in analytics.",
-    selector: '[data-tour="analytics"]',
-  },
 ]
 
 const clamp = (value: number, min: number, max: number) =>

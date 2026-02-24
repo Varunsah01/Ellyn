@@ -12,6 +12,7 @@ import { getDailyVerificationQuota } from '@/lib/verification-quota'
 type VerifyEmailResponse = {
   email: string
   deliverable: boolean
+  deliverability: string
   isValidFormat: boolean
   isCatchAll: boolean
   isFreeEmail: boolean
@@ -403,6 +404,7 @@ function mapAbstractResponseToOutput(email: string, data: AbstractApiResponse): 
   return {
     email,
     deliverable: deliverability === 'DELIVERABLE',
+    deliverability,
     isValidFormat,
     isCatchAll,
     isFreeEmail,
@@ -414,6 +416,7 @@ function buildFallbackResponse(email: string): VerifyEmailResponse {
   return {
     email,
     deliverable: false,
+    deliverability: 'UNKNOWN',
     isValidFormat: isLikelyEmail(email),
     isCatchAll: false,
     isFreeEmail: isKnownFreeEmailProvider(email),

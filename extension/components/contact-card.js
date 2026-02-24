@@ -31,8 +31,8 @@ function _initials(name) {
   if (!name) return "?";
   const parts = name.trim().split(/\s+/);
   const first = parts[0]?.[0] ?? "";
-  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
-  return (first + last).toUpperCase() || "?";
+  const second = parts.length > 1 ? parts[1]?.[0] ?? "" : "";
+  return (first + second).toUpperCase() || "?";
 }
 
 /**
@@ -68,16 +68,10 @@ function _ensureStyles() {
       flex-shrink: 0;
       overflow: hidden;
     }
-    .cc-avatar-logo {
-      width: 24px;
-      height: 24px;
-      object-fit: contain;
-      display: block;
-    }
-    .cc-avatar-fallback {
-      display: none;
+    .cc-avatar-initials {
       width: 100%;
       height: 100%;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       font-size: 13px;
@@ -144,13 +138,7 @@ function renderContactCard(contact) {
   <!-- Avatar + name row -->
   <div class="cc-identity">
     <div aria-hidden="true" class="cc-avatar" title="${name}">
-      <img
-        src="assets/icons/logo.svg"
-        alt=""
-        class="cc-avatar-logo"
-        onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';"
-      />
-      <span class="cc-avatar-fallback">${ini}</span>
+      <span class="cc-avatar-initials">${ini}</span>
     </div>
     <div class="cc-name-block">
       <p class="cc-name" title="${name}">${name}</p>

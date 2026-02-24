@@ -115,7 +115,7 @@ resultEmail: null,
   queueEmptyState: null,
   queuePopulatedView: null,
   queueCountLabel: null,
-  generateAllDraftsBtn: null,
+  viewAllContactsButton: null,
   queueContactsList: null,
   // Notes toggle
   notesToggle: null,
@@ -329,7 +329,7 @@ elements.resultEmail = document.getElementById("resultEmail");
   elements.queueEmptyState = document.getElementById("queueEmptyState");
   elements.queuePopulatedView = document.getElementById("queuePopulatedView");
   elements.queueCountLabel = document.getElementById("queueCountLabel");
-  elements.generateAllDraftsBtn = document.getElementById("generateAllDraftsBtn");
+  elements.viewAllContactsButton = document.getElementById("viewAllContactsButton");
   elements.queueContactsList = document.getElementById("queueContactsList");
   elements.notesToggle = document.getElementById("notesToggle");
   elements.notesBody = document.getElementById("notesBody");
@@ -394,9 +394,27 @@ function bindEvents() {
   elements.refreshProfileContextBtn?.addEventListener("click", () => {
     void refreshProfileContext("manual");
   });
+  elements.viewAllContactsButton?.addEventListener("click", () => {
+    void openDashboardPath("/dashboard/contacts");
+  });
   elements.queueContactsList?.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    const sendBtn = target.closest(".queue-send-btn");
+    if (sendBtn instanceof HTMLElement) {
+      const email = String(sendBtn.dataset.email || "").trim();
+      if (!email) return;
+      const fullName = String(sendBtn.dataset.name || "").trim();
+      const company = String(sendBtn.dataset.company || "").trim();
+      const role = String(sendBtn.dataset.role || "").trim();
+      void openDraftForQueueContact({
+        email,
+        fullName,
+        company,
+        role,
+      });
+      return;
+    }
     const copyBtn = target.closest(".queue-copy-btn");
     if (!(copyBtn instanceof HTMLElement)) return;
     const email = String(copyBtn.dataset.email || "").trim();
@@ -502,6 +520,9 @@ function bindEvents() {
   // Settings button → show local draft analytics (not web-app settings)
   elements.draftViewContainer?.addEventListener("dv-settings-clicked", () => {
     void switchToStatsView();
+  });
+  elements.draftViewContainer?.addEventListener("dv-back-clicked", () => {
+    switchToFinderView();
   });
   elements.draftViewContainer?.addEventListener("dv-profile-clicked", () => {
     void openDashboardPath("/dashboard");
@@ -1184,6 +1205,29 @@ async function openDraftForCurrentResult() {
     showToast("Find an email first.", "error");
     return;
   }
+  appState.contact = null;
+  await switchToDraftView();
+}
+
+async function openDraftForQueueContact(contact) {
+  const email = String(contact?.email || "").trim();
+  if (!email) {
+    showToast("No email available for this contact.", "error");
+    return;
+  }
+
+  const fullName = String(contact?.fullName || "").trim();
+  const company = String(contact?.company || "").trim();
+  const role = String(contact?.role || "").trim();
+  const fallbackName = fullName || "Contact";
+
+  appState.contact = {
+    name: fallbackName,
+    company,
+    role,
+    email,
+  };
+
   await switchToDraftView();
 }
 
@@ -1315,6 +1359,12 @@ async function findEmail() {
     finishLoadingCycle(100);
 
     if (!response?.success || !response?.data) {
+      // Check for graceful "not found" (pipeline completed, no valid email)
+      if (response?.found === false) {
+        displayNotFound(response);
+        await updateQuotaStatus();
+        return;
+      }
       const error = new Error(response?.error || "Could not find email.");
       error.code = response?.code || "";
       error.resetDate = response?.resetDate || null;
@@ -1427,6 +1477,7 @@ function displayResults(data) {
   elements.feedbackSection?.classList.remove("hidden");
   elements.resultsCard?.classList.remove("hidden");
   elements.errorState?.classList.add("hidden");
+  elements.errorState?.classList.remove("not-found");
   setPrimaryFinderAction("draft");
 
   setStatus("Email found successfully.", "success");
@@ -1484,10 +1535,45 @@ function renderAlternatives(items) {
     .join("");
 }
 
+function displayNotFound(response) {
+  emailFinderState.currentResult = null;
+  emailFinderState.currentError = null;
+  emailFinderState.resultProfileKey = "";
+
+  const reason = response?.reason || "unknown";
+  let subtext;
+  if (reason === "no_mx") {
+    subtext =
+      "We couldn\u2019t verify a mail server for this company\u2019s domain. This person may use a private or undiscoverable email.";
+  } else if (reason === "undeliverable") {
+    subtext =
+      "We found this company\u2019s mail server but none of the email patterns we tested were deliverable. The person may use a non-standard format.";
+  } else {
+    subtext =
+      "We couldn\u2019t determine a valid email address for this contact.";
+  }
+
+  if (elements.errorTitle) {
+    elements.errorTitle.textContent = "No Email ID Found";
+  }
+  if (elements.errorMessage) {
+    elements.errorMessage.textContent = subtext;
+  }
+
+  elements.resultsCard?.classList.add("hidden");
+  elements.errorState?.classList.remove("hidden");
+  elements.errorState?.classList.add("not-found");
+  setPrimaryFinderAction("find");
+  setStatus("No email found for this contact.", "info");
+}
+
 function showError(message, code, resetDate) {
   emailFinderState.currentError = message;
   emailFinderState.currentResult = null;
   emailFinderState.resultProfileKey = "";
+
+  // Reset not-found styling if previously set
+  elements.errorState?.classList.remove("not-found");
 
   // Set dynamic title based on error type
   if (elements.errorTitle) {
@@ -2806,38 +2892,6 @@ function renderStages() {
  * Shows the empty-state (from empty-states.js) when no contacts exist.
  * Shows the populated view with count + contact rows otherwise.
  */
-function resolveQueueContactSyncState(contact, queuedLocalIds, lastSyncStatus = "") {
-  const localId = String(contact?.localId || "").trim();
-  const rowSyncState = String(contact?.syncState || "").trim();
-  if (isSavedContactSynced(contact)) return CONTACT_SYNC_STATE.SYNCED;
-  if (localId && queuedLocalIds.has(localId)) return CONTACT_SYNC_STATE.QUEUED;
-  if (
-    rowSyncState === CONTACT_SYNC_STATE.QUEUED &&
-    localId &&
-    !queuedLocalIds.has(localId) &&
-    lastSyncStatus === "success"
-  ) {
-    return CONTACT_SYNC_STATE.SYNCED;
-  }
-  if (rowSyncState === CONTACT_SYNC_STATE.AUTH_FAILED) return CONTACT_SYNC_STATE.AUTH_FAILED;
-  if (rowSyncState === CONTACT_SYNC_STATE.FAILED) return CONTACT_SYNC_STATE.FAILED;
-  if (rowSyncState === CONTACT_SYNC_STATE.QUEUED) return CONTACT_SYNC_STATE.QUEUED;
-  return emailFinderState.isAuthenticated ? CONTACT_SYNC_STATE.QUEUED : CONTACT_SYNC_STATE.AUTH_FAILED;
-}
-
-function getQueueSyncBadgeMeta(syncState) {
-  if (syncState === CONTACT_SYNC_STATE.SYNCED) {
-    return { dotColor: "#22c55e", label: "Synced" };
-  }
-  if (syncState === CONTACT_SYNC_STATE.QUEUED) {
-    return { dotColor: "#eab308", label: "Queued" };
-  }
-  if (syncState === CONTACT_SYNC_STATE.AUTH_FAILED) {
-    return { dotColor: "#ef4444", label: "Sign in required" };
-  }
-  return { dotColor: "#ef4444", label: "Sync failed" };
-}
-
 async function renderQueueCard() {
   if (!elements.queueEmptyState || !elements.queuePopulatedView) return;
 
@@ -2845,16 +2899,6 @@ async function renderQueueCard() {
   const contacts = Array.isArray(stored?.[SAVED_CONTACTS_KEY])
     ? stored[SAVED_CONTACTS_KEY]
     : [];
-  const queue = Array.isArray(stored?.[SYNC_QUEUE_KEY]) ? stored[SYNC_QUEUE_KEY] : [];
-  const syncStatus = stored?.[SYNC_STATUS_KEY] && typeof stored[SYNC_STATUS_KEY] === "object"
-    ? stored[SYNC_STATUS_KEY]
-    : {};
-  const lastSyncStatus = String(syncStatus?.lastSyncStatus || "").trim();
-  const queuedLocalIds = new Set(
-    queue
-      .map((entry) => String(entry?.localId || "").trim())
-      .filter(Boolean)
-  );
   const isEmpty = contacts.length === 0;
 
   elements.queueEmptyState.classList.toggle("hidden", !isEmpty);
@@ -2881,15 +2925,17 @@ async function renderQueueCard() {
       .map((c) => {
         const email = escapeHtml(String(c.email || "\u2014"));
         const rawEmail = String(c.email || "").trim();
-        const emailAttr = rawEmail.replace(/"/g, "&quot;");
-        const resolvedSyncState = resolveQueueContactSyncState(c, queuedLocalIds, lastSyncStatus);
-        const badgeMeta = getQueueSyncBadgeMeta(resolvedSyncState);
+        const emailAttr = escapeHtml(rawEmail);
+        const fullNameRaw = String(c.fullName || `${c.firstName || ""} ${c.lastName || ""}` || "").trim();
+        const companyRaw = String(c.company || "").trim();
+        const roleRaw = String(c.role || "").trim();
+        const fullNameAttr = escapeHtml(fullNameRaw);
+        const companyAttr = escapeHtml(companyRaw);
+        const roleAttr = escapeHtml(roleRaw);
         return `<div class="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-          <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0;">
-            <span aria-hidden="true" style="flex-shrink:0;width:8px;height:8px;border-radius:999px;background:${badgeMeta.dotColor};"></span>
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:12px;color:#334155">${email}</span>
+          <div style="flex:1;min-width:0;">
+            <span style="display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:monospace;font-size:12px;color:#334155">${email}</span>
           </div>
-          <span style="flex-shrink:0;font-size:10px;font-weight:600;color:#64748b;white-space:nowrap">${badgeMeta.label}</span>
           <button
             type="button"
             class="queue-copy-btn"
@@ -2897,6 +2943,17 @@ async function renderQueueCard() {
             style="flex-shrink:0;border:1px solid #e2e8f0;background:#f8fafc;color:#334155;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;line-height:1.1;cursor:pointer"
           >
             Copy
+          </button>
+          <button
+            type="button"
+            class="queue-send-btn"
+            data-email="${emailAttr}"
+            data-name="${fullNameAttr}"
+            data-company="${companyAttr}"
+            data-role="${roleAttr}"
+            style="flex-shrink:0;border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;line-height:1.1;cursor:pointer"
+          >
+            Send Mail
           </button>
         </div>`;
       })
@@ -3009,6 +3066,21 @@ let _dvLastContactKey  = "";     // tracks which contact the draft was built for
  * @returns {{ name: string, company: string, role: string, email: string }}
  */
 function _buildDraftContact() {
+  const selectedContact = appState.contact && typeof appState.contact === "object"
+    ? appState.contact
+    : null;
+  if (selectedContact) {
+    const selectedEmail = String(selectedContact.email || "").trim();
+    if (selectedEmail) {
+      return {
+        name: String(selectedContact.name || selectedContact.fullName || "").trim(),
+        company: String(selectedContact.company || "").trim(),
+        role: String(selectedContact.role || "").trim(),
+        email: selectedEmail,
+      };
+    }
+  }
+
   const ctx     = emailFinderState.profileContext || {};
   const company = typeof ctx.company === "string"
     ? ctx.company

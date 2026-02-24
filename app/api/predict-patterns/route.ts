@@ -50,7 +50,10 @@ const PRICING_USD_PER_1M = {
   cacheRead: 0.08,
 }
 
-const SYSTEM_PROMPT = `You are an email pattern prediction expert. Based on company information, predict the most likely email patterns used.
+const SYSTEM_PROMPT = `You predict professional email address patterns for a given person. You MUST return exactly 8 patterns in ranked order by likelihood.
+Use ONLY these 8 template keys:
+first.last | flast | firstlast | first | last.first | lastfirst | first_last | f.last
+
 Common patterns by company size:
 
 Enterprise (5000+): first.last@domain.com (56%)
@@ -64,15 +67,9 @@ Domain TLD (.com vs .io vs country-specific)
 Role level (executives often have simpler patterns)
 Cultural context (US vs Europe vs Asia)
 
-Return ONLY valid JSON with this exact structure:
-{
-"patterns": [
-{"template": "first.last", "confidence": 0.85},
-{"template": "flast", "confidence": 0.12},
-{"template": "first", "confidence": 0.03}
-],
-"reasoning": "Brief explanation"
-}`
+Return ONLY a JSON array with no markdown:
+{"patterns": [{"template": "first.last", "confidence": 0.85}, ...], "reasoning": "Brief explanation"}
+All 8 must appear. Confidence values must sum to approximately 1.0.`
 
 /**
  * Handle POST requests for `/api/predict-patterns`.
@@ -521,21 +518,36 @@ function heuristicFallbackPatterns(params: {
 
   if (params.estimatedSize === 'enterprise') {
     patterns = [
-      { template: 'first.last', confidence: 0.56 },
-      { template: 'flast', confidence: 0.27 },
-      { template: 'first', confidence: 0.17 },
+      { template: 'first.last', confidence: 0.30 },
+      { template: 'flast', confidence: 0.18 },
+      { template: 'firstlast', confidence: 0.12 },
+      { template: 'first', confidence: 0.10 },
+      { template: 'last.first', confidence: 0.09 },
+      { template: 'lastfirst', confidence: 0.08 },
+      { template: 'first_last', confidence: 0.07 },
+      { template: 'f.last', confidence: 0.06 },
     ]
   } else if (params.estimatedSize === 'startup') {
     patterns = [
-      { template: 'first', confidence: 0.61 },
-      { template: 'first.last', confidence: 0.24 },
-      { template: 'flast', confidence: 0.15 },
+      { template: 'first', confidence: 0.30 },
+      { template: 'first.last', confidence: 0.18 },
+      { template: 'flast', confidence: 0.13 },
+      { template: 'firstlast', confidence: 0.10 },
+      { template: 'f.last', confidence: 0.09 },
+      { template: 'last.first', confidence: 0.08 },
+      { template: 'first_last', confidence: 0.07 },
+      { template: 'lastfirst', confidence: 0.05 },
     ]
   } else {
     patterns = [
-      { template: 'flast', confidence: 0.42 },
-      { template: 'first.last', confidence: 0.38 },
-      { template: 'first', confidence: 0.2 },
+      { template: 'flast', confidence: 0.25 },
+      { template: 'first.last', confidence: 0.22 },
+      { template: 'firstlast', confidence: 0.13 },
+      { template: 'first', confidence: 0.12 },
+      { template: 'last.first', confidence: 0.09 },
+      { template: 'lastfirst', confidence: 0.08 },
+      { template: 'first_last', confidence: 0.06 },
+      { template: 'f.last', confidence: 0.05 },
     ]
   }
 
@@ -610,7 +622,7 @@ function parsePredictionJson(rawText: string): PatternPredictionResult {
     })
     .filter((value: PatternPrediction | null): value is PatternPrediction => Boolean(value))
     .sort((a: PatternPrediction, b: PatternPrediction) => b.confidence - a.confidence)
-    .slice(0, 3)
+    .slice(0, 8)
 
   if (patterns.length === 0) {
     throw new Error('Claude JSON did not contain valid pattern predictions')

@@ -79,7 +79,7 @@ export function useDashboardMetrics(userId: string | null) {
             .select('id', { head: true, count: 'exact' })
             .eq('user_id', userId),
           supabase
-            .from('ai_drafts')
+            .from('drafts')
             .select('id', { head: true, count: 'exact' })
             .eq('user_id', userId)
             .eq('status', 'sent'),
@@ -94,7 +94,7 @@ export function useDashboardMetrics(userId: string | null) {
             .eq('user_id', userId)
             .gte('created_at', weekStartIso),
           supabase
-            .from('ai_drafts')
+            .from('drafts')
             .select('id', { head: true, count: 'exact' })
             .eq('user_id', userId)
             .eq('status', 'sent')
@@ -197,7 +197,7 @@ export function useDashboardMetrics(userId: string | null) {
         {
           event: '*',
           schema: 'public',
-          table: 'ai_drafts',
+          table: 'drafts',
           filter: `user_id=eq.${userId}`,
         },
         () => {

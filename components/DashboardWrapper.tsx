@@ -65,16 +65,6 @@ export function DashboardWrapper({ children }: DashboardWrapperProps) {
       callback: () => router.push("/dashboard/sequences"),
     },
     {
-      key: "a",
-      meta: true,
-      callback: () => router.push("/dashboard/analytics"),
-    },
-    {
-      key: "a",
-      ctrl: true,
-      callback: () => router.push("/dashboard/analytics"),
-    },
-    {
       key: "e",
       meta: true,
       callback: () => router.push("/compose"),
