@@ -140,8 +140,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json(
-    { error: 'Method Not Allowed' },
-    { status: 405 }
-  )
+  const serviceUrl = process.env.SMTP_PROBE_SERVICE_URL?.trim() || ''
+  return NextResponse.json({ ok: true, smtpConfigured: !!serviceUrl && !!process.env.SMTP_PROBE_SECRET })
 }

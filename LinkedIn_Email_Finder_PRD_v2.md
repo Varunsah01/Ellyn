@@ -22,17 +22,17 @@ Current email finding solutions have critical limitations:
 
 **Impact on Ellyn users:**
 - 35% abandonment rate during email lookup phase
-- Low conversion from Free → Pro (18%)
+- Low conversion from Free â†’ Pro (18%)
 - Support tickets: "Email finder doesn't work" (42% of volume)
 
 ### 1.2 Solution Overview
 
 Build a **Chrome extension** with intelligent email extraction that achieves:
-- ✅ **95-98% accuracy** through LLM-powered pattern prediction + API verification
-- ✅ **$0.0012-0.0020 cost per lookup** (50-100× cheaper than competitors)
-- ✅ **Zero LinkedIn ban risk** through compliant DOM extraction
-- ✅ **Progressive enhancement** (works partially even when APIs fail)
-- ✅ **Self-improving cache** (costs decrease over time)
+- âœ… **95-98% accuracy** through LLM-powered pattern prediction + API verification
+- âœ… **$0.0012-0.0020 cost per lookup** (50-100Ã— cheaper than competitors)
+- âœ… **Zero LinkedIn ban risk** through compliant DOM extraction
+- âœ… **Progressive enhancement** (works partially even when APIs fail)
+- âœ… **Self-improving cache** (costs decrease over time)
 
 ### 1.3 Success Criteria
 
@@ -48,8 +48,8 @@ Build a **Chrome extension** with intelligent email extraction that achieves:
 ### 1.4 Business Impact
 
 **Revenue Projections (6 months post-launch):**
-- Free users: 5,000 × $0.04/month = -$200/month (acquisition cost)
-- Pro users: 500 × ₹349 = ₹174,500/month (~$2,100/month)
+- Free users: 5,000 Ã— $0.04/month = -$200/month (acquisition cost)
+- Pro users: 500 Ã— â‚¹349 = â‚¹174,500/month (~$2,100/month)
 - Total costs: ~$700/month (API + infrastructure)
 - **Net revenue: ~$1,400/month or $16,800/year**
 
@@ -57,7 +57,7 @@ Build a **Chrome extension** with intelligent email extraction that achieves:
 - Differentiated feature vs Hunter.io/Apollo
 - Retention anchor (users rely on extension daily)
 - Data moat (pattern cache improves over time)
-- Upsell driver (Free → Pro conversion)
+- Upsell driver (Free â†’ Pro conversion)
 
 ---
 
@@ -66,45 +66,45 @@ Build a **Chrome extension** with intelligent email extraction that achieves:
 ### 2.1 In Scope
 
 **Core Features:**
-- ✅ LinkedIn profile data extraction (name, company, role)
-- ✅ Smart domain resolution with fallback cascade
-- ✅ LLM-powered email pattern prediction
-- ✅ Multi-tier verification (MX, Abstract API)
-- ✅ Pattern caching and learning
-- ✅ Chrome extension UI with confidence indicators
-- ✅ Save to Ellyn contacts
-- ✅ Copy to clipboard
-- ✅ Usage tracking and limits (Free: 25/month, Pro: 1,500/month)
+- âœ… LinkedIn profile data extraction (name, company, role)
+- âœ… Smart domain resolution with fallback cascade
+- âœ… LLM-powered email pattern prediction
+- âœ… Multi-tier verification (MX, Abstract API)
+- âœ… Pattern caching and learning
+- âœ… Chrome extension UI with confidence indicators
+- âœ… Save to Ellyn contacts
+- âœ… Copy to clipboard
+- âœ… Usage tracking and limits (Free: 25/month, Pro: 1,500/month)
 
 **Technical Infrastructure:**
-- ✅ Manifest V3 Chrome extension
-- ✅ Service worker orchestration
-- ✅ IndexedDB pattern cache
-- ✅ Backend API endpoints (Next.js)
-- ✅ Claude Haiku 3.5 integration
-- ✅ Abstract API integration
-- ✅ Supabase authentication & storage
-- ✅ Analytics and cost monitoring
+- âœ… Manifest V3 Chrome extension
+- âœ… Service worker orchestration
+- âœ… IndexedDB pattern cache
+- âœ… Backend API endpoints (Next.js)
+- âœ… Claude Haiku 3.5 integration
+- âœ… Abstract API integration
+- âœ… Supabase authentication & storage
+- âœ… Analytics and cost monitoring
 
 ### 2.2 Out of Scope (v1)
 
-- ❌ Bulk processing (remains manual, 1-at-a-time)
-- ❌ LinkedIn automation (clicking, scrolling, messaging)
-- ❌ Company profile extraction
-- ❌ Email sending from extension
-- ❌ Phone number extraction
-- ❌ Firefox/Safari versions (Chrome only)
-- ❌ Offline mode
-- ❌ Email warmup/deliverability tracking
+- âŒ Bulk processing (remains manual, 1-at-a-time)
+- âŒ LinkedIn automation (clicking, scrolling, messaging)
+- âŒ Company profile extraction
+- âŒ Email sending from extension
+- âŒ Phone number extraction
+- âŒ Firefox/Safari versions (Chrome only)
+- âŒ Offline mode
+- âŒ Email warmup/deliverability tracking
 
 ### 2.3 Future Considerations (v2+)
 
-- 🔮 Pattern learning from user feedback ("This email worked")
-- 🔮 Batch processing (upload CSV of LinkedIn URLs)
-- 🔮 Direct integration with Ellyn drafting workflow
-- 🔮 Company-level pattern detection
-- 🔮 Alternative email finder (personal emails via WHOIS)
-- 🔮 Chrome extension → Firefox/Edge ports
+- ðŸ”® Pattern learning from user feedback ("This email worked")
+- ðŸ”® Batch processing (upload CSV of LinkedIn URLs)
+- ðŸ”® Direct integration with Ellyn drafting workflow
+- ðŸ”® Company-level pattern detection
+- ðŸ”® Alternative email finder (personal emails via WHOIS)
+- ðŸ”® Chrome extension â†’ Firefox/Edge ports
 
 ---
 
@@ -147,17 +147,17 @@ Build a **Chrome extension** with intelligent email extraction that achieves:
 5. Clicks "Find Email"
 6. Loading state (2-3 seconds)
 7. Results appear:
-   ┌─────────────────────────────────────┐
-   │ ✓ Email Found (98% confidence)      │
-   │                                      │
-   │ john.doe@acme.com                   │
-   │ [Copy] [Save to Contacts]           │
-   │                                      │
-   │ Pattern: first.last@domain.com      │
-   │ Source: Verified via API             │
-   │                                      │
-   │ Credits remaining: 24/25             │
-   └─────────────────────────────────────┘
+   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+   â”‚ âœ“ Email Found (98% confidence)      â”‚
+   â”‚                                      â”‚
+   â”‚ john.doe@acme.com                   â”‚
+   â”‚ [Copy] [Save to Contacts]           â”‚
+   â”‚                                      â”‚
+   â”‚ Pattern: first.last@domain.com      â”‚
+   â”‚ Source: Verified via API             â”‚
+   â”‚                                      â”‚
+   â”‚ Credits remaining: 24/25             â”‚
+   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 8. User clicks "Copy"
 9. Toast notification: "Copied to clipboard"
 10. User pastes into email client
@@ -170,17 +170,17 @@ Build a **Chrome extension** with intelligent email extraction that achieves:
 2. Clicks "Find Email"
 3. Extension recognizes cached pattern for acme.com
 4. Results appear INSTANTLY (<100ms):
-   ┌─────────────────────────────────────┐
-   │ ✓ Email Found (95% confidence)      │
-   │                                      │
-   │ jane.smith@acme.com                 │
-   │ [Copy] [Save to Contacts]           │
-   │                                      │
-   │ Pattern: first.last@domain.com      │
-   │ Source: Cached pattern (verified)    │
-   │                                      │
-   │ Credits remaining: 23/25             │
-   └─────────────────────────────────────┘
+   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+   â”‚ âœ“ Email Found (95% confidence)      â”‚
+   â”‚                                      â”‚
+   â”‚ jane.smith@acme.com                 â”‚
+   â”‚ [Copy] [Save to Contacts]           â”‚
+   â”‚                                      â”‚
+   â”‚ Pattern: first.last@domain.com      â”‚
+   â”‚ Source: Cached pattern (verified)    â”‚
+   â”‚                                      â”‚
+   â”‚ Credits remaining: 23/25             â”‚
+   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 5. Note: Still counts toward quota (anti-abuse)
 ```
 
@@ -191,19 +191,19 @@ Build a **Chrome extension** with intelligent email extraction that achieves:
 2. Clicks "Find Email"
 3. LLM predicts patterns, Abstract API times out
 4. Results show:
-   ┌─────────────────────────────────────┐
-   │ ⚠ Email Suggested (75% confidence)  │
-   │                                      │
-   │ maria.garcia@banco-santander.com    │
-   │ [Copy] [Save to Contacts]           │
-   │                                      │
-   │ Alternative options:                 │
-   │ • mgarcia@banco-santander.com       │
-   │ • m.garcia@banco-santander.com      │
-   │                                      │
-   │ Note: Could not verify delivery.     │
-   │ [Mark as Working] if you confirm it  │
-   └─────────────────────────────────────┘
+   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+   â”‚ âš  Email Suggested (75% confidence)  â”‚
+   â”‚                                      â”‚
+   â”‚ maria.garcia@banco-santander.com    â”‚
+   â”‚ [Copy] [Save to Contacts]           â”‚
+   â”‚                                      â”‚
+   â”‚ Alternative options:                 â”‚
+   â”‚ â€¢ mgarcia@banco-santander.com       â”‚
+   â”‚ â€¢ m.garcia@banco-santander.com      â”‚
+   â”‚                                      â”‚
+   â”‚ Note: Could not verify delivery.     â”‚
+   â”‚ [Mark as Working] if you confirm it  â”‚
+   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 #### **Flow 4: Free tier limit reached (Conversion trigger)**
@@ -211,23 +211,23 @@ Build a **Chrome extension** with intelligent email extraction that achieves:
 ```
 1. User attempts 26th lookup
 2. Modal appears:
-   ┌─────────────────────────────────────┐
-   │ 🚀 You've reached your Free limit   │
-   │                                      │
-   │ Great news! You've found 25 emails  │
-   │ this month using Ellyn.             │
-   │                                      │
-   │ Upgrade to Pro for:                  │
-   │ ✓ 1,500 lookups/month               │
-   │ ✓ Unlimited AI drafts               │
-   │ ✓ Advanced tracking                  │
-   │                                      │
-   │ ₹349/month or $12/month             │
-   │                                      │
-   │ [Upgrade to Pro] [Maybe Later]      │
-   │                                      │
-   │ Resets on March 1, 2026             │
-   └─────────────────────────────────────┘
+   â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+   â”‚ ðŸš€ You've reached your Free limit   â”‚
+   â”‚                                      â”‚
+   â”‚ Great news! You've found 25 emails  â”‚
+   â”‚ this month using Ellyn.             â”‚
+   â”‚                                      â”‚
+   â”‚ Upgrade to Pro for:                  â”‚
+   â”‚ âœ“ 1,500 lookups/month               â”‚
+   â”‚ âœ“ Unlimited AI drafts               â”‚
+   â”‚ âœ“ Advanced tracking                  â”‚
+   â”‚                                      â”‚
+   â”‚ â‚¹349/month or $12/month             â”‚
+   â”‚                                      â”‚
+   â”‚ [Upgrade to Pro] [Maybe Later]      â”‚
+   â”‚                                      â”‚
+   â”‚ Resets on March 1, 2026             â”‚
+   â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -237,68 +237,68 @@ Build a **Chrome extension** with intelligent email extraction that achieves:
 ### 4.1 System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     CHROME EXTENSION                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────┐         ┌──────────────┐                 │
-│  │   Content    │────────▶│   Service    │                 │
-│  │   Script     │         │   Worker     │                 │
-│  │ (Extraction) │         │(Orchestrator)│                 │
-│  └──────────────┘         └──────┬───────┘                 │
-│         │                         │                          │
-│         │                         │                          │
-│  ┌──────▼──────┐         ┌───────▼──────┐                 │
-│  │   Popup     │         │  IndexedDB   │                 │
-│  │     UI      │         │    Cache     │                 │
-│  └─────────────┘         └──────────────┘                 │
-│                                  │                          │
-└──────────────────────────────────┼──────────────────────────┘
-                                   │
-                                   │ API Calls
-                                   │
-┌──────────────────────────────────▼──────────────────────────┐
-│                    BACKEND (Next.js)                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌─────────────────┐      ┌──────────────────┐            │
-│  │ /api/enrich     │      │ /api/verify-email│            │
-│  │ (Main endpoint) │      │ (Abstract API)   │            │
-│  └────────┬────────┘      └────────┬─────────┘            │
-│           │                         │                       │
-│  ┌────────▼─────────────────────────▼──────┐              │
-│  │        Email Finder Pipeline            │              │
-│  │  1. Domain Resolution (Clearbit)        │              │
-│  │  2. LLM Prediction (Claude Haiku)       │              │
-│  │  3. MX Verification (DNS)               │              │
-│  │  4. Abstract Validation                  │              │
-│  │  5. Cache Management                     │              │
-│  └────────┬────────────────────────────────┘              │
-│           │                                                 │
-│  ┌────────▼────────┐      ┌──────────────┐               │
-│  │   Supabase      │      │  Analytics   │               │
-│  │ (Auth + Store)  │      │  (Posthog)   │               │
-│  └─────────────────┘      └──────────────┘               │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          │ External APIs
-                          │
-┌─────────────────────────▼───────────────────────────────────┐
-│                    EXTERNAL SERVICES                         │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────┐  │
-│  │   Claude     │  │   Abstract   │  │    Clearbit     │  │
-│  │   Haiku      │  │     API      │  │  Autocomplete   │  │
-│  │($0.0002/call)│  │($0.001/check)│  │     (Free)      │  │
-│  └──────────────┘  └──────────────┘  └─────────────────┘  │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐                        │
-│  │   Google     │  │  Brandfetch  │                        │
-│  │   DNS/HTTPS  │  │     API      │                        │
-│  │   (Free)     │  │   (Free)     │                        │
-│  └──────────────┘  └──────────────┘                        │
-└─────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                     CHROME EXTENSION                         â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚                                                              â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”         â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”                 â”‚
+â”‚  â”‚   Content    â”‚â”€â”€â”€â”€â”€â”€â”€â”€â–¶â”‚   Service    â”‚                 â”‚
+â”‚  â”‚   Script     â”‚         â”‚   Worker     â”‚                 â”‚
+â”‚  â”‚ (Extraction) â”‚         â”‚(Orchestrator)â”‚                 â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜         â””â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”˜                 â”‚
+â”‚         â”‚                         â”‚                          â”‚
+â”‚         â”‚                         â”‚                          â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”         â”Œâ”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”                 â”‚
+â”‚  â”‚   Popup     â”‚         â”‚  IndexedDB   â”‚                 â”‚
+â”‚  â”‚     UI      â”‚         â”‚    Cache     â”‚                 â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜         â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                 â”‚
+â”‚                                  â”‚                          â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                                   â”‚
+                                   â”‚ API Calls
+                                   â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    BACKEND (Next.js)                         â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚                                                              â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”            â”‚
+â”‚  â”‚ /api/enrich     â”‚      â”‚ /api/verify-emailâ”‚            â”‚
+â”‚  â”‚ (Main endpoint) â”‚      â”‚ (Abstract API)   â”‚            â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜      â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜            â”‚
+â”‚           â”‚                         â”‚                       â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”              â”‚
+â”‚  â”‚        Email Finder Pipeline            â”‚              â”‚
+â”‚  â”‚  1. Domain Resolution (Clearbit)        â”‚              â”‚
+â”‚  â”‚  2. LLM Prediction (Claude Haiku)       â”‚              â”‚
+â”‚  â”‚  3. MX Verification (DNS)               â”‚              â”‚
+â”‚  â”‚  4. Abstract Validation                  â”‚              â”‚
+â”‚  â”‚  5. Cache Management                     â”‚              â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜              â”‚
+â”‚           â”‚                                                 â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”      â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”               â”‚
+â”‚  â”‚   Supabase      â”‚      â”‚  Analytics   â”‚               â”‚
+â”‚  â”‚ (Auth + Store)  â”‚      â”‚  (Posthog)   â”‚               â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜      â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜               â”‚
+â”‚                                                              â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                          â”‚
+                          â”‚ External APIs
+                          â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â–¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                    EXTERNAL SERVICES                         â”‚
+â”œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”‚
+â”‚  â”‚   Claude     â”‚  â”‚   Abstract   â”‚  â”‚    Clearbit     â”‚  â”‚
+â”‚  â”‚   Haiku      â”‚  â”‚     API      â”‚  â”‚  Autocomplete   â”‚  â”‚
+â”‚  â”‚($0.0002/call)â”‚  â”‚($0.001/check)â”‚  â”‚     (Free)      â”‚  â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â”‚
+â”‚                                                              â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”                        â”‚
+â”‚  â”‚   Google     â”‚  â”‚  Brandfetch  â”‚                        â”‚
+â”‚  â”‚   DNS/HTTPS  â”‚  â”‚     API      â”‚                        â”‚
+â”‚  â”‚   (Free)     â”‚  â”‚   (Free)     â”‚                        â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                        â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ### 4.2 Component Specifications
@@ -428,7 +428,7 @@ class LinkedInExtractor {
   
   async extractCompany() {
     // Similar fallback chain for company
-    // Priority: JSON-LD → DOM experience section → OG description
+    // Priority: JSON-LD â†’ DOM experience section â†’ OG description
     // ...
   }
 }
@@ -495,7 +495,6 @@ class EmailFinderPipeline {
     }
     
     // STAGE 5: Abstract API verification
-    const verified = await this.verifyWithAbstract(candidates);
     
     // STAGE 6: Cache successful pattern
     if (verified.deliverable) {
@@ -540,7 +539,6 @@ class EmailFinderPipeline {
     return await response.json();
   }
   
-  async verifyWithAbstract(candidates) {
     // Sort by LLM confidence
     candidates.sort((a, b) => b.confidence - a.confidence);
     
@@ -682,7 +680,6 @@ export async function POST(req: Request) {
   
   // Call Abstract API
   const response = await fetch(
-    `https://emailvalidation.abstractapi.com/v1/?api_key=${process.env.ABSTRACT_API_KEY}&email=${email}`
   );
   
   const data = await response.json();
@@ -890,14 +887,14 @@ function EmailFinderPopup() {
                 variant="outline"
                 onClick={() => submitFeedback('worked')}
               >
-                ✓ Yes
+                âœ“ Yes
               </Button>
               <Button 
                 size="sm" 
                 variant="outline"
                 onClick={() => submitFeedback('failed')}
               >
-                ✗ No
+                âœ— No
               </Button>
             </div>
           </div>
@@ -923,99 +920,99 @@ function EmailFinderPopup() {
 
 ```
 USER ACTION: Clicks "Find Email"
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│ 1. Content Script                        │
-│    - Extract name from JSON-LD          │
-│    - Extract company from DOM            │
-│    - Extract role from headline          │
-└────────────┬────────────────────────────┘
-             │ chrome.runtime.sendMessage()
-             ▼
-┌─────────────────────────────────────────┐
-│ 2. Service Worker                        │
-│    - Validate extraction confidence      │
-│    - Check IndexedDB cache               │
-└────────────┬────────────────────────────┘
-             │
-             ├─── Cache Hit? ─────────────┐
-             │    YES                      │
-             │                            ▼
-             │                    ┌──────────────┐
-             │                    │ Return cached│
-             │                    │ pattern +    │
-             │                    │ generate     │
-             │                    │ email        │
-             │                    └──────────────┘
-             │                            │
-             │    NO                      │
-             ▼                            │
-┌─────────────────────────────────────────┤
-│ 3. Domain Resolution                    │
-│    - Check known domains DB             │
-│    - Call Clearbit Autocomplete         │
-│    - Fallback to heuristic              │
-└────────────┬────────────────────────────┘
-             │ Domain: acme.com
-             ▼
-┌─────────────────────────────────────────┐
-│ 4. Backend: LLM Prediction              │
-│    POST /api/predict-patterns           │
-│    - Call Claude Haiku                  │
-│    - Get pattern predictions            │
-│    Cost: $0.0002                        │
-└────────────┬────────────────────────────┘
-             │ Patterns: [{first.last, 0.85}, ...]
-             ▼
-┌─────────────────────────────────────────┐
-│ 5. Pattern Application                  │
-│    - Generate emails from patterns      │
-│    - john.doe@acme.com                  │
-│    - jdoe@acme.com                      │
-│    - john@acme.com                      │
-└────────────┬────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────┐
-│ 6. MX Verification (Google DNS)         │
-│    - Verify domain has MX records       │
-│    - Filter out invalid domains         │
-│    Cost: $0                             │
-└────────────┬────────────────────────────┘
-             │ Valid: true
-             ▼
-┌─────────────────────────────────────────┐
-│ 7. Backend: Abstract Verification       │
-│    POST /api/verify-email               │
-│    - Verify top 2 patterns              │
-│    - Check deliverability               │
-│    Cost: $0.001 per pattern             │
-└────────────┬────────────────────────────┘
-             │ john.doe@acme.com: DELIVERABLE
-             ▼
-┌─────────────────────────────────────────┐
-│ 8. Cache Management                     │
-│    - Store verified pattern             │
-│    - Update success count               │
-│    - Set confidence: 0.98               │
-└────────────┬────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────┐
-│ 9. Analytics & Tracking                 │
-│    - Log cost: $0.0012                  │
-│    - Update user quota                  │
-│    - Track success metrics              │
-└────────────┬────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────┐
-│ 10. Return to Popup UI                  │
-│     - Display email                     │
-│     - Show confidence                   │
-│     - Update credits                    │
-└─────────────────────────────────────────┘
+    â”‚
+    â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 1. Content Script                        â”‚
+â”‚    - Extract name from JSON-LD          â”‚
+â”‚    - Extract company from DOM            â”‚
+â”‚    - Extract role from headline          â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚ chrome.runtime.sendMessage()
+             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 2. Service Worker                        â”‚
+â”‚    - Validate extraction confidence      â”‚
+â”‚    - Check IndexedDB cache               â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚
+             â”œâ”€â”€â”€ Cache Hit? â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+             â”‚    YES                      â”‚
+             â”‚                            â–¼
+             â”‚                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+             â”‚                    â”‚ Return cachedâ”‚
+             â”‚                    â”‚ pattern +    â”‚
+             â”‚                    â”‚ generate     â”‚
+             â”‚                    â”‚ email        â”‚
+             â”‚                    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚                            â”‚
+             â”‚    NO                      â”‚
+             â–¼                            â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¤
+â”‚ 3. Domain Resolution                    â”‚
+â”‚    - Check known domains DB             â”‚
+â”‚    - Call Clearbit Autocomplete         â”‚
+â”‚    - Fallback to heuristic              â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚ Domain: acme.com
+             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 4. Backend: LLM Prediction              â”‚
+â”‚    POST /api/predict-patterns           â”‚
+â”‚    - Call Claude Haiku                  â”‚
+â”‚    - Get pattern predictions            â”‚
+â”‚    Cost: $0.0002                        â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚ Patterns: [{first.last, 0.85}, ...]
+             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 5. Pattern Application                  â”‚
+â”‚    - Generate emails from patterns      â”‚
+â”‚    - john.doe@acme.com                  â”‚
+â”‚    - jdoe@acme.com                      â”‚
+â”‚    - john@acme.com                      â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚
+             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 6. MX Verification (Google DNS)         â”‚
+â”‚    - Verify domain has MX records       â”‚
+â”‚    - Filter out invalid domains         â”‚
+â”‚    Cost: $0                             â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚ Valid: true
+             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 7. Backend: Abstract Verification       â”‚
+â”‚    POST /api/verify-email               â”‚
+â”‚    - Verify top 2 patterns              â”‚
+â”‚    - Check deliverability               â”‚
+â”‚    Cost: $0.001 per pattern             â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚ john.doe@acme.com: DELIVERABLE
+             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 8. Cache Management                     â”‚
+â”‚    - Store verified pattern             â”‚
+â”‚    - Update success count               â”‚
+â”‚    - Set confidence: 0.98               â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚
+             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 9. Analytics & Tracking                 â”‚
+â”‚    - Log cost: $0.0012                  â”‚
+â”‚    - Update user quota                  â”‚
+â”‚    - Track success metrics              â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+             â”‚
+             â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ 10. Return to Popup UI                  â”‚
+â”‚     - Display email                     â”‚
+â”‚     - Show confidence                   â”‚
+â”‚     - Update credits                    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -1027,14 +1024,14 @@ USER ACTION: Clicks "Find Email"
 **Sprint Goal:** Working extension with basic extraction and heuristic email generation
 
 **Deliverables:**
-- ✅ Chrome extension boilerplate (Manifest V3)
-- ✅ LinkedIn content script with JSON-LD extraction
-- ✅ Service worker with message passing
-- ✅ Basic popup UI (React)
-- ✅ Known domains database (100+ companies)
-- ✅ Heuristic pattern generation
-- ✅ IndexedDB cache setup
-- ✅ Authentication flow (Supabase)
+- âœ… Chrome extension boilerplate (Manifest V3)
+- âœ… LinkedIn content script with JSON-LD extraction
+- âœ… Service worker with message passing
+- âœ… Basic popup UI (React)
+- âœ… Known domains database (100+ companies)
+- âœ… Heuristic pattern generation
+- âœ… IndexedDB cache setup
+- âœ… Authentication flow (Supabase)
 
 **Tasks:**
 1. **Day 1-2:** Set up extension structure
@@ -1074,11 +1071,11 @@ USER ACTION: Clicks "Find Email"
 **Sprint Goal:** Add Claude Haiku for smart pattern prediction
 
 **Deliverables:**
-- ✅ Backend API endpoint for LLM
-- ✅ Claude Haiku integration
-- ✅ Prompt engineering & testing
-- ✅ Cost tracking
-- ✅ Error handling & fallbacks
+- âœ… Backend API endpoint for LLM
+- âœ… Claude Haiku integration
+- âœ… Prompt engineering & testing
+- âœ… Cost tracking
+- âœ… Error handling & fallbacks
 
 **Tasks:**
 1. **Day 1-2:** Backend setup
@@ -1112,11 +1109,11 @@ USER ACTION: Clicks "Find Email"
 **Sprint Goal:** Add Abstract API for email verification
 
 **Deliverables:**
-- ✅ Abstract API integration
-- ✅ MX verification (Google DNS)
-- ✅ Smart verification logic (top 2 patterns only)
-- ✅ Confidence scoring algorithm
-- ✅ Pattern caching on verification
+- âœ… Abstract API integration
+- âœ… MX verification (Google DNS)
+- âœ… Smart verification logic (top 2 patterns only)
+- âœ… Confidence scoring algorithm
+- âœ… Pattern caching on verification
 
 **Tasks:**
 1. **Day 1-2:** MX verification
@@ -1149,12 +1146,12 @@ USER ACTION: Clicks "Find Email"
 **Sprint Goal:** User experience improvements and performance optimization
 
 **Deliverables:**
-- ✅ Improved UI with better feedback
-- ✅ Alternative emails display
-- ✅ User feedback collection ("Did this work?")
-- ✅ Usage limits enforcement
-- ✅ Upgrade flow for Free → Pro
-- ✅ Analytics dashboard
+- âœ… Improved UI with better feedback
+- âœ… Alternative emails display
+- âœ… User feedback collection ("Did this work?")
+- âœ… Usage limits enforcement
+- âœ… Upgrade flow for Free â†’ Pro
+- âœ… Analytics dashboard
 
 **Tasks:**
 1. **Day 1-2:** UI polish
@@ -1176,7 +1173,7 @@ USER ACTION: Clicks "Find Email"
 
 **Success Criteria:**
 - User feedback collection: >30% rate
-- Free → Pro conversion: >20%
+- Free â†’ Pro conversion: >20%
 - Support tickets: <5% of users
 - Extension rating: >4.5 stars
 
@@ -1187,12 +1184,12 @@ USER ACTION: Clicks "Find Email"
 **Sprint Goal:** Comprehensive testing and Chrome Web Store submission
 
 **Deliverables:**
-- ✅ End-to-end tests
-- ✅ Performance benchmarks
-- ✅ Security audit
-- ✅ Chrome Web Store listing
-- ✅ Documentation
-- ✅ Launch marketing materials
+- âœ… End-to-end tests
+- âœ… Performance benchmarks
+- âœ… Security audit
+- âœ… Chrome Web Store listing
+- âœ… Documentation
+- âœ… Launch marketing materials
 
 **Tasks:**
 1. **Day 1-2:** Testing
@@ -1298,8 +1295,6 @@ Predict the top 3 email patterns.`
 // lib/email-verification.ts
 export async function verifyEmail(email: string) {
   const response = await fetch(
-    `https://emailvalidation.abstractapi.com/v1/` +
-    `?api_key=${process.env.ABSTRACT_API_KEY}` +
     `&email=${encodeURIComponent(email)}`
   );
   
@@ -1337,7 +1332,7 @@ export async function verifyEmail(email: string) {
 
 ### 6.3 Clearbit Autocomplete API
 
-**Purpose:** Company name → domain resolution  
+**Purpose:** Company name â†’ domain resolution  
 **Cost:** Free (no API key required)  
 **Rate Limits:** ~60 req/min (undocumented)  
 **Implementation:**
@@ -1520,7 +1515,7 @@ export async function checkAndIncrementQuota(
 - Cache hit rate (target: >40% by Month 2)
 - Average confidence score (target: >0.90)
 - User feedback: "Email worked" rate (target: >90%)
-- Free → Pro conversion rate (target: >20%)
+- Free â†’ Pro conversion rate (target: >20%)
 
 **Technical Metrics:**
 - API response time (p50, p95, p99)
@@ -1614,18 +1609,18 @@ await supabase.from('api_costs').insert({
 ### 9.1 Data Collection
 
 **What we collect:**
-- ✅ Name extracted from LinkedIn (not stored)
-- ✅ Company name (not stored)
-- ✅ Generated email addresses (stored with user consent)
-- ✅ Pattern cache (domain → pattern mapping only)
-- ✅ Usage analytics (anonymized)
+- âœ… Name extracted from LinkedIn (not stored)
+- âœ… Company name (not stored)
+- âœ… Generated email addresses (stored with user consent)
+- âœ… Pattern cache (domain â†’ pattern mapping only)
+- âœ… Usage analytics (anonymized)
 
 **What we DON'T collect:**
-- ❌ LinkedIn login credentials
-- ❌ Full LinkedIn profile HTML
-- ❌ Personal messages or InMail
-- ❌ Connection lists
-- ❌ Profile photos (beyond temporary display)
+- âŒ LinkedIn login credentials
+- âŒ Full LinkedIn profile HTML
+- âŒ Personal messages or InMail
+- âŒ Connection lists
+- âŒ Profile photos (beyond temporary display)
 
 ### 9.2 Chrome Web Store Compliance
 
@@ -1649,10 +1644,10 @@ await supabase.from('api_costs').insert({
 ### 9.3 GDPR Compliance
 
 **User Rights:**
-- ✅ Right to access: Users can export their data
-- ✅ Right to deletion: One-click data deletion
-- ✅ Right to portability: Export as JSON
-- ✅ Right to withdraw consent: Uninstall extension
+- âœ… Right to access: Users can export their data
+- âœ… Right to deletion: One-click data deletion
+- âœ… Right to portability: Export as JSON
+- âœ… Right to withdraw consent: Uninstall extension
 
 **Implementation:**
 
@@ -1696,12 +1691,12 @@ export async function DELETE(req: Request) {
 
 **Risk Mitigation:**
 
-✅ **User-initiated only:** No automated scraping
-✅ **Visible data only:** No API calls to LinkedIn
-✅ **Structured data:** Using JSON-LD meant for search engines
-✅ **Rate limiting:** Free plan = 25/month max
-✅ **No automation:** No clicks, scrolls, or form fills
-✅ **Transparent:** Clear disclosure in Chrome Web Store
+âœ… **User-initiated only:** No automated scraping
+âœ… **Visible data only:** No API calls to LinkedIn
+âœ… **Structured data:** Using JSON-LD meant for search engines
+âœ… **Rate limiting:** Free plan = 25/month max
+âœ… **No automation:** No clicks, scrolls, or form fills
+âœ… **Transparent:** Clear disclosure in Chrome Web Store
 
 **From LinkedIn User Agreement (Section 8.2):**
 > "You agree that you will not... scrape or copy profiles and information"
@@ -1722,7 +1717,7 @@ export async function DELETE(req: Request) {
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| **LinkedIn changes DOM structure** | High | High | Multi-layer fallback (JSON-LD → OG → DOM) |
+| **LinkedIn changes DOM structure** | High | High | Multi-layer fallback (JSON-LD â†’ OG â†’ DOM) |
 | **API outages (Claude/Abstract)** | Medium | Medium | Graceful degradation to heuristics |
 | **Chrome extension rejected** | Low | High | Privacy-first design, clear disclosures |
 | **Rate limiting issues** | Medium | Low | Caching, quota limits |
@@ -1733,7 +1728,7 @@ export async function DELETE(req: Request) {
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| **Low Free → Pro conversion** | Medium | High | A/B test upgrade prompts, improve value prop |
+| **Low Free â†’ Pro conversion** | Medium | High | A/B test upgrade prompts, improve value prop |
 | **High API costs** | Medium | Medium | Smart caching, pattern learning |
 | **Competitor launches similar** | High | Medium | First-mover advantage, superior UX |
 | **LinkedIn bans extension** | Low | Critical | Conservative approach, no automation |
@@ -1836,7 +1831,7 @@ export async function DELETE(req: Request) {
 | **Installs** | 1,000 | 2,500 |
 | **Daily Active Users** | 300 | 750 |
 | **Email lookups** | 5,000 | 15,000 |
-| **Free → Pro conversion** | 20% | 35% |
+| **Free â†’ Pro conversion** | 20% | 35% |
 | **Average rating** | 4.5/5 | 4.8/5 |
 | **Support tickets** | <50 | <25 |
 | **Net revenue** | $500 | $1,500 |
@@ -1892,22 +1887,22 @@ export async function DELETE(req: Request) {
 ## 13. Future Roadmap (Post-v1)
 
 ### Q2 2026
-- ✅ Pattern learning from user feedback
-- ✅ Batch CSV upload (LinkedIn URLs → emails)
-- ✅ Firefox extension port
-- ✅ Mobile app (React Native)
+- âœ… Pattern learning from user feedback
+- âœ… Batch CSV upload (LinkedIn URLs â†’ emails)
+- âœ… Firefox extension port
+- âœ… Mobile app (React Native)
 
 ### Q3 2026
-- ✅ Email warmup integration
-- ✅ Direct CRM integrations (Salesforce, HubSpot)
-- ✅ Company-level pattern detection
-- ✅ LinkedIn Company page email finder
+- âœ… Email warmup integration
+- âœ… Direct CRM integrations (Salesforce, HubSpot)
+- âœ… Company-level pattern detection
+- âœ… LinkedIn Company page email finder
 
 ### Q4 2026
-- ✅ Personal email finder (WHOIS, social media)
-- ✅ Phone number extraction
-- ✅ AI-powered email writing assistant
-- ✅ Deliverability tracking
+- âœ… Personal email finder (WHOIS, social media)
+- âœ… Phone number extraction
+- âœ… AI-powered email writing assistant
+- âœ… Deliverability tracking
 
 ---
 
@@ -1962,7 +1957,6 @@ export async function DELETE(req: Request) {
 ```bash
 # .env.local
 ANTHROPIC_API_KEY=sk-ant-...
-ABSTRACT_API_KEY=...
 NEXT_PUBLIC_SUPABASE_URL=https://...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
@@ -1981,7 +1975,7 @@ STRIPE_PUBLISHABLE_KEY=pk_live_...
 | 6 | 8000 | 22 | 176,000 | $176 | $792 | $968 | $9,600 | $8,632 |
 
 **Assumptions:**
-- 10% Free → Pro conversion by Month 3
+- 10% Free â†’ Pro conversion by Month 3
 - Pro users do 50 lookups/month avg
 - Cache hit rate: 40% by Month 3
 - Average cost per lookup decreases over time

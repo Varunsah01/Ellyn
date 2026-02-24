@@ -7,7 +7,6 @@
 - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` configured
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` configured
 - [ ] `ANTHROPIC_API_KEY` configured
-- [ ] `ABSTRACT_API_KEY` configured
 - [ ] `QUOTA_ADMIN_API_KEY` configured
 - [ ] `ANALYTICS_ADMIN_EMAILS` (or auth metadata admin role strategy) configured
 - [ ] `SLACK_WEBHOOK_URL` configured (for cost alerts)

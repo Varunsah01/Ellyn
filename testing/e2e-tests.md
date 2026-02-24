@@ -9,7 +9,6 @@
   - [ ] `lib/db/migrations/004_analytics_tracking.sql`
 - [ ] Chrome extension loaded unpacked from `extension/`
 - [ ] Test LinkedIn profile set (public profiles allowed)
-- [ ] API keys configured (`ANTHROPIC_API_KEY`, `ABSTRACT_API_KEY`)
 - [ ] Extension auth bridge validated (`AUTH_SUCCESS` message reaches extension)
 - [ ] Dev tools ready:
   - [ ] Chrome extension service worker logs

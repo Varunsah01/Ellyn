@@ -56,19 +56,6 @@ function getAverageProbeMs() {
   return probeDurationSum / probeDurationCount;
 }
 
-const BLOCKED_MX_PATTERNS = [
-  "google.com",
-  "googlemail.com",
-  "outlook.com",
-  "office365.com",
-  "protection.outlook.com",
-  "yahoodns.net",
-  "yahoo.com",
-  "mimecast.com",
-  "proofpoint.com",
-  "messagelabs.com",
-];
-
 async function getMxHost(domain) {
   try {
     const records = await dns.resolveMx(domain);
@@ -89,19 +76,14 @@ async function getMxHost(domain) {
   }
 }
 
-function isMxBlocked(mxHostname) {
-  const normalized = String(mxHostname || "").toLowerCase();
-  return BLOCKED_MX_PATTERNS.some((pattern) => normalized.includes(pattern));
-}
-
-function smtpProbe(email, mxHost, timeoutMs = 8000) {
+function smtpProbeOnPort(email, mxHost, timeoutMs = 8000, port = 25) {
   return new Promise((resolve) => {
     let stage = "connect";
     let settled = false;
     let buffer = "";
     let multiline = null;
 
-    const socket = net.createConnection(25, mxHost);
+    const socket = net.createConnection(port, mxHost);
     socket.setTimeout(timeoutMs);
 
     const complete = (payload) => {
@@ -258,8 +240,8 @@ function smtpProbe(email, mxHost, timeoutMs = 8000) {
       }
     });
 
-    socket.on("error", (err) => {
-      unknown(err?.code || "connection_error", stage);
+    socket.on("error", () => {
+      unknown("connection_error", stage);
     });
 
     socket.on("timeout", () => {
@@ -272,6 +254,42 @@ function smtpProbe(email, mxHost, timeoutMs = 8000) {
       }
     });
   });
+}
+
+async function smtpProbe(email, mxHost, timeoutMs = 6000, ports = [25, 587]) {
+  const normalizedPorts = Array.isArray(ports) && ports.length > 0
+    ? ports
+      .map((port) => Number(port))
+      .filter((port) => Number.isFinite(port) && port > 0)
+    : [25, 587];
+
+  let lastResult = {
+    email,
+    deliverability: "UNKNOWN",
+    reason: "connection_error",
+    skipped: false,
+    stage: "connect",
+  };
+
+  for (let i = 0; i < normalizedPorts.length; i += 1) {
+    const port = normalizedPorts[i];
+    const result = await smtpProbeOnPort(email, mxHost, timeoutMs, port);
+    lastResult = result;
+
+    if (result?.deliverability === "DELIVERABLE" || result?.deliverability === "UNDELIVERABLE") {
+      return result;
+    }
+
+    const reason = String(result?.reason || "").toLowerCase();
+    const shouldTryNextPort =
+      (reason === "connection_error" || reason === "timeout") && i < normalizedPorts.length - 1;
+
+    if (!shouldTryNextPort) {
+      return result;
+    }
+  }
+
+  return lastResult;
 }
 
 app.post("/probe", async (req, res) => {
@@ -308,19 +326,8 @@ app.post("/probe", async (req, res) => {
     return sendProbeResult(result, Date.now() - requestStartedAt);
   }
 
-  if (isMxBlocked(mxHost)) {
-    const result = {
-      email: normalizedEmail,
-      deliverability: "SKIPPED",
-      reason: "provider_blocks_probing",
-      mxHost,
-      skipped: true,
-    };
-    return sendProbeResult(result, Date.now() - requestStartedAt);
-  }
-
   const smtpProbeStartedAt = Date.now();
-  const result = await smtpProbe(normalizedEmail, mxHost, 8000);
+  const result = await smtpProbe(normalizedEmail, mxHost, 6000, [25, 587]);
   const smtpProbeDurationMs = Date.now() - smtpProbeStartedAt;
   const responsePayload = {
     email: normalizedEmail,

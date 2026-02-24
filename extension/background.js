@@ -69,6 +69,8 @@ const analyticsClient = globalThis?.analytics || null;
 let csrfTokenCache = '';
 let csrfTokenFetchedAt = 0;
 let csrfRefreshPromise = null;
+let smtpProbeHealthChecked = false;
+let smtpProbeHealthCheckPromise = null;
 
 /**
  * Report a critical extension error to our backend for monitoring.
@@ -148,6 +150,90 @@ async function initializeContactSyncQueue() {
   }
 }
 
+async function runSmtpProbeHealthCheck() {
+  if (smtpProbeHealthChecked) {
+    return null;
+  }
+
+  if (smtpProbeHealthCheckPromise) {
+    return smtpProbeHealthCheckPromise;
+  }
+
+  smtpProbeHealthCheckPromise = (async () => {
+    let result = { ok: false, smtpConfigured: false };
+    let hasExplicitSmtpConfigured = false;
+
+    try {
+      const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/smtp-probe/health`, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+        signal: createTimeoutSignal(5000),
+      });
+
+      try {
+        const payload = await response.json();
+        if (payload && typeof payload === 'object') {
+          hasExplicitSmtpConfigured = Object.prototype.hasOwnProperty.call(payload, 'smtpConfigured');
+          result = {
+            ...payload,
+            ok: payload.ok !== false,
+            smtpConfigured: payload.smtpConfigured === true,
+          };
+        } else {
+          result = {
+            ok: response.ok,
+            smtpConfigured: false,
+          };
+        }
+      } catch {
+        result = {
+          ok: response.ok,
+          smtpConfigured: false,
+        };
+      }
+
+      if (result.smtpConfigured !== true && result.smtpConfigured !== false) {
+        result.smtpConfigured = false;
+      }
+
+      if (!hasExplicitSmtpConfigured) {
+        try {
+          const configResponse = await fetch(`${CONFIG.API_BASE_URL}/api/v1/smtp-probe`, {
+            method: 'GET',
+            credentials: 'include',
+            cache: 'no-store',
+            signal: createTimeoutSignal(5000),
+          });
+          const configPayload = await configResponse.json();
+          if (configPayload && typeof configPayload === 'object') {
+            result.smtpConfigured = configPayload.smtpConfigured === true;
+          } else {
+            result.smtpConfigured = false;
+          }
+        } catch {
+          result.smtpConfigured = false;
+        }
+      }
+    } catch (error) {
+      result = {
+        ok: false,
+        smtpConfigured: false,
+        error: error?.message || String(error),
+      };
+    } finally {
+      console.log('[ELLYN] SMTP probe service reachable:', result);
+      console.log('[ELLYN] SMTP configured:', result.smtpConfigured);
+      smtpProbeHealthChecked = true;
+      smtpProbeHealthCheckPromise = null;
+    }
+
+    return result;
+  })();
+
+  return smtpProbeHealthCheckPromise;
+}
+
 if (quotaClient?.config) {
   quotaClient.config.apiBaseUrl = CONFIG.API_BASE_URL;
 }
@@ -162,6 +248,7 @@ void initializeContactSyncQueue();
 chrome.runtime.onInstalled.addListener(() => {
   void configureSidePanelBehavior();
   void initializeContactSyncQueue();
+  void runSmtpProbeHealthCheck();
 });
 
 // ============================================================================
@@ -2526,44 +2613,6 @@ async function callBackendPost(path, body, authToken, timeoutMs) {
   return payload || {};
 }
 
-async function verifyWithAbstract(email, authToken) {
-  const normalizedEmail = String(email || '')
-    .trim()
-    .toLowerCase();
-  if (!normalizedEmail || !normalizedEmail.includes('@')) {
-    return { deliverability: 'UNKNOWN', qualityScore: 0 };
-  }
-
-  const configuredTimeout = Number(CONFIG?.STAGE_TIMEOUT_MS?.verifyEmail);
-  const timeoutMs =
-    Number.isFinite(configuredTimeout) && configuredTimeout > 0
-      ? Math.min(configuredTimeout, 10000)
-      : 10000;
-
-  try {
-    const result = await callBackendPost(
-      '/api/v1/abstract-verify',
-      { email: normalizedEmail },
-      authToken,
-      timeoutMs
-    );
-
-    const normalizedDeliverability = String(result?.deliverability || 'UNKNOWN')
-      .trim()
-      .toUpperCase();
-    const allowedDeliverability = ['DELIVERABLE', 'UNDELIVERABLE', 'RISKY', 'UNKNOWN'];
-
-    return {
-      deliverability: allowedDeliverability.includes(normalizedDeliverability)
-        ? normalizedDeliverability
-        : 'UNKNOWN',
-      qualityScore: normalizeConfidenceToUnit(result?.qualityScore, 0),
-    };
-  } catch {
-    return { deliverability: 'UNKNOWN', qualityScore: 0 };
-  }
-}
-
 function isMethodNotAllowedError(error) {
   return Number(error?.status) === 405;
 }
@@ -3405,6 +3454,8 @@ async function notifyEmailFailed(tabId, errorMessage) {
 
 // Main email finding pipeline
 async function handleFindEmail(data, sender, sendResponse) {
+  void runSmtpProbeHealthCheck();
+
   const operationId = createOperationId();
   const senderTabId = Number.isFinite(sender?.tab?.id) ? sender.tab.id : null;
   const lookupStartedAt = Date.now();
@@ -3797,7 +3848,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     console.log('[ELLYN Stage 4] Per-email MX verification');
 
     const mxDomainCache = new Map();
-    const mxPassed = [];
+    let mxPassed = [];
     const mxByDomain = new Map();
 
     // Run MX verification on all candidates (domain-level cache prevents duplicate DNS queries)
@@ -3813,6 +3864,14 @@ async function handleFindEmail(data, sender, sendResponse) {
       } else if (result.status === 'fulfilled') {
         mxByDomain.set(result.value.domain || extractDomainFromEmail(candidates[i].email), false);
       }
+    }
+    {
+      const _seenEmails = new Set();
+      mxPassed = mxPassed.filter((c) => {
+        if (_seenEmails.has(c.email)) return false;
+        _seenEmails.add(c.email);
+        return true;
+      });
     }
 
     if (mxPassed.length === 0) {
@@ -3835,6 +3894,14 @@ async function handleFindEmail(data, sender, sendResponse) {
             mxPassed.push(candidates[i]);
             mxByDomain.set(result.value.domain, true);
           }
+        }
+        {
+          const _seenEmails = new Set();
+          mxPassed = mxPassed.filter((c) => {
+            if (_seenEmails.has(c.email)) return false;
+            _seenEmails.add(c.email);
+            return true;
+          });
         }
       }
 
@@ -3877,11 +3944,11 @@ async function handleFindEmail(data, sender, sendResponse) {
     console.log('[ELLYN Stage 5] Layered verification â€” SMTP first, pattern fallback');
 
     let selected = null;
-    const alternativesFromVerification = [];
+    let alternativesFromVerification = [];
     const verificationResults = [];
 
-    // Probe all candidates (up to 15) in parallel via SMTP
-    const candidatesToProbe = candidates.slice(0, 15);
+    // Probe all MX-passing candidates in parallel via SMTP
+    const candidatesToProbe = [...candidates];
 
     const smtpSettled = await Promise.allSettled(
       candidatesToProbe.map(async (candidate) => {
@@ -3904,7 +3971,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     );
 
     // Classify each candidate by SMTP result
-    const needsAbstract = [];
+    const unverifiedCandidates = [];
 
     for (const settled of smtpSettled) {
       const value = settled.status === 'fulfilled'
@@ -3936,68 +4003,47 @@ async function handleFindEmail(data, sender, sendResponse) {
         // Excluded entirely
       } else {
         // UNKNOWN or SKIPPED â€” needs pattern fallback
-        needsAbstract.push(candidate);
+        unverifiedCandidates.push(candidate);
       }
+    }
+    {
+      const _seenEmails = new Set();
+      alternativesFromVerification = alternativesFromVerification.filter((c) => {
+        if (_seenEmails.has(c.email)) return false;
+        _seenEmails.add(c.email);
+        return true;
+      });
     }
 
     const smtpVerifiedCount = verificationResults.filter(r => r.method === 'smtp' && r.deliverable).length;
     console.log('[ELLYN Stage 5] SMTP: verified=' + smtpVerifiedCount +
-      ', needs_pattern_fallback=' + needsAbstract.length);
+      ', unverified_candidates=' + unverifiedCandidates.length);
 
-    // Abstract verification pass for top candidates when SMTP is blocked/unknown
-    if (!selected && needsAbstract.length > 0) {
-      const topForAbstract = needsAbstract.slice(0, 6); // verify top 6 by pattern confidence
-      const abstractSettled = await Promise.allSettled(
-        topForAbstract.map((c) => verifyWithAbstract(c.email, authToken))
-      );
-
-      for (let i = 0; i < topForAbstract.length; i++) {
-        const candidate = topForAbstract[i];
-        const result = abstractSettled[i].status === 'fulfilled'
-          ? abstractSettled[i].value
-          : { deliverability: 'UNKNOWN', qualityScore: 0 };
-
-        const del = String(result.deliverability || 'UNKNOWN').toUpperCase();
-
-        if (del === 'DELIVERABLE') {
-          if (!selected) {
-            selected = { ...candidate, source: 'abstract_verified', confidence: 0.92, tier: 'primary' };
-          } else {
-            alternativesFromVerification.push({ ...candidate, confidence: 0.88, tier: 'alternative' });
-          }
-        } else if (del === 'RISKY') {
-          const adjustedConfidence = Math.min(0.65, Math.max(0.35, Number(result.qualityScore || 0.4)));
-          if (!selected) {
-            selected = { ...candidate, source: 'abstract_risky', confidence: adjustedConfidence, tier: 'primary' };
-          } else {
-            alternativesFromVerification.push({ ...candidate, confidence: adjustedConfidence * 0.85, tier: 'alternative' });
-          }
-        } else if (del !== 'UNDELIVERABLE') {
-          // UNKNOWN - keep as lower-confidence alternative
-          alternativesFromVerification.push({
-            ...candidate,
-            confidence: Math.min(candidate.confidence, 0.50),
-            tier: 'alternative',
-          });
-        }
-      }
-
-      // If Abstract also found nothing deliverable, fall back to best pattern confidence
-      if (!selected && needsAbstract.length > 0) {
-        const bestByConfidence = [...needsAbstract].sort((a, b) => b.confidence - a.confidence)[0];
+    if (!selected && unverifiedCandidates.length > 0) {
+      const rankedUnverified = [...unverifiedCandidates].sort((a, b) => b.confidence - a.confidence);
+      const bestByConfidence = rankedUnverified[0];
+      if (bestByConfidence) {
         selected = {
           ...bestByConfidence,
           source: 'pattern_confidence',
           confidence: Math.min(bestByConfidence.confidence, 0.40),
           tier: 'primary',
         };
-        for (const alt of needsAbstract.slice(1, 8)) {
+        for (const alt of rankedUnverified.slice(1)) {
           alternativesFromVerification.push({
             ...alt,
             confidence: Math.min(alt.confidence, 0.35),
             tier: 'alternative',
           });
         }
+      }
+      {
+        const _seenEmails = new Set();
+        alternativesFromVerification = alternativesFromVerification.filter((c) => {
+          if (_seenEmails.has(c.email)) return false;
+          _seenEmails.add(c.email);
+          return true;
+        });
       }
     }
     const abstractVerifiedCount = 0;
@@ -4040,6 +4086,14 @@ async function handleFindEmail(data, sender, sendResponse) {
 
     const finalDomain = verifiedDomain;
     const mxSelectedHasMx = mxByDomain.get(finalDomain) === true;
+    {
+      const _seenEmails = new Set();
+      alternativesFromVerification = alternativesFromVerification.filter((c) => {
+        if (_seenEmails.has(c.email)) return false;
+        _seenEmails.add(c.email);
+        return true;
+      });
+    }
 
     const alternativeEmails = alternativesFromVerification.map((alt) => ({
       email: alt.email,
