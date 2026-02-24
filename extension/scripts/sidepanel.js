@@ -1509,16 +1509,19 @@ function displayResults(data) {
 function renderAlternatives(items) {
   const alternatives = Array.isArray(items) ? items : [];
 
-  if (elements.alternativesSummary) {
-    elements.alternativesSummary.textContent = `Show alternatives (${alternatives.length})`;
-  }
-
   if (!elements.alternativesList || !elements.alternativesDetails) return;
 
   if (alternatives.length === 0) {
     elements.alternativesDetails.classList.add("hidden");
+    if (elements.alternativesSummary) {
+      elements.alternativesSummary.textContent = "Show alternatives";
+    }
     elements.alternativesList.innerHTML = "";
     return;
+  }
+
+  if (elements.alternativesSummary) {
+    elements.alternativesSummary.textContent = `Show alternatives (${alternatives.length})`;
   }
 
   elements.alternativesDetails.classList.remove("hidden");

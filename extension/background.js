@@ -1928,6 +1928,9 @@ function generateEmailFromPattern(firstName, lastName, pattern, domain) {
     case 'first_last':
       localPart = `${first}_${last}`;
       break;
+    case 'f_last':
+      localPart = `${firstInitial}_${last}`;
+      break;
     case 'first-last':
       localPart = `${first}-${last}`;
       break;
@@ -1940,6 +1943,9 @@ function generateEmailFromPattern(firstName, lastName, pattern, domain) {
     case 'f.last':
       localPart = `${firstInitial}.${last}`;
       break;
+    case 'first.l':
+      localPart = `${first}.${lastInitial}`;
+      break;
     case 'first':
       localPart = first;
       break;
@@ -1948,6 +1954,9 @@ function generateEmailFromPattern(firstName, lastName, pattern, domain) {
       break;
     case 'last.first':
       localPart = `${last}.${first}`;
+      break;
+    case 'last_first':
+      localPart = `${last}_${first}`;
       break;
     case 'lastfirst':
       localPart = `${last}${first}`;
@@ -2515,6 +2524,44 @@ async function callBackendPost(path, body, authToken, timeoutMs) {
   }
 
   return payload || {};
+}
+
+async function verifyWithAbstract(email, authToken) {
+  const normalizedEmail = String(email || '')
+    .trim()
+    .toLowerCase();
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    return { deliverability: 'UNKNOWN', qualityScore: 0 };
+  }
+
+  const configuredTimeout = Number(CONFIG?.STAGE_TIMEOUT_MS?.verifyEmail);
+  const timeoutMs =
+    Number.isFinite(configuredTimeout) && configuredTimeout > 0
+      ? Math.min(configuredTimeout, 10000)
+      : 10000;
+
+  try {
+    const result = await callBackendPost(
+      '/api/v1/abstract-verify',
+      { email: normalizedEmail },
+      authToken,
+      timeoutMs
+    );
+
+    const normalizedDeliverability = String(result?.deliverability || 'UNKNOWN')
+      .trim()
+      .toUpperCase();
+    const allowedDeliverability = ['DELIVERABLE', 'UNDELIVERABLE', 'RISKY', 'UNKNOWN'];
+
+    return {
+      deliverability: allowedDeliverability.includes(normalizedDeliverability)
+        ? normalizedDeliverability
+        : 'UNKNOWN',
+      qualityScore: normalizeConfidenceToUnit(result?.qualityScore, 0),
+    };
+  } catch {
+    return { deliverability: 'UNKNOWN', qualityScore: 0 };
+  }
 }
 
 function isMethodNotAllowedError(error) {
@@ -3163,7 +3210,14 @@ function getFallbackPatterns() {
     { template: 'last.first', confidence: 0.08 },
     { template: 'lastfirst', confidence: 0.07 },
     { template: 'first_last', confidence: 0.05 },
-    { template: 'f.last', confidence: 0.03 },
+    { template: 'f.last', confidence: 0.04 },
+    { template: 'first.l', confidence: 0.03 },
+    { template: 'last', confidence: 0.025 },
+    { template: 'firstl', confidence: 0.02 },
+    { template: 'f_last', confidence: 0.018 },
+    { template: 'lastf', confidence: 0.017 },
+    { template: 'last_first', confidence: 0.015 },
+    { template: 'first-last', confidence: 0.012 },
   ];
 }
 
@@ -3826,8 +3880,8 @@ async function handleFindEmail(data, sender, sendResponse) {
     const alternativesFromVerification = [];
     const verificationResults = [];
 
-    // Probe all candidates (up to 6) in parallel via SMTP
-    const candidatesToProbe = candidates.slice(0, 6);
+    // Probe all candidates (up to 15) in parallel via SMTP
+    const candidatesToProbe = candidates.slice(0, 15);
 
     const smtpSettled = await Promise.allSettled(
       candidatesToProbe.map(async (candidate) => {
@@ -3890,29 +3944,62 @@ async function handleFindEmail(data, sender, sendResponse) {
     console.log('[ELLYN Stage 5] SMTP: verified=' + smtpVerifiedCount +
       ', needs_pattern_fallback=' + needsAbstract.length);
 
-    // Last resort: if SMTP found no results, promote best candidate by pattern confidence
+    // Abstract verification pass for top candidates when SMTP is blocked/unknown
     if (!selected && needsAbstract.length > 0) {
-      const bestByConfidence = [...needsAbstract].sort((a, b) => b.confidence - a.confidence)[0];
-      if (bestByConfidence) {
-        selected = {
-          ...bestByConfidence,
-          source: 'pattern_confidence',
-          confidence: Math.min(bestByConfidence.confidence, 0.75),
-          tier: 'primary',
-        };
-        // Add remaining needsAbstract as alternatives
-        for (const alt of needsAbstract.slice(1, 3)) {
+      const topForAbstract = needsAbstract.slice(0, 6); // verify top 6 by pattern confidence
+      const abstractSettled = await Promise.allSettled(
+        topForAbstract.map((c) => verifyWithAbstract(c.email, authToken))
+      );
+
+      for (let i = 0; i < topForAbstract.length; i++) {
+        const candidate = topForAbstract[i];
+        const result = abstractSettled[i].status === 'fulfilled'
+          ? abstractSettled[i].value
+          : { deliverability: 'UNKNOWN', qualityScore: 0 };
+
+        const del = String(result.deliverability || 'UNKNOWN').toUpperCase();
+
+        if (del === 'DELIVERABLE') {
+          if (!selected) {
+            selected = { ...candidate, source: 'abstract_verified', confidence: 0.92, tier: 'primary' };
+          } else {
+            alternativesFromVerification.push({ ...candidate, confidence: 0.88, tier: 'alternative' });
+          }
+        } else if (del === 'RISKY') {
+          const adjustedConfidence = Math.min(0.65, Math.max(0.35, Number(result.qualityScore || 0.4)));
+          if (!selected) {
+            selected = { ...candidate, source: 'abstract_risky', confidence: adjustedConfidence, tier: 'primary' };
+          } else {
+            alternativesFromVerification.push({ ...candidate, confidence: adjustedConfidence * 0.85, tier: 'alternative' });
+          }
+        } else if (del !== 'UNDELIVERABLE') {
+          // UNKNOWN - keep as lower-confidence alternative
           alternativesFromVerification.push({
-            ...alt,
-            confidence: Math.min(alt.confidence, 0.65),
+            ...candidate,
+            confidence: Math.min(candidate.confidence, 0.50),
             tier: 'alternative',
           });
         }
-        console.log('[ELLYN Stage 5] No SMTP confirmation — using best pattern confidence:',
-          selected.email, 'confidence:', selected.confidence);
+      }
+
+      // If Abstract also found nothing deliverable, fall back to best pattern confidence
+      if (!selected && needsAbstract.length > 0) {
+        const bestByConfidence = [...needsAbstract].sort((a, b) => b.confidence - a.confidence)[0];
+        selected = {
+          ...bestByConfidence,
+          source: 'pattern_confidence',
+          confidence: Math.min(bestByConfidence.confidence, 0.40),
+          tier: 'primary',
+        };
+        for (const alt of needsAbstract.slice(1, 8)) {
+          alternativesFromVerification.push({
+            ...alt,
+            confidence: Math.min(alt.confidence, 0.35),
+            tier: 'alternative',
+          });
+        }
       }
     }
-
     const abstractVerifiedCount = 0;
 
     if (!selected) {

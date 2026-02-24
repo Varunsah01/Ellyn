@@ -236,10 +236,10 @@ export function generateSmartEmailPatterns(
     }
   }
 
-  // Sort by confidence and return top 8
+  // Sort by confidence and return top 15
   return patterns
     .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 8);
+    .slice(0, 15);
 }
 
 /**

@@ -73,6 +73,41 @@ const ANTHROPIC_MODEL = 'claude-3-5-haiku-20241022'
 const MAX_TOKENS = 1500
 const RATE_LIMIT = 50
 const RATE_WINDOW_MS = 60 * 60 * 1000
+const MIN_PATTERN_COUNT = 12
+const MAX_PATTERN_COUNT = 15
+
+const COMPLETE_PATTERN_ORDER: string[] = [
+  'first.last',
+  'flast',
+  'firstlast',
+  'first',
+  'last.first',
+  'f.last',
+  'first_last',
+  'lastfirst',
+  'first.l',
+  'firstl',
+  'last',
+  'first-last',
+  'f_last',
+  'last_first',
+  'last.first',
+]
+
+const COMPLETE_PATTERN_CONFIDENCES: number[] = [
+  0.30,
+  0.18,
+  0.12,
+  0.10,
+  0.08,
+  0.07,
+  0.06,
+  0.05,
+  0.04,
+  0.03,
+  0.025,
+  0.02,
+]
 
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>()
 
@@ -262,11 +297,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<PredictEm
           }))
         }
 
-        patterns = dedupeAndSortPatterns(patterns).slice(0, 6)
-
-        if (patterns.length < 4) {
-          patterns = ensureMinimumPatterns(patterns, firstName, lastName, companyDomain)
-        }
+        patterns = ensureMinimumPatterns(patterns, firstName, lastName, companyDomain)
 
         const prediction: AIEmailPredictionResponse = {
           patterns,
@@ -552,9 +583,47 @@ function ensureMinimumPatterns(
   lastName: string,
   companyDomain: string
 ): AIPredictedPattern[] {
-  const fallback = buildHeuristicPatterns(firstName, lastName, companyDomain)
-  const combined = dedupeAndSortPatterns([...patterns, ...fallback])
-  return combined.slice(0, 6)
+  const base = dedupeAndSortPatterns(patterns)
+  const withHeuristic = dedupeAndSortPatterns([
+    ...base,
+    ...buildHeuristicPatterns(firstName, lastName, companyDomain),
+  ])
+
+  const existingTemplates = new Set<string>(
+    withHeuristic
+      .map((pattern) => String(pattern.pattern || '').trim().toLowerCase())
+      .filter(Boolean)
+  )
+  const seenFallbackTemplates = new Set<string>()
+  const expanded = [...withHeuristic]
+
+  for (let i = 0; i < COMPLETE_PATTERN_ORDER.length && expanded.length < MIN_PATTERN_COUNT; i++) {
+    const template = String(COMPLETE_PATTERN_ORDER[i] || '').trim().toLowerCase()
+    if (!template || seenFallbackTemplates.has(template)) continue
+    seenFallbackTemplates.add(template)
+
+    if (existingTemplates.has(template)) continue
+
+    const email = applyPatternTemplate(template, firstName, lastName, companyDomain)
+    if (!isLikelyEmail(email)) continue
+
+    const confidence =
+      i < COMPLETE_PATTERN_CONFIDENCES.length
+        ? COMPLETE_PATTERN_CONFIDENCES[i]
+        : COMPLETE_PATTERN_CONFIDENCES[COMPLETE_PATTERN_CONFIDENCES.length - 1]
+
+    expanded.push({
+      email,
+      pattern: template,
+      confidence,
+      reasoning: 'Fallback pattern added to ensure minimum ranked coverage.',
+    })
+    existingTemplates.add(template)
+  }
+
+  return expanded
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, MAX_PATTERN_COUNT)
 }
 
 function buildHeuristicPatterns(firstName: string, lastName: string, domain: string): AIPredictedPattern[] {
@@ -607,14 +676,26 @@ function applyPatternTemplate(pattern: string, firstName: string, lastName: stri
       return `${first}${last}@${domain}`
     case 'first':
       return `${first}@${domain}`
+    case 'last':
+      return `${last}@${domain}`
     case 'flast':
       return `${f}${last}@${domain}`
+    case 'lastfirst':
+      return `${last}${first}@${domain}`
     case 'first.l':
       return `${first}.${l}@${domain}`
     case 'f.last':
       return `${f}.${last}@${domain}`
+    case 'last.first':
+      return `${last}.${first}@${domain}`
     case 'first_last':
       return `${first}_${last}@${domain}`
+    case 'last_first':
+      return `${last}_${first}@${domain}`
+    case 'first-last':
+      return `${first}-${last}@${domain}`
+    case 'f_last':
+      return `${f}_${last}@${domain}`
     case 'firstl':
       return `${first}${l}@${domain}`
     default:
