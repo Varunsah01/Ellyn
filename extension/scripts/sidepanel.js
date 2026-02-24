@@ -1246,10 +1246,10 @@ async function openAuth(mode, button) {
 
   try {
     const { authBaseUrl } = await resolveBaseUrls();
-    const authUrl = new URL("/auth", `${authBaseUrl}/`);
+    const authPath = mode === "signup" ? "/auth/signup" : "/auth/login";
+    const authUrl = new URL(authPath, `${authBaseUrl}/`);
     authUrl.searchParams.set("source", "extension");
     authUrl.searchParams.set("extensionId", chrome.runtime.id);
-    authUrl.searchParams.set("mode", mode === "signup" ? "signup" : "signin");
 
     chrome.tabs.create({ url: authUrl.toString() }, () => {
       if (chrome.runtime.lastError) {

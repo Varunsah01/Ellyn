@@ -23,7 +23,8 @@
     "seed:tracker:clear": "node scripts/seed-tracker-test-data.mjs --mode=api --api=http://localhost:3000 --clear-only",
     "seed:known-domains": "node scripts/seed-known-domains.mjs",
     "seed:known-domains:dry": "node scripts/seed-known-domains.mjs --dry-run",
-    "seed:known-domains:csv": "node scripts/seed-known-domains.mjs --export-csv"
+    "seed:known-domains:csv": "node scripts/seed-known-domains.mjs --export-csv",
+    "check:extension:globals": "node scripts/check-extension-global-collisions.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",

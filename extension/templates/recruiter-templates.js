@@ -15,8 +15,8 @@
 
 const AI_API_ENDPOINTS = ["/api/v1/ai/generate-template", "/api/ai/generate-template"];
 const DEFAULT_AI_API_ORIGIN = "https://www.useellyn.com";
-const BASE_URL_OVERRIDE_KEY = "ellyn_base_url_override";
-const AUTH_SOURCE_ORIGIN_KEY = "ellyn_auth_origin";
+const TEMPLATE_BASE_URL_OVERRIDE_KEY = "ellyn_base_url_override";
+const TEMPLATE_AUTH_SOURCE_ORIGIN_KEY = "ellyn_auth_origin";
 
 /**
  * Generates a draft subject + body for the given contact and template type.
@@ -265,9 +265,12 @@ async function _resolveAiApiOrigin() {
   }
 
   try {
-    const stored = await chrome.storage.local.get([BASE_URL_OVERRIDE_KEY, AUTH_SOURCE_ORIGIN_KEY]);
+    const stored = await chrome.storage.local.get([
+      TEMPLATE_BASE_URL_OVERRIDE_KEY,
+      TEMPLATE_AUTH_SOURCE_ORIGIN_KEY,
+    ]);
     const storedOrigin = _normalizeOrigin(
-      stored?.[BASE_URL_OVERRIDE_KEY] || stored?.[AUTH_SOURCE_ORIGIN_KEY]
+      stored?.[TEMPLATE_BASE_URL_OVERRIDE_KEY] || stored?.[TEMPLATE_AUTH_SOURCE_ORIGIN_KEY]
     );
     if (storedOrigin) return storedOrigin;
   } catch {

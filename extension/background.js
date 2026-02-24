@@ -64,7 +64,7 @@ const OPERATION_ALARM_PREFIX = 'find-email-timeout-';
 const DOMAIN_CACHE_PREFIX = 'company_domain_';
 const PATTERN_CACHE_PREFIX = 'pattern_';
 const CONTENT_SCRIPT_FILE = 'content/linkedin-extractor.js';
-const quotaManager = globalThis?.quotaManager || null;
+const quotaClient = globalThis?.quotaManager || null;
 const analyticsClient = globalThis?.analytics || null;
 let csrfTokenCache = '';
 let csrfTokenFetchedAt = 0;
@@ -148,8 +148,8 @@ async function initializeContactSyncQueue() {
   }
 }
 
-if (quotaManager?.config) {
-  quotaManager.config.apiBaseUrl = CONFIG.API_BASE_URL;
+if (quotaClient?.config) {
+  quotaClient.config.apiBaseUrl = CONFIG.API_BASE_URL;
 }
 
 if (analyticsClient?.config) {
@@ -202,10 +202,36 @@ function normalizeOrigin(value) {
   }
 }
 
+function extractUserId(user) {
+  if (!user || typeof user !== 'object') return '';
+  const userId = user.id;
+  return typeof userId === 'string' ? userId.trim() : '';
+}
+
 async function persistAuthenticatedState({ token, user, sourceOrigin, payload }) {
   const normalizedToken = String(token || '').trim();
   const hasToken = normalizedToken.length > 0;
   const normalizedUser = user && typeof user === 'object' ? user : null;
+  const normalizedUserId = extractUserId(normalizedUser);
+  const normalizedSourceOrigin = normalizeOrigin(sourceOrigin);
+
+  const currentState = await chrome.storage.local.get(AUTH_STORAGE_KEYS);
+  const currentIsAuthenticated = currentState?.isAuthenticated === true;
+  const currentToken =
+    typeof currentState?.auth_token === 'string' ? currentState.auth_token.trim() : '';
+  const currentUserId = extractUserId(currentState?.user);
+  const currentSourceOrigin = normalizeOrigin(currentState?.[AUTH_SOURCE_ORIGIN_KEY]);
+  const effectiveSourceOrigin = normalizedSourceOrigin || currentSourceOrigin;
+
+  const isNoop =
+    currentIsAuthenticated === hasToken &&
+    currentToken === normalizedToken &&
+    currentUserId === normalizedUserId &&
+    currentSourceOrigin === effectiveSourceOrigin;
+
+  if (isNoop) {
+    return hasToken;
+  }
 
   const nextState = {
     isAuthenticated: hasToken,
@@ -213,7 +239,6 @@ async function persistAuthenticatedState({ token, user, sourceOrigin, payload })
     auth_token: normalizedToken,
   };
 
-  const normalizedSourceOrigin = normalizeOrigin(sourceOrigin);
   if (normalizedSourceOrigin) {
     nextState[AUTH_SOURCE_ORIGIN_KEY] = normalizedSourceOrigin;
   }
@@ -252,10 +277,24 @@ async function persistAuthenticatedState({ token, user, sourceOrigin, payload })
 }
 
 async function clearLocalAuthenticatedState() {
+  const currentState = await chrome.storage.local.get(AUTH_STORAGE_KEYS);
+  const currentIsAuthenticated = currentState?.isAuthenticated === true;
+  const currentToken =
+    typeof currentState?.auth_token === 'string' ? currentState.auth_token.trim() : '';
+  const currentUserId = extractUserId(currentState?.user);
+  const hasSupabaseSession = Boolean(currentState?.[SUPABASE_SESSION_STORAGE_KEY]);
+  const hasAnyAuthState =
+    currentIsAuthenticated || currentToken.length > 0 || currentUserId.length > 0 || hasSupabaseSession;
+
+  if (!hasAnyAuthState) {
+    return false;
+  }
+
   await chrome.storage.local.remove(AUTH_STORAGE_KEYS);
   chrome.runtime.sendMessage({ type: 'AUTH_LOGOUT' }, () => {
     void chrome.runtime.lastError;
   });
+  return true;
 }
 
 async function setAuthenticatedState(payload, sendResponse, context = {}) {
@@ -770,16 +809,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     void clearAuthenticatedState(sendResponse);
     return true;
   }
-
-  if (message.type === 'AUTH_SUCCESS') {
-    void setAuthenticatedState(message.payload || null, sendResponse);
-    return true;
-  }
-
-  if (message.type === 'AUTH_LOGOUT') {
-    void clearAuthenticatedState(sendResponse);
-    return true;
-  }
 });
 
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
@@ -869,7 +898,7 @@ async function getAuthToken() {
 }
 
 async function checkQuota() {
-  if (!quotaManager) {
+  if (!quotaClient) {
     return {
       allowed: true,
       used: null,
@@ -880,7 +909,7 @@ async function checkQuota() {
       warning: 'Quota manager unavailable',
     };
   }
-  const status = await quotaManager.getStatus();
+  const status = await quotaClient.getStatus();
   if (!CONFIG.DISABLE_CREDIT_LIMITS) {
     return status;
   }
@@ -892,7 +921,7 @@ async function checkQuota() {
 }
 
 async function canPerformLookup() {
-  if (!quotaManager) {
+  if (!quotaClient) {
     return {
       allowed: true,
       remaining: null,
@@ -900,7 +929,7 @@ async function canPerformLookup() {
       warning: 'Quota manager unavailable',
     };
   }
-  const quotaCheck = await quotaManager.canPerformLookup();
+  const quotaCheck = await quotaClient.canPerformLookup();
   if (!CONFIG.DISABLE_CREDIT_LIMITS) {
     return quotaCheck;
   }
@@ -3260,8 +3289,8 @@ async function handleFindEmail(data, sender, sendResponse) {
     if (!quota?.allowed) {
       const isUnauthorized = quota?.error === 'Unauthorized';
 
-      if (quotaManager && !isUnauthorized) {
-        quotaManager.showUpgradeModal(quota?.resetDate || null);
+      if (quotaClient && !isUnauthorized) {
+        quotaClient.showUpgradeModal(quota?.resetDate || null);
       }
 
       const retryError =
