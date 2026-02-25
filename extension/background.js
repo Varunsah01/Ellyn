@@ -161,60 +161,36 @@ async function runSmtpProbeHealthCheck() {
 
   smtpProbeHealthCheckPromise = (async () => {
     let result = { ok: false, smtpConfigured: false };
-    let hasExplicitSmtpConfigured = false;
 
     try {
-      const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/smtp-probe/health`, {
-        method: 'GET',
+      const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/zerobounce-verify`, {
+        method: 'POST',
         credentials: 'include',
         cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ email: 'healthcheck@example.com' }),
         signal: createTimeoutSignal(5000),
       });
 
+      let payload = null;
       try {
-        const payload = await response.json();
-        if (payload && typeof payload === 'object') {
-          hasExplicitSmtpConfigured = Object.prototype.hasOwnProperty.call(payload, 'smtpConfigured');
-          result = {
-            ...payload,
-            ok: payload.ok !== false,
-            smtpConfigured: payload.smtpConfigured === true,
-          };
-        } else {
-          result = {
-            ok: response.ok,
-            smtpConfigured: false,
-          };
-        }
+        payload = await response.json();
       } catch {
-        result = {
-          ok: response.ok,
-          smtpConfigured: false,
-        };
+        payload = null;
       }
 
-      if (result.smtpConfigured !== true && result.smtpConfigured !== false) {
-        result.smtpConfigured = false;
-      }
-
-      if (!hasExplicitSmtpConfigured) {
-        try {
-          const configResponse = await fetch(`${CONFIG.API_BASE_URL}/api/v1/smtp-probe`, {
-            method: 'GET',
-            credentials: 'include',
-            cache: 'no-store',
-            signal: createTimeoutSignal(5000),
-          });
-          const configPayload = await configResponse.json();
-          if (configPayload && typeof configPayload === 'object') {
-            result.smtpConfigured = configPayload.smtpConfigured === true;
-          } else {
-            result.smtpConfigured = false;
-          }
-        } catch {
-          result.smtpConfigured = false;
-        }
-      }
+      const configured =
+        !!payload &&
+        typeof payload === 'object' &&
+        payload.reason !== 'not_configured' &&
+        payload.error !== 'Unauthorized';
+      result = {
+        ok: response.ok,
+        smtpConfigured: configured,
+      };
     } catch (error) {
       result = {
         ok: false,
@@ -3838,6 +3814,17 @@ async function handleFindEmail(data, sender, sendResponse) {
       predictedPatterns
     );
 
+    const _seen = new Set();
+    candidates = candidates.filter((c) => {
+      if (_seen.has(c.email)) return false;
+      _seen.add(c.email);
+      return true;
+    });
+
+    // Cap at top 8 candidates by pattern confidence
+    candidates = candidates.slice(0, 8);
+    console.log('[ELLYN Stage 3] Capped to top 8 candidates:', candidates.map((c) => c.email));
+
     if (candidates.length === 0) {
       throw new Error('Failed to generate email candidates from predicted patterns.');
     }
@@ -3937,144 +3924,125 @@ async function handleFindEmail(data, sender, sendResponse) {
     const mxProvider = firstMxResult?.status === 'fulfilled' ? firstMxResult.value.mxProvider : null;
 
     console.log('[ELLYN Stage 4] MX passed:', mxVerifiedCount, '/', candidates.length, 'Provider:', mxProvider);
-
-    // STAGE 5: Layered verification â€” SMTP probe â†’ pattern fallback
+    // STAGE 5: Sequential ZeroBounce verification - stop on first DELIVERABLE
     stage = 'verify_candidates';
     await updateOperation(operationId, { stage });
-    console.log('[ELLYN Stage 5] Layered verification â€” SMTP first, pattern fallback');
+    console.log('[ELLYN Stage 5] Sequential ZeroBounce verification - up to', candidates.length, 'candidates');
 
     let selected = null;
-    let alternativesFromVerification = [];
+    const alternativesFromVerification = [];
     const verificationResults = [];
+    let zbCreditsUsed = 0;
 
-    // Probe all MX-passing candidates in parallel via SMTP
-    const candidatesToProbe = [...candidates];
+    // Only verify MX-passing candidates, sorted by confidence (highest first)
+    const candidatesToVerify = mxPassed.length > 0 ? mxPassed : candidates;
 
-    const smtpSettled = await Promise.allSettled(
-      candidatesToProbe.map(async (candidate) => {
-        try {
-          const result = await callBackendPost(
-            '/api/v1/smtp-probe',
-            { email: candidate.email },
-            authToken,
-            CONFIG.STAGE_TIMEOUT_MS.verifyEmail
-          );
-          return { candidate, smtp: result };
-        } catch (err) {
-          console.warn('[ELLYN Stage 5] SMTP probe error for', candidate.email, err?.message);
-          return {
-            candidate,
-            smtp: { email: candidate.email, deliverability: 'UNKNOWN', reason: 'probe_request_failed', skipped: true },
-          };
-        }
-      })
-    );
+    for (const candidate of candidatesToVerify) {
+      console.log('[ELLYN Stage 5] Verifying:', candidate.email);
 
-    // Classify each candidate by SMTP result
-    const unverifiedCandidates = [];
+      let zbResult = null;
+      try {
+        zbResult = await callBackendPost(
+          '/api/v1/zerobounce-verify',
+          { email: candidate.email },
+          authToken,
+          15000
+        );
+        zbCreditsUsed += 1;
+      } catch (err) {
+        console.warn('[ELLYN Stage 5] ZeroBounce error for', candidate.email, err?.message);
+        zbResult = { deliverability: 'UNKNOWN', reason: 'request_failed' };
+      }
 
-    for (const settled of smtpSettled) {
-      const value = settled.status === 'fulfilled'
-        ? settled.value
-        : { candidate: candidatesToProbe[smtpSettled.indexOf(settled)],
-            smtp: { deliverability: 'UNKNOWN', reason: 'promise_rejected', skipped: true } };
-
-      const { candidate, smtp } = value;
-      const deliverability = String(smtp?.deliverability || 'UNKNOWN').toUpperCase();
-
+      const deliverability = String(zbResult?.deliverability || 'UNKNOWN').toUpperCase();
+      
       verificationResults.push({
         email: candidate.email,
-        method: smtp?.skipped ? 'skipped' : 'smtp',
-        deliverable: deliverability === 'DELIVERABLE',
         deliverability,
-        reason: smtp?.reason,
-        mxHost: smtp?.mxHost,
-        stage: smtp?.stage,
+        confidence: zbResult?.confidence ?? candidate.confidence,
+        subStatus: zbResult?.subStatus || null,
+        source: 'zerobounce',
       });
+
+      console.log('[ELLYN Stage 5] ZeroBounce result for', candidate.email, '', deliverability);
 
       if (deliverability === 'DELIVERABLE') {
+        selected = {
+          ...candidate,
+          source: 'zerobounce_verified',
+          confidence: zbResult?.confidence ?? 0.95,
+          tier: 'primary',
+          zbSubStatus: zbResult?.subStatus || null,
+        };
+        console.log('[ELLYN Stage 5]  Found DELIVERABLE email:', selected.email, '- stopping verification');
+        break; // Stop immediately - do not verify remaining candidates
+      }
+
+      if (deliverability === 'CATCHALL') {
+        // Catch-all domain: first catch-all becomes selected if nothing better found
         if (!selected) {
-          selected = { ...candidate, source: 'smtp_verified', confidence: 0.92, tier: 'primary' };
-        } else {
-          alternativesFromVerification.push({ ...candidate, confidence: 0.92, tier: 'primary' });
+          selected = {
+            ...candidate,
+            source: 'zerobounce_catchall',
+            confidence: zbResult?.confidence ?? 0.55,
+            tier: 'primary',
+          };
+          // Do NOT break - continue checking others for a hard DELIVERABLE
         }
-      } else if (deliverability === 'UNDELIVERABLE') {
-        console.log('[ELLYN Stage 5] SMTP confirmed UNDELIVERABLE, excluding:', candidate.email);
-        // Excluded entirely
-      } else {
-        // UNKNOWN or SKIPPED â€” needs pattern fallback
-        unverifiedCandidates.push(candidate);
+      }
+
+      if (deliverability === 'UNDELIVERABLE') {
+        // Confirmed bad - skip entirely, do not add to alternatives
+        continue;
+      }
+
+      if (deliverability === 'UNKNOWN') {
+        // Keep as low-confidence alternative
+        alternativesFromVerification.push({
+          ...candidate,
+          confidence: Math.min(candidate.confidence * 1.1, 0.45),
+          source: 'mx_confirmed_unverified',
+          tier: 'alternative',
+        });
       }
     }
-    {
-      const _seenEmails = new Set();
-      alternativesFromVerification = alternativesFromVerification.filter((c) => {
-        if (_seenEmails.has(c.email)) return false;
-        _seenEmails.add(c.email);
-        return true;
-      });
-    }
 
-    const smtpVerifiedCount = verificationResults.filter(r => r.method === 'smtp' && r.deliverable).length;
-    console.log('[ELLYN Stage 5] SMTP: verified=' + smtpVerifiedCount +
-      ', unverified_candidates=' + unverifiedCandidates.length);
-
-    if (!selected && unverifiedCandidates.length > 0) {
-      const rankedUnverified = [...unverifiedCandidates].sort((a, b) => b.confidence - a.confidence);
-      const bestByConfidence = rankedUnverified[0];
-      if (bestByConfidence) {
+    // If no DELIVERABLE or CATCHALL was found via ZeroBounce, 
+    // fall back to top pattern-confidence candidate
+    if (!selected) {
+      const fallbackCandidates = candidatesToVerify.filter(
+        (c) => !verificationResults.find((r) => r.email === c.email && r.deliverability === 'UNDELIVERABLE')
+      );
+      if (fallbackCandidates.length > 0) {
+        const best = fallbackCandidates[0];
         selected = {
-          ...bestByConfidence,
+          ...best,
           source: 'pattern_confidence',
-          confidence: Math.min(bestByConfidence.confidence, 0.40),
+          confidence: Math.min(best.confidence, 0.35),
           tier: 'primary',
         };
-        for (const alt of rankedUnverified.slice(1)) {
+        for (const alt of fallbackCandidates.slice(1)) {
           alternativesFromVerification.push({
             ...alt,
-            confidence: Math.min(alt.confidence, 0.35),
+            confidence: Math.min(alt.confidence, 0.30),
+            source: 'pattern_confidence',
             tier: 'alternative',
           });
         }
       }
-      {
-        const _seenEmails = new Set();
-        alternativesFromVerification = alternativesFromVerification.filter((c) => {
-          if (_seenEmails.has(c.email)) return false;
-          _seenEmails.add(c.email);
-          return true;
-        });
-      }
     }
+
+    // Build alternatives list - exclude selected email, sort by confidence
+    const finalAlternatives = alternativesFromVerification
+      .filter((a) => a.email !== selected?.email)
+      .sort((a, b) => b.confidence - a.confidence);
+
+    totalCost = toRoundedMoney(totalCost + (zbCreditsUsed * 0.008)); // $0.008 per ZB credit
+    console.log('[ELLYN Stage 5] Done. Credits used:', zbCreditsUsed, 
+      'Selected:', selected?.email, 'Alternatives:', finalAlternatives.length);
+
+    const smtpVerifiedCount = verificationResults.filter((r) => r.deliverability === 'DELIVERABLE').length;
     const abstractVerifiedCount = 0;
-
-    if (!selected) {
-      // No email passed verification â€” graceful "not found"
-      console.log('[ELLYN Stage 5] No deliverable/risky candidates. Returning not-found.');
-      await completeOperation(operationId, 'completed', {
-        stage: 'verify_candidates',
-        result: { found: false, reason: 'undeliverable' },
-      });
-      // Fire-and-forget quota rollback
-      void callBackendPost('/api/v1/quota/rollback', {}, authToken, 5000).catch((err) =>
-        console.warn('[ELLYN] Quota rollback failed:', err)
-      );
-      sendResponse({
-        success: false,
-        found: false,
-        reason: 'undeliverable',
-        message: 'No email ID found for this contact.',
-        domain,
-        totalCandidates: candidates.length,
-        mxVerifiedCount,
-        abstractVerifiedCount,
-        type: 'EMAIL_NOT_FOUND',
-      });
-      return;
-    }
-
-    console.log('[ELLYN Stage 5] Selected:', selected.email, '| Alternatives:', alternativesFromVerification.length);
-
     // STAGE 6: Cache result
     stage = 'cache_result';
     await updateOperation(operationId, { stage });
@@ -4086,16 +4054,8 @@ async function handleFindEmail(data, sender, sendResponse) {
 
     const finalDomain = verifiedDomain;
     const mxSelectedHasMx = mxByDomain.get(finalDomain) === true;
-    {
-      const _seenEmails = new Set();
-      alternativesFromVerification = alternativesFromVerification.filter((c) => {
-        if (_seenEmails.has(c.email)) return false;
-        _seenEmails.add(c.email);
-        return true;
-      });
-    }
 
-    const alternativeEmails = alternativesFromVerification.map((alt) => ({
+    const alternativeEmails = finalAlternatives.map((alt) => ({
       email: alt.email,
       pattern: alt.pattern,
       confidence: alt.confidence,

@@ -1459,15 +1459,17 @@ function displayResults(data) {
 
   const email = String(data?.email || "").trim();
   const confidencePercent = toConfidencePercent(data?.confidence);
-  const confidenceLevel = getConfidenceLevel(confidencePercent);
-  const confidenceDescriptor = getConfidenceDescriptor(confidencePercent);
+  const confidenceBadgeMeta = getSourceConfidenceBadgeMeta(data?.source);
   const alternatives = Array.isArray(data?.alternativeEmails) ? data.alternativeEmails : [];
 
   if (elements.confidenceBadge) {
-    elements.confidenceBadge.dataset.level = confidenceLevel;
+    elements.confidenceBadge.dataset.level = "source";
+    elements.confidenceBadge.style.color = confidenceBadgeMeta.color;
+    elements.confidenceBadge.style.backgroundColor = "#f8fafc";
+    elements.confidenceBadge.style.border = "1px solid #e2e8f0";
   }
   if (elements.confidenceText) {
-    elements.confidenceText.textContent = `Email Found (${confidencePercent}% - ${confidenceDescriptor})`;
+    elements.confidenceText.textContent = `${confidenceBadgeMeta.label}  ${confidencePercent}%`;
   }
   if (elements.resultEmail) {
     elements.resultEmail.textContent = email || "No email returned";
@@ -1508,20 +1510,19 @@ function displayResults(data) {
 
 function renderAlternatives(items) {
   const alternatives = Array.isArray(items) ? items : [];
+  const alternativeCount = alternatives.length;
 
   if (!elements.alternativesList || !elements.alternativesDetails) return;
 
-  if (alternatives.length === 0) {
+  if (alternativeCount === 0) {
+    elements.alternativesDetails.open = false;
     elements.alternativesDetails.classList.add("hidden");
-    if (elements.alternativesSummary) {
-      elements.alternativesSummary.textContent = "Show alternatives";
-    }
     elements.alternativesList.innerHTML = "";
     return;
   }
 
   if (elements.alternativesSummary) {
-    elements.alternativesSummary.textContent = `Show alternatives (${alternatives.length})`;
+    elements.alternativesSummary.textContent = `Show alternatives (${alternativeCount})`;
   }
 
   elements.alternativesDetails.classList.remove("hidden");
@@ -2651,6 +2652,25 @@ function toConfidencePercent(value) {
   if (!Number.isFinite(n)) return 0;
   if (n <= 1) return Math.round(n * 100);
   return Math.round(n);
+}
+
+function getSourceConfidenceBadgeMeta(source) {
+  const normalized = String(source || "").trim().toLowerCase();
+
+  if (normalized === "zerobounce_verified") {
+    return { label: " Verified", color: "#16a34a" };
+  }
+  if (normalized === "zerobounce_catchall") {
+    return { label: "~ Catch-all Domain", color: "#d97706" };
+  }
+  if (normalized === "mx_confirmed_unverified") {
+    return { label: "MX Confirmed", color: "#d97706" };
+  }
+  if (normalized === "pattern_confidence" || normalized === "offline_heuristic") {
+    return { label: "Pattern Match", color: "#6b7280" };
+  }
+
+  return { label: "Checking", color: "#6b7280" };
 }
 
 function getConfidenceLevel(percent) {

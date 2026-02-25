@@ -25,18 +25,25 @@ export const PRICING_REGION_HEADER_KEYS = [
 ] as const;
 
 export const FREE_PLAN_FEATURES = [
-  "25 email generations per month",
-  "15 AI draft generations per month",
+  "50 email credits per month",
   "Basic outreach tracking",
   "Limited contact storage",
   "Manual sync",
   "No credit card required",
 ] as const;
 
+export const STARTER_PLAN_FEATURES = [
+  "500 email credits per month",
+  "AI Starter Access",
+  "Full outreach tracking dashboard",
+  "Advanced contact management",
+  "Priority sync",
+  "Data export",
+] as const;
+
 export const PRO_PLAN_FEATURES = [
-  "Unlimited outreach (Fair use policy applies)",
-  "Up to 1,500 email generations per month",
-  "Unlimited AI draft generations",
+  "1,500 email credits per month",
+  "AI Drafting",
   "Full outreach tracking dashboard",
   "Advanced contact management",
   "Unlimited contact storage",
@@ -50,21 +57,34 @@ const FREE_PRICING_GLOBAL = {
   periodLabel: "",
 } as const;
 
-const PRO_PRICING_GLOBAL = {
+const STARTER_PRICING_GLOBAL = {
   monthly: {
-    amountLabel: "$12",
+    amountLabel: "$14.99",
     periodLabel: "/month",
     savingsLabel: "",
   },
   quarterly: {
-    amountLabel: "$24.99",
+    amountLabel: "$39.99",
     periodLabel: "/quarter",
-    savingsLabel: "Save 31%",
+    savingsLabel: "Save 11%",
+  },
+} as const;
+
+const PRO_PRICING_GLOBAL = {
+  monthly: {
+    amountLabel: "$34.99",
+    periodLabel: "/month",
+    savingsLabel: "",
+  },
+  quarterly: {
+    amountLabel: "$89.99",
+    periodLabel: "/quarter",
+    savingsLabel: "Save 14%",
   },
   yearly: {
-    amountLabel: "$89.99",
+    amountLabel: "$279",
     periodLabel: "/year",
-    savingsLabel: "Save 38%",
+    savingsLabel: "Save 33%",
   },
 } as const;
 
@@ -97,6 +117,19 @@ export function getFreeDisplayPrice(region: PricingRegion) {
 }
 
 /**
+ * Get starter display price.
+ * Starter does not offer yearly billing — falls back to quarterly when billingCycle='yearly'.
+ */
+export function getStarterDisplayPrice(
+  region: PricingRegion,
+  billingCycle: BillingCycle,
+) {
+  void region;
+  const cycle = billingCycle === "yearly" ? "quarterly" : billingCycle;
+  return STARTER_PRICING_GLOBAL[cycle];
+}
+
+/**
  * Get pro display price.
  */
 export function getProDisplayPrice(
@@ -108,7 +141,15 @@ export function getProDisplayPrice(
 }
 
 /**
- * Get quarterly savings label.
+ * Get starter quarterly savings label.
+ */
+export function getStarterQuarterlySavingsLabel(region: PricingRegion) {
+  void region;
+  return STARTER_PRICING_GLOBAL.quarterly.savingsLabel;
+}
+
+/**
+ * Get quarterly savings label (Pro).
  */
 export function getQuarterlySavingsLabel(region: PricingRegion) {
   void region;
@@ -116,7 +157,7 @@ export function getQuarterlySavingsLabel(region: PricingRegion) {
 }
 
 /**
- * Get yearly savings label.
+ * Get yearly savings label (Pro).
  */
 export function getYearlySavingsLabel(region: PricingRegion) {
   void region;
@@ -132,15 +173,42 @@ export function getPricingRegionDisplayLabel(region: PricingRegion) {
 }
 
 /**
- * Get Dodo Payments product ID for the given billing cycle.
- * Priority is cycle-specific global IDs, then legacy global ID fallback.
+ * Get Dodo Payments product ID for the given plan type and billing cycle.
  */
 export function getDodoProductId(
   region: PricingRegion,
   billingCycle: BillingCycle = "monthly",
+  planType: "starter" | "pro" = "pro",
 ): string {
   void region;
 
+  if (planType === "starter") {
+    // Starter does not offer yearly billing
+    const effectiveCycle = billingCycle === "yearly" ? "quarterly" : billingCycle;
+    const starterCandidates: Record<"monthly" | "quarterly", readonly string[]> = {
+      monthly: [
+        "DODO_STARTER_PRODUCT_ID_GLOBAL_MONTHLY",
+        "DODO_STARTER_PRODUCT_ID_MONTHLY",
+      ],
+      quarterly: [
+        "DODO_STARTER_PRODUCT_ID_GLOBAL_QUARTERLY",
+        "DODO_STARTER_PRODUCT_ID_QUARTERLY",
+      ],
+    };
+
+    for (const envKey of starterCandidates[effectiveCycle]) {
+      const value = process.env[envKey];
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+
+    throw new Error(
+      `Missing Dodo product ID env vars for starter "${effectiveCycle}". Expected one of: ${starterCandidates[effectiveCycle].join(", ")}`,
+    );
+  }
+
+  // Pro plan
   const envCandidatesByCycle: Record<BillingCycle, readonly string[]> = {
     monthly: [
       "DODO_PRO_PRODUCT_ID_GLOBAL_MONTHLY",
@@ -176,6 +244,30 @@ export function getDodoProductId(
   }
 
   throw new Error(
-    `Missing Dodo product ID env vars for "${billingCycle}". Expected one of: ${envCandidatesByCycle[billingCycle].join(", ")}`,
+    `Missing Dodo product ID env vars for pro "${billingCycle}". Expected one of: ${envCandidatesByCycle[billingCycle].join(", ")}`,
   );
+}
+
+/**
+ * Resolve plan type from a Dodo product ID.
+ * Checks against known starter product ID env vars; falls back to 'pro'.
+ */
+export function resolvePlanTypeFromProductId(productId: string | null): "starter" | "pro" {
+  if (!productId) return "pro";
+
+  const starterEnvKeys = [
+    "DODO_STARTER_PRODUCT_ID_GLOBAL_MONTHLY",
+    "DODO_STARTER_PRODUCT_ID_MONTHLY",
+    "DODO_STARTER_PRODUCT_ID_GLOBAL_QUARTERLY",
+    "DODO_STARTER_PRODUCT_ID_QUARTERLY",
+  ];
+
+  for (const envKey of starterEnvKeys) {
+    const value = process.env[envKey];
+    if (typeof value === "string" && value.trim() === productId.trim()) {
+      return "starter";
+    }
+  }
+
+  return "pro";
 }

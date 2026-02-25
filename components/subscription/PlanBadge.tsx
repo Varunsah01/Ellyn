@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 
 type PlanBadgeProps = {
-  plan: 'free' | 'pro'
+  plan: 'free' | 'starter' | 'pro'
   className?: string
 }
 
@@ -16,6 +16,20 @@ export function PlanBadge({ plan, className }: PlanBadgeProps) {
         )}
       >
         ✦ Pro
+      </span>
+    )
+  }
+
+  if (plan === 'starter') {
+    return (
+      <span
+        className={cn(
+          'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold',
+          'bg-gradient-to-r from-teal-500 to-emerald-500 text-white',
+          className
+        )}
+      >
+        ✦ Starter
       </span>
     )
   }

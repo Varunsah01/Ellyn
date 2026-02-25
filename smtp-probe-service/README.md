@@ -1,3 +1,6 @@
+> DEPRECATED: This service is no longer used.  
+> Email verification is now handled by ZeroBounce API via /api/v1/zerobounce-verify.
+
 # SMTP Probe Service
 
 Standalone Node.js SMTP probe microservice for deliverability probing.  

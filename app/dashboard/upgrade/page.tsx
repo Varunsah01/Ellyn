@@ -14,8 +14,10 @@ import {
   type BillingCycle,
   DEFAULT_PRICING_REGION,
   FREE_PLAN_FEATURES,
+  STARTER_PLAN_FEATURES,
   PRO_PLAN_FEATURES,
   getFreeDisplayPrice,
+  getStarterDisplayPrice,
   getProDisplayPrice,
   getQuarterlySavingsLabel,
   getYearlySavingsLabel,
@@ -27,7 +29,8 @@ export default function UpgradePage() {
   const { plan_type, isLoading } = useSubscription()
 
   const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly')
-  const [isCheckingOut, setIsCheckingOut] = useState(false)
+  const [isCheckingOutStarter, setIsCheckingOutStarter] = useState(false)
+  const [isCheckingOutPro, setIsCheckingOutPro] = useState(false)
   const [canceledBanner, setCanceledBanner] = useState(false)
 
   useEffect(() => {
@@ -36,13 +39,18 @@ export default function UpgradePage() {
     }
   }, [searchParams])
 
-  const handleUpgrade = async () => {
-    setIsCheckingOut(true)
+  const handleUpgrade = async (planType: 'starter' | 'pro') => {
+    if (planType === 'starter') {
+      setIsCheckingOutStarter(true)
+    } else {
+      setIsCheckingOutPro(true)
+    }
     try {
+      const effectiveCycle = planType === 'starter' && billingCycle === 'yearly' ? 'quarterly' : billingCycle
       const res = await supabaseAuthedFetch('/api/v1/subscription/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billingCycle }),
+        body: JSON.stringify({ billingCycle: effectiveCycle, planType }),
       })
 
       const data = await res.json()
@@ -55,7 +63,8 @@ export default function UpgradePage() {
         window.location.href = data.url
       }
     } finally {
-      setIsCheckingOut(false)
+      setIsCheckingOutStarter(false)
+      setIsCheckingOutPro(false)
     }
   }
 
@@ -70,13 +79,19 @@ export default function UpgradePage() {
   }
 
   const freePricing = getFreeDisplayPrice(DEFAULT_PRICING_REGION)
+  const starterPricing = getStarterDisplayPrice(DEFAULT_PRICING_REGION, billingCycle)
   const proPricing = getProDisplayPrice(DEFAULT_PRICING_REGION, billingCycle)
   const quarterlySavingsLabel = getQuarterlySavingsLabel(DEFAULT_PRICING_REGION)
   const yearlySavingsLabel = getYearlySavingsLabel(DEFAULT_PRICING_REGION)
 
+  const starterBillingLabel =
+    billingCycle === 'yearly'
+      ? '/quarter (billed quarterly)'
+      : starterPricing.periodLabel
+
   return (
     <DashboardShell>
-      <div className="mx-auto max-w-4xl space-y-8">
+      <div className="mx-auto max-w-5xl space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-fraunces font-bold">Upgrade Your Plan</h1>
           <p className="mt-2 text-muted-foreground">
@@ -119,7 +134,7 @@ export default function UpgradePage() {
               yearlySavingsLabel={yearlySavingsLabel}
             />
 
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               <PricingCard
                 planName="Free"
                 planSubtitle="Get started at no cost"
@@ -137,36 +152,89 @@ export default function UpgradePage() {
               />
 
               <PricingCard
+                planName="Starter"
+                planSubtitle="For growing your outreach"
+                priceLabel={starterPricing.amountLabel}
+                billingLabel={starterBillingLabel}
+                features={[...STARTER_PLAN_FEATURES]}
+                ctaLabel={
+                  plan_type === 'starter'
+                    ? 'Current Plan'
+                    : isCheckingOutStarter
+                      ? 'Redirecting...'
+                      : 'Get Starter'
+                }
+                ctaHref="#"
+                ctaOnClick={plan_type === 'starter' ? undefined : () => handleUpgrade('starter')}
+                ctaDisabled={plan_type === 'starter' || isCheckingOutStarter}
+                isPopular={false}
+                badgeLabel="Best Value"
+                supportText={null}
+                underPriceText={null}
+                savingsBadge={starterPricing.savingsLabel || null}
+                priceKey={`global-${billingCycle}-starter`}
+              />
+
+              <PricingCard
                 planName="Pro"
                 planSubtitle="For serious job seekers"
                 priceLabel={proPricing.amountLabel}
                 billingLabel={proPricing.periodLabel}
                 features={[...PRO_PLAN_FEATURES]}
-                ctaLabel={isCheckingOut ? 'Redirecting...' : 'Upgrade to Pro'}
+                ctaLabel={isCheckingOutPro ? 'Redirecting...' : 'Upgrade to Pro'}
                 ctaHref="#"
-                ctaOnClick={handleUpgrade}
-                ctaDisabled={isCheckingOut}
+                ctaOnClick={() => handleUpgrade('pro')}
+                ctaDisabled={isCheckingOutPro}
                 isPopular
                 badgeLabel="Most Popular"
                 supportText={null}
-                underPriceText={null}
+                underPriceText="*Fair usage applies"
                 savingsBadge={proPricing.savingsLabel || null}
-                priceKey={`global-${billingCycle}`}
+                priceKey={`global-${billingCycle}-pro`}
               />
             </div>
 
-            <div className="text-center">
-              <Button
-                size="lg"
-                onClick={handleUpgrade}
-                disabled={isCheckingOut}
-                className="min-w-[180px]"
-              >
-                {isCheckingOut
-                  ? 'Redirecting...'
-                  : `Upgrade to Pro - ${proPricing.amountLabel}${proPricing.periodLabel}`}
-              </Button>
-            </div>
+            {/* CTA buttons */}
+            {plan_type !== 'starter' && (
+              <div className="flex flex-wrap justify-center gap-4">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={() => handleUpgrade('starter')}
+                  disabled={isCheckingOutStarter}
+                  className="min-w-[200px]"
+                >
+                  {isCheckingOutStarter
+                    ? 'Redirecting...'
+                    : `Get Starter — ${starterPricing.amountLabel}${starterBillingLabel}`}
+                </Button>
+                <Button
+                  size="lg"
+                  onClick={() => handleUpgrade('pro')}
+                  disabled={isCheckingOutPro}
+                  className="min-w-[200px]"
+                >
+                  {isCheckingOutPro
+                    ? 'Redirecting...'
+                    : `Upgrade to Pro — ${proPricing.amountLabel}${proPricing.periodLabel}`}
+                </Button>
+              </div>
+            )}
+
+            {plan_type === 'starter' && (
+              <div className="flex justify-center">
+                <Button
+                  size="lg"
+                  onClick={() => handleUpgrade('pro')}
+                  disabled={isCheckingOutPro}
+                  className="min-w-[200px]"
+                >
+                  {isCheckingOutPro
+                    ? 'Redirecting...'
+                    : `Upgrade to Pro — ${proPricing.amountLabel}${proPricing.periodLabel}`}
+                </Button>
+              </div>
+            )}
 
             {/* Feature comparison table */}
             <div className="overflow-hidden rounded-xl border">
@@ -175,22 +243,24 @@ export default function UpgradePage() {
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Feature</th>
                     <th className="px-4 py-3 text-center font-medium text-muted-foreground">Free</th>
+                    <th className="px-4 py-3 text-center font-medium text-muted-foreground">Starter</th>
                     <th className="px-4 py-3 text-center font-medium text-primary">Pro</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {[
-                    ['Email generations / month', '25', '1,500'],
-                    ['AI draft generations / month', '15', 'Unlimited'],
-                    ['Contact storage', 'Limited', 'Unlimited'],
-                    ['Outreach tracking', 'Basic', 'Full dashboard'],
-                    ['Data export', 'No', 'Yes'],
-                    ['Priority sync', 'No', 'Yes'],
-                    ['Early access to features', 'No', 'Yes'],
-                  ].map(([feature, free, pro]) => (
+                    ['Email credits / month', '50', '500', '1,500'],
+                    ['AI drafting', '—', 'AI Starter Access', 'Included'],
+                    ['Outreach tracking', 'Basic', 'Full dashboard', 'Full dashboard'],
+                    ['Contact storage', 'Limited', 'Advanced', 'Unlimited'],
+                    ['Data export', 'No', 'Yes', 'Yes'],
+                    ['Priority sync', 'No', 'Yes', 'Yes'],
+                    ['Early access to features', 'No', 'No', 'Yes'],
+                  ].map(([feature, free, starter, pro]) => (
                     <tr key={feature} className="hover:bg-muted/30">
                       <td className="px-4 py-3 text-foreground">{feature}</td>
                       <td className="px-4 py-3 text-center text-muted-foreground">{free}</td>
+                      <td className="px-4 py-3 text-center text-muted-foreground">{starter}</td>
                       <td className="px-4 py-3 text-center font-medium text-primary">{pro}</td>
                     </tr>
                   ))}

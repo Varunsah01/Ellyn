@@ -1,5 +1,11 @@
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
+export const PLAN_LIMITS = {
+  free:    { email: 50,   ai_draft: 0   },
+  starter: { email: 500,  ai_draft: 150 },
+  pro:     { email: 1500, ai_draft: 500 },
+} as const
+
 export class QuotaExceededError extends Error {
   constructor(
     public feature: string,
@@ -37,9 +43,10 @@ export async function getUserQuota(userId: string): Promise<QuotaInfo> {
     .single()
 
   const planType: string = profile?.plan_type ?? 'free'
-  const emailLimit = Number(quotaData?.email_lookups_limit ?? 25)
+  const emailLimit = Number(quotaData?.email_lookups_limit ?? 50)
   const emailUsed = Number(quotaData?.email_lookups_used ?? 0)
-  const aiDraftLimit = planType === 'pro' ? 999999 : 15
+  const limits = PLAN_LIMITS[planType as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS.free
+  const aiDraftLimit = limits.ai_draft
   const aiDraftUsed = Number(quotaData?.ai_draft_generations_used ?? 0)
 
   return {
@@ -84,7 +91,7 @@ export async function incrementEmailGeneration(userId: string): Promise<void> {
     throw new QuotaExceededError(
       'email_generation',
       Number(quotaData?.email_lookups_used ?? 0),
-      Number(quotaData?.email_lookups_limit ?? 25),
+      Number(quotaData?.email_lookups_limit ?? 50),
       profile?.plan_type ?? 'free'
     )
   }
@@ -114,11 +121,12 @@ export async function incrementAIDraftGeneration(userId: string): Promise<void> 
       .single()
 
     const planType = profile?.plan_type ?? 'free'
+    const limits = PLAN_LIMITS[planType as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS.free
 
     throw new QuotaExceededError(
       'ai_draft',
       Number(quotaData?.ai_draft_generations_used ?? 0),
-      planType === 'pro' ? 999999 : 15,
+      limits.ai_draft,
       planType
     )
   }

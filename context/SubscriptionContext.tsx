@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 
-export type PlanType = 'free' | 'pro'
+export type PlanType = 'free' | 'starter' | 'pro'
 
 export type QuotaInfo = {
   email: { used: number; limit: number }
@@ -24,8 +24,8 @@ const defaultState: SubscriptionState = {
   subscription_status: null,
   current_period_end: null,
   quota: {
-    email: { used: 0, limit: 25 },
-    ai_draft: { used: 0, limit: 15 },
+    email: { used: 0, limit: 50 },
+    ai_draft: { used: 0, limit: 0 },
     reset_date: null,
   },
   isLoading: true,
@@ -40,8 +40,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     subscription_status: null,
     current_period_end: null,
     quota: {
-      email: { used: 0, limit: 25 },
-      ai_draft: { used: 0, limit: 15 },
+      email: { used: 0, limit: 50 },
+      ai_draft: { used: 0, limit: 0 },
       reset_date: null,
     },
     isLoading: true,
@@ -57,8 +57,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
         subscription_status: data.subscription_status ?? null,
         current_period_end: data.current_period_end ?? null,
         quota: data.quota ?? {
-          email: { used: 0, limit: 25 },
-          ai_draft: { used: 0, limit: 15 },
+          email: { used: 0, limit: 50 },
+          ai_draft: { used: 0, limit: 0 },
           reset_date: null,
         },
         isLoading: false,

@@ -45,13 +45,17 @@ export default function BillingPage() {
 
   useEffect(() => {
     if (searchParams.get('success') === 'true') {
-      showToast.success('Welcome to Pro! Your subscription is now active.')
+      showToast.success(
+        plan_type === 'starter'
+          ? 'Welcome to Starter! Your subscription is now active.'
+          : 'Welcome to Pro! Your subscription is now active.'
+      )
       refresh()
     }
-  }, [searchParams, refresh])
+  }, [searchParams, refresh, plan_type])
 
   useEffect(() => {
-    if (plan_type === 'pro') {
+    if (plan_type === 'starter' || plan_type === 'pro') {
       setInvoicesLoading(true)
       fetch('/api/v1/subscription/invoices')
         .then((r) => r.json())
@@ -76,8 +80,11 @@ export default function BillingPage() {
     }
   }
 
+  const isPaidPlan = plan_type === 'starter' || plan_type === 'pro'
   const emailPct = quota.email.limit > 0 ? Math.min(100, (quota.email.used / quota.email.limit) * 100) : 0
-  const aiDraftPct = plan_type === 'pro' ? 0 : quota.ai_draft.limit > 0 ? Math.min(100, (quota.ai_draft.used / quota.ai_draft.limit) * 100) : 0
+  const aiDraftPct = isPaidPlan && quota.ai_draft.limit > 0
+    ? Math.min(100, (quota.ai_draft.used / quota.ai_draft.limit) * 100)
+    : 0
 
   return (
     <DashboardShell>
@@ -92,7 +99,9 @@ export default function BillingPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               Current Plan
-              {!isLoading && <PlanBadge plan={plan_type === 'pro' ? 'pro' : 'free'} />}
+              {!isLoading && (
+                <PlanBadge plan={plan_type === 'pro' ? 'pro' : plan_type === 'starter' ? 'starter' : 'free'} />
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -102,7 +111,7 @@ export default function BillingPage() {
               <>
                 {subscription_status === 'past_due' && (
                   <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    Your payment is past due. Please update your payment method to keep Pro access.
+                    Your payment is past due. Please update your payment method to keep access.
                   </div>
                 )}
 
@@ -126,13 +135,20 @@ export default function BillingPage() {
                 </div>
 
                 <div className="flex gap-3">
-                  {plan_type === 'pro' ? (
-                    <Button onClick={handlePortal} disabled={portalLoading} variant="outline">
-                      {subscription_status === 'past_due' ? 'Fix Payment' : 'Manage Subscription'}
-                    </Button>
+                  {isPaidPlan ? (
+                    <>
+                      <Button onClick={handlePortal} disabled={portalLoading} variant="outline">
+                        {subscription_status === 'past_due' ? 'Fix Payment' : 'Manage Subscription'}
+                      </Button>
+                      {plan_type === 'starter' && (
+                        <Button asChild>
+                          <Link href="/dashboard/upgrade">Upgrade to Pro</Link>
+                        </Button>
+                      )}
+                    </>
                   ) : (
                     <Button asChild>
-                      <Link href="/dashboard/upgrade">Upgrade to Pro</Link>
+                      <Link href="/dashboard/upgrade">Upgrade Plan</Link>
                     </Button>
                   )}
                 </div>
@@ -156,7 +172,7 @@ export default function BillingPage() {
               <>
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="font-medium">Email generations</span>
+                    <span className="font-medium">Email credits</span>
                     <span className="text-muted-foreground">
                       {quota.email.used} / {quota.email.limit.toLocaleString()}
                     </span>
@@ -164,15 +180,27 @@ export default function BillingPage() {
                   <Progress value={emailPct} className="h-2" />
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium">AI draft generations</span>
-                    <span className="text-muted-foreground">
-                      {plan_type === 'pro' ? `${quota.ai_draft.used} / Unlimited` : `${quota.ai_draft.used} / ${quota.ai_draft.limit}`}
-                    </span>
+                {isPaidPlan ? (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="font-medium">AI draft generations</span>
+                      <span className="text-muted-foreground">
+                        {quota.ai_draft.used} / {quota.ai_draft.limit.toLocaleString()}
+                      </span>
+                    </div>
+                    <Progress value={aiDraftPct} className="h-2" />
                   </div>
-                  {plan_type !== 'pro' && <Progress value={aiDraftPct} className="h-2" />}
-                </div>
+                ) : (
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">AI draft generations</p>
+                    <p className="text-sm text-muted-foreground">
+                      Not available on Free plan.{' '}
+                      <Link href="/dashboard/upgrade" className="text-primary underline">
+                        Upgrade to unlock
+                      </Link>
+                    </p>
+                  </div>
+                )}
 
                 {quota.reset_date && (
                   <p className="text-xs text-muted-foreground">
@@ -184,8 +212,8 @@ export default function BillingPage() {
           </CardContent>
         </Card>
 
-        {/* Billing History (Pro only) */}
-        {plan_type === 'pro' && (
+        {/* Billing History (paid plans only) */}
+        {isPaidPlan && (
           <Card>
             <CardHeader>
               <CardTitle>Billing History</CardTitle>
@@ -261,21 +289,24 @@ export default function BillingPage() {
                   <tr>
                     <th className="pb-2 text-left font-medium text-muted-foreground">Feature</th>
                     <th className="pb-2 text-center font-medium text-muted-foreground">Free</th>
+                    <th className="pb-2 text-center font-medium text-muted-foreground">Starter</th>
                     <th className="pb-2 text-center font-medium text-primary">Pro</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {[
-                    ['Email generations / month', '25', '1,500'],
-                    ['AI draft generations / month', '15', 'Unlimited'],
-                    ['Contact storage', 'Limited', 'Unlimited'],
-                    ['Outreach tracking', 'Basic', 'Full dashboard'],
-                    ['Data export', '✗', '✓'],
-                    ['Priority sync', '✗', '✓'],
-                  ].map(([feature, free, pro]) => (
+                    ['Email credits / month', '50', '500', '1,500'],
+                    ['AI drafting', '—', 'AI Starter Access', 'Included'],
+                    ['Outreach tracking', 'Basic', 'Full dashboard', 'Full dashboard'],
+                    ['Contact storage', 'Limited', 'Advanced', 'Unlimited'],
+                    ['Data export', '✗', '✓', '✓'],
+                    ['Priority sync', '✗', '✓', '✓'],
+                    ['Early access', '✗', '✗', '✓'],
+                  ].map(([feature, free, starter, pro]) => (
                     <tr key={feature}>
                       <td className="py-2 text-foreground">{feature}</td>
                       <td className="py-2 text-center text-muted-foreground">{free}</td>
+                      <td className="py-2 text-center text-muted-foreground">{starter}</td>
                       <td className="py-2 text-center font-medium text-primary">{pro}</td>
                     </tr>
                   ))}

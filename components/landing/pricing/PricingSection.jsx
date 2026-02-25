@@ -6,8 +6,10 @@ import { fadeInUp } from "@/lib/animations";
 import {
   DEFAULT_PRICING_REGION,
   FREE_PLAN_FEATURES,
+  STARTER_PLAN_FEATURES,
   PRO_PLAN_FEATURES,
   getFreeDisplayPrice,
+  getStarterDisplayPrice,
   getProDisplayPrice,
   getQuarterlySavingsLabel,
   getYearlySavingsLabel,
@@ -22,6 +24,10 @@ export function PricingSection() {
     () => getFreeDisplayPrice(DEFAULT_PRICING_REGION),
     [],
   );
+  const starterPrice = useMemo(
+    () => getStarterDisplayPrice(DEFAULT_PRICING_REGION, billingCycle),
+    [billingCycle],
+  );
   const proPrice = useMemo(
     () => getProDisplayPrice(DEFAULT_PRICING_REGION, billingCycle),
     [billingCycle],
@@ -34,6 +40,12 @@ export function PricingSection() {
     () => getYearlySavingsLabel(DEFAULT_PRICING_REGION),
     [],
   );
+
+  // Starter doesn't offer yearly billing — show fallback note when yearly is selected
+  const starterBillingLabel =
+    billingCycle === "yearly"
+      ? "/quarter (billed quarterly)"
+      : starterPrice.periodLabel;
 
   return (
     <section
@@ -63,7 +75,7 @@ export function PricingSection() {
           yearlySavingsLabel={yearlySavingsLabel}
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8 items-stretch">
           <PricingCard
             planName="Free"
             planSubtitle="Perfect to get started"
@@ -77,6 +89,19 @@ export function PricingSection() {
           />
 
           <PricingCard
+            planName="Starter"
+            planSubtitle="For growing your outreach"
+            priceLabel={starterPrice.amountLabel}
+            billingLabel={starterBillingLabel}
+            features={STARTER_PLAN_FEATURES}
+            ctaLabel="Get Started"
+            ctaHref="/auth/signup?plan=starter"
+            badgeLabel="Best Value"
+            savingsBadge={starterPrice.savingsLabel || ""}
+            priceKey={`global-${billingCycle}-starter`}
+          />
+
+          <PricingCard
             planName="Pro"
             planSubtitle="Built for high-intent outreach"
             priceLabel={proPrice.amountLabel}
@@ -86,7 +111,7 @@ export function PricingSection() {
             ctaHref="/auth/signup?plan=pro"
             isPopular
             badgeLabel="Most Popular"
-            underPriceText="Unlimited outreach subject to fair use policy."
+            underPriceText="*Fair usage applies"
             savingsBadge={proPrice.savingsLabel || ""}
             priceKey={`global-${billingCycle}-pro`}
           />
