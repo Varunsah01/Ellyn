@@ -357,7 +357,7 @@ async function getQuotaSnapshot(userId: string): Promise<QuotaSnapshot> {
 
   try {
     const quota = await getUserQuota(userId)
-    const limit = toSafeInt((quota as any).email_lookups_limit, 25)
+    const limit = toSafeInt((quota as any).email_lookups_limit, 50)
     const used = toSafeInt((quota as any).email_lookups_used, 0)
     const resetDate = (quota as any).period_end ? new Date((quota as any).period_end) : null
     const remaining = Math.max(0, limit - used)

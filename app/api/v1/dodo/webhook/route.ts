@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getDodoClient } from '@/lib/dodo'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { resolvePlanTypeFromProductId } from '@/lib/pricing-config'
 
 export const runtime = 'nodejs'
 
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case 'subscription.active':
       case 'subscription.activated': {
+        const resolvedPlan = resolvePlanTypeFromProductId(productId)
         if (userId) {
           await supabase
             .from('user_profiles')
@@ -65,7 +67,7 @@ export async function POST(request: NextRequest) {
               dodo_customer_id: customerId,
               dodo_subscription_id: subscriptionId,
               dodo_product_id: productId,
-              plan_type: 'pro',
+              plan_type: resolvedPlan,
               subscription_status: 'active',
             })
             .eq('id', userId)
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest) {
             .update({
               dodo_subscription_id: subscriptionId,
               dodo_product_id: productId,
-              plan_type: 'pro',
+              plan_type: resolvedPlan,
               subscription_status: 'active',
             })
             .eq('dodo_customer_id', customerId)

@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 
 import { createServiceClient } from '@/lib/supabase'
+import { resolvePlanTypeFromProductId } from '@/lib/pricing-config'
 
 type DodoEvent = {
   id?: string
@@ -97,9 +98,10 @@ export async function POST(req: NextRequest) {
         const sub = eventData as DodoSubscriptionData
         const metadata = sub.metadata && typeof sub.metadata === 'object' ? sub.metadata : undefined
         const userId = extractUserId(metadata)
+        const resolvedPlan = resolvePlanTypeFromProductId(sub.product_id ?? null)
 
         const profileUpdate = {
-          plan_type: 'pro' as const,
+          plan_type: resolvedPlan,
           subscription_status: 'active' as const,
           dodo_subscription_id: sub.id ?? null,
           dodo_customer_id: sub.customer_id ?? null,
@@ -118,8 +120,7 @@ export async function POST(req: NextRequest) {
           await db
             .from('user_quotas')
             .update({
-              ai_generations_limit: 500,
-              email_lookups_limit: 200,
+              email_lookups_limit: resolvedPlan === 'starter' ? 500 : 1500,
             })
             .eq('user_id', userId)
         }
@@ -146,8 +147,7 @@ export async function POST(req: NextRequest) {
           await db
             .from('user_quotas')
             .update({
-              ai_generations_limit: 50,
-              email_lookups_limit: 20,
+              email_lookups_limit: 50,
             })
             .eq('user_id', userId)
         }

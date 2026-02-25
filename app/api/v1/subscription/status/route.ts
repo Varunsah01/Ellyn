@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { captureApiException } from '@/lib/monitoring/sentry'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { PLAN_LIMITS } from '@/lib/quota'
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,9 +31,10 @@ export async function GET(request: NextRequest) {
       .single()
 
     const emailUsed = Number(quotaData?.email_lookups_used ?? 0)
-    const emailLimit = Number(quotaData?.email_lookups_limit ?? 25)
+    const emailLimit = Number(quotaData?.email_lookups_limit ?? 50)
     const aiDraftUsed = Number(quotaData?.ai_draft_generations_used ?? 0)
-    const aiDraftLimit = planType === 'pro' ? 999999 : 15
+    const planLimits = PLAN_LIMITS[planType as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS.free
+    const aiDraftLimit = planLimits.ai_draft
 
     return NextResponse.json({
       plan_type: planType,
