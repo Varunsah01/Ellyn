@@ -11,39 +11,39 @@ import { fadeInUp } from "@/lib/animations";
 
 const faqs = [
   {
-    question: "How quickly can I start reaching hiring managers and decision-makers?",
+    question: "How quickly can I start finding emails?",
     answer:
-      "Install the Chrome extension in under 30 seconds, open any LinkedIn profile, and Ellyn surfaces a verified professional email instantly. Add a personalised AI-drafted message and you're in someone's inbox — all in under two minutes. Most users send their first outreach email the same day they install.",
+      "Install the Chrome extension in under 30 seconds, open any LinkedIn profile, and Ellyn surfaces a verified professional email instantly. Or use the dashboard to look up anyone by name and company. Most users send their first outreach email the same day they sign up.",
   },
   {
-    question: "What kind of results do Ellyn users actually see?",
+    question: "How accurate are the email addresses?",
     answer:
-      "Our users consistently land referral calls and interview opportunities within days of their first outreach — not weeks. Direct email outreach to the right person gets 3–5× higher response rates than LinkedIn connection requests, and our AI-crafted templates are built specifically to get replies, not get ignored.",
+      "Ellyn uses a 6-layer resolution cascade with real-time MX and SMTP verification to deliver 95%+ accuracy. Every email comes with a confidence score so you know exactly what to expect before you hit send.",
   },
   {
     question: "How does the AI email drafting work?",
     answer:
-      "Ellyn reads the person's role and company, then generates a fully personalised outreach email tailored to your goal — whether that's requesting a referral, setting up an informational interview, or making a direct introduction. Every draft is concise, professional, and written to feel human, not templated. Pro users get unlimited AI drafts.",
+      "Ellyn reads the person's role and company, then generates a fully personalized outreach email tailored to your goal — whether that's requesting a referral, pitching a product, or booking a meeting. Every draft is concise, professional, and written to feel human, not templated. Pro users get unlimited AI drafts.",
   },
   {
-    question: "How is this different from doing outreach manually?",
+    question: "Can I use Ellyn for sales and business development?",
     answer:
-      "Researching one contact manually — hunting for contact details, piecing together a message, wondering if it'll land — takes 20–30 minutes per person. Ellyn does all of that in seconds, lets you track every email you send, and surfaces the right follow-up at the right time. It's not just faster; it's a completely different standard of outreach.",
+      "Absolutely. Ellyn is built for anyone who needs to reach professionals directly — SDRs building prospect lists, founders doing outbound, agencies managing client outreach, or job seekers going after referrals. The email discovery engine and AI drafting work the same regardless of your use case.",
   },
   {
-    question: "Can I use Ellyn for networking beyond just job searching?",
+    question: "Is Ellyn compliant with email regulations?",
     answer:
-      "Absolutely. Ellyn works for anyone who wants to reach professionals directly — mentors, collaborators, clients, investors, or industry leaders you're trying to connect with. Wherever you need to cut through the noise and reach someone who matters, Ellyn gets you there.",
+      "Yes. Ellyn never auto-sends emails on your behalf — you write, review, and send every message yourself. This keeps you fully compliant with CAN-SPAM and GDPR. We also never scrape or automate LinkedIn, so your account remains safe.",
   },
   {
     question: "What does the Pro plan unlock?",
     answer:
-      "Pro gives you unlimited AI-generated drafts tailored to every contact, advanced pipeline tracking so you always know who to follow up with and when, and priority access to new features as we ship them. If you're running a serious job search or outreach campaign, Pro pays for itself with the first interview it helps you land.",
+      "Pro gives you unlimited AI-generated drafts tailored to every contact, advanced pipeline tracking so you always know who to follow up with and when, and priority access to new features as we ship them. Whether you're running a serious job search, sales prospecting, or business development — Pro pays for itself fast.",
   },
   {
     question: "Is my information private and secure?",
     answer:
-      "Yes, completely. Ellyn only stores what's needed to manage your outreach — saved contacts, draft emails, and status updates. We never sell your data or share it with third parties, and you can delete everything from your settings at any time. Your job search stays entirely yours.",
+      "Yes, completely. Ellyn only stores what's needed to manage your outreach — saved contacts, draft emails, and status updates. We never sell your data or share it with third parties, and you can delete everything from your settings at any time. Your data stays entirely yours.",
   },
   {
     question: "Can I try it before upgrading to Pro?",
@@ -75,7 +75,7 @@ export function FAQ() {
             <span className="text-primary">Know</span>
           </h2>
           <p className="text-xl font-dm-sans text-muted-foreground">
-            Your questions answered — so nothing stands between you and your next opportunity.
+            Common questions about email discovery, outreach, and how Ellyn works.
           </p>
         </motion.div>
 

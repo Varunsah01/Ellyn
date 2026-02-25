@@ -8,18 +8,18 @@ import { fadeInUp, slideInLeft, slideInRight } from "@/lib/animations";
 
 const stats = [
   {
-    value: "2,000+",
-    label: "Job Seekers Helped",
+    value: "5,000+",
+    label: "Professionals Helped",
     icon: PartyPopper,
   },
   {
-    value: "850+",
-    label: "Interviews Landed",
+    value: "95%+",
+    label: "Email Accuracy",
     icon: Shield,
   },
   {
-    value: "$0",
-    label: "Cost to You",
+    value: "100x",
+    label: "Cheaper Than Competitors",
     icon: DollarSign,
   },
 ];
@@ -43,11 +43,11 @@ export function About() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-foreground mb-4">
-            I Was{" "}
-            <span className="text-primary">Tired of Begging</span> for Referrals on LinkedIn
+            Built by Someone Who{" "}
+            <span className="text-primary">Needed It</span>
           </h2>
           <p className="text-xl font-dm-sans text-muted-foreground max-w-2xl mx-auto">
-            So I built the tool I wish I had during my own job search.
+            From frustrated job seeker to building a platform used by sales teams and professionals worldwide.
           </p>
         </motion.div>
 
@@ -103,11 +103,11 @@ export function About() {
             </p>
 
             <p className="text-lg font-dm-sans text-muted-foreground leading-relaxed">
-              I tried Hunter.io ($49/month), LinkedIn automation tools (terrifying), and writing custom emails for hours. Nothing felt right. Hunter was too expensive for a broke job seeker. Automation risked my account. Custom outreach took forever.
+              I tried Hunter.io ($49/month), LinkedIn automation tools (terrifying), and writing custom emails for hours. Nothing felt right. Everything was either too expensive, too risky, or too slow.
             </p>
 
             <p className="text-lg font-dm-sans text-muted-foreground leading-relaxed">
-              So I built Ellyn—the tool I needed. Find emails fast. Get proven templates. Never risk your LinkedIn. <span className="text-primary font-semibold">And it's free because I remember what it's like to be broke and desperate.</span>
+              So I built Ellyn — fast email discovery, AI-powered drafts, and a pipeline to track it all. What started as a job search tool is now used by <span className="text-primary font-semibold">sales teams, recruiters, and founders who need to reach the right people.</span>
             </p>
 
             <p className="text-lg font-dm-sans text-foreground/80 leading-relaxed italic">
@@ -140,7 +140,7 @@ export function About() {
             <div className="pt-6">
               <Link href="/auth/signup">
                 <Button size="lg" className="font-dm-sans bg-primary hover:bg-primary/90 text-white shadow-lg h-12 px-8 text-lg">
-                  Start Your Journey Free
+                  Get Started Free
                 </Button>
               </Link>
             </div>

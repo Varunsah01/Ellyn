@@ -28,7 +28,7 @@ export function Hero() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
             </span>
-            The Calm Way to Get Referrals
+            Professional Email Outreach, Simplified
           </motion.div>
 
           {/* Headline */}
@@ -38,9 +38,9 @@ export function Hero() {
             transition={{ delay: 0.2 }}
             className="text-4xl md:text-6xl lg:text-7xl font-fraunces font-bold mb-6 leading-[1.1] text-foreground tracking-tight"
           >
-            Stop Applying Blindly. <br className="hidden md:block" />
-            Start <span className="text-primary relative whitespace-nowrap">
-              Connecting
+            Find Anyone&apos;s Email. <br className="hidden md:block" />
+            Reach Out with <span className="text-primary relative whitespace-nowrap">
+              Confidence
               <svg className="absolute w-full h-3 -bottom-1 left-0 text-primary/20 -z-10" viewBox="0 0 100 10" preserveAspectRatio="none">
                 <path d="M0 5 Q 50 10 100 5" stroke="currentColor" strokeWidth="8" fill="none" />
               </svg>
@@ -54,7 +54,7 @@ export function Hero() {
             transition={{ delay: 0.3 }}
             className="text-xl text-muted-foreground mb-10 leading-relaxed max-w-2xl font-dm-sans"
           >
-            Find decision-makers' emails, write thoughtful outreach, and land interviews—without the anxiety of "sales" tools.
+            Discover verified email addresses for hiring managers, prospects, or decision-makers. Write personalized outreach powered by AI — and get replies, not silence.
           </motion.p>
 
           {/* CTAs */}
@@ -69,7 +69,7 @@ export function Hero() {
                 size="lg"
                 className="w-full sm:w-auto text-lg px-8 h-14 bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20 rounded-xl font-dm-sans transition-all hover:scale-105"
               >
-                Write Your First Email
+                Start Finding Emails Free
               </Button>
             </Link>
           </motion.div>
@@ -81,9 +81,10 @@ export function Hero() {
              transition={{ delay: 0.6 }}
              className="mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-2 text-sm text-muted-foreground font-dm-sans"
           >
-             <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-primary" /> Free forever</span>
+             <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-primary" /> Free to start</span>
              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-primary" /> No credit card</span>
-             <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-primary" /> No automation spam</span>
+             <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-primary" /> 95%+ accuracy</span>
+             <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-primary" /> GDPR compliant</span>
           </motion.div>
         </div>
       </div>

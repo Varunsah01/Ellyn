@@ -3,11 +3,11 @@
 import { Card, CardContent } from "@/components/ui/Card";
 import {
   UserCheck,
-  BrainCircuit,
+  BadgeCheck,
   FileText,
   ListChecks,
   ShieldCheck,
-  PartyPopper,
+  Coins,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
@@ -15,39 +15,39 @@ import { fadeInUp, staggerContainer } from "@/lib/animations";
 const features = [
   {
     icon: UserCheck,
-    title: "Get Past the Gatekeepers",
+    title: "Find the Right People",
     description:
-      "Find the actual decision-makers at your target companies. No more waiting for HR to respond. Example: \"Found the hiring manager's email at Google in 10 seconds.\"",
+      "Discover verified professional emails for anyone — hiring managers, prospects, founders, or executives. Our 6-layer resolution engine delivers 95%+ accuracy across 100,000+ companies.",
   },
   {
-    icon: BrainCircuit,
-    title: "Know Before You Send",
+    icon: BadgeCheck,
+    title: "Verified Before You Send",
     description:
-      "See which email patterns are most likely to work before you hit send. Our confidence scores are based on 50,000+ verified patterns.",
+      "Every email is checked against real-time MX records and SMTP verification. Confidence scores show exactly how likely each address is to land. No more bounced emails.",
   },
   {
     icon: FileText,
-    title: "Sound Professional",
+    title: "AI-Crafted Messages",
     description:
-      "Pre-written templates proven to get responses. No more staring at a blank screen wondering what to write.",
+      "Generate personalized outreach in seconds. Our AI reads context from LinkedIn profiles and company data to write messages that feel human — whether it's a referral request or a sales pitch.",
   },
   {
     icon: ListChecks,
-    title: "Never Lose Track",
+    title: "Organized Outreach Pipeline",
     description:
-      "Remember who you contacted and when. No awkward double-messages. Your networking pipeline, organized automatically.",
+      "Track every contact, email, and follow-up in one dashboard. Manage sequences, monitor response rates, and never let a warm lead go cold.",
   },
   {
     icon: ShieldCheck,
-    title: "Keep LinkedIn Safe",
+    title: "Safe & Compliant",
     description:
-      "Sleep easy knowing you'll never get banned. We don't touch LinkedIn's automation limits because we don't automate anything.",
+      "No LinkedIn automation. No scraping. No risk to your account. Ellyn works alongside LinkedIn without violating any terms of service. Your data stays private and secure.",
   },
   {
-    icon: PartyPopper,
-    title: "Zero Cost, Forever",
+    icon: Coins,
+    title: "100x More Affordable",
     description:
-      "Other tools charge $49-99/month. We're free because we don't use expensive APIs. Save money while getting better results.",
+      "Other email discovery tools charge $49–99/month. Ellyn starts free and our paid plans are a fraction of the cost — because we built smarter infrastructure, not bigger invoices.",
   },
 ];
 
@@ -70,16 +70,16 @@ export function Features() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-foreground mb-4">
-            Stop Applying.{" "}
+            Everything You Need for{" "}
             <span className="text-primary relative">
-              Start Connecting.
+              Effective Outreach
               <svg className="absolute w-full h-3 -bottom-1 left-0 text-primary/20 -z-10" viewBox="0 0 100 10" preserveAspectRatio="none">
                 <path d="M0 5 Q 50 10 100 5" stroke="currentColor" strokeWidth="8" fill="none" />
               </svg>
             </span>
           </h2>
           <p className="text-xl font-dm-sans text-muted-foreground max-w-2xl mx-auto">
-            Referrals get you hired 3-5x faster than cold applications. Here's how we help you get them.
+            From finding the right email to crafting the perfect message — Ellyn handles the hard parts so you can focus on building relationships.
           </p>
         </motion.div>
 
@@ -126,7 +126,7 @@ export function Features() {
           className="text-center mt-12"
         >
           <p className="font-dm-sans text-muted-foreground font-medium">
-            All of this, completely free. No trials, no upgrades required.
+            Start free with 50 email lookups per month. No credit card required.
           </p>
         </motion.div>
       </div>

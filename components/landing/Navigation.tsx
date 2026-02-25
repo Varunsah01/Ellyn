@@ -68,6 +68,12 @@ export function Navigation() {
               Features
             </button>
             <button
+              onClick={() => scrollToSection("use-cases")}
+              className="text-foreground/80 hover:text-primary transition-colors font-dm-sans font-medium"
+            >
+              Use Cases
+            </button>
+            <button
               onClick={() => scrollToSection("how-it-works")}
               className="text-foreground/80 hover:text-primary transition-colors font-dm-sans font-medium"
             >
@@ -124,6 +130,12 @@ export function Navigation() {
                 className="block w-full text-left py-2 text-foreground/80 hover:text-primary transition-colors font-dm-sans"
               >
                 Features
+              </button>
+              <button
+                onClick={() => scrollToSection("use-cases")}
+                className="block w-full text-left py-2 text-foreground/80 hover:text-primary transition-colors font-dm-sans"
+              >
+                Use Cases
               </button>
               <button
                 onClick={() => scrollToSection("how-it-works")}

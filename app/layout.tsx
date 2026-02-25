@@ -22,31 +22,31 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Ellyn - Find Emails & Get Referrals for Your Job Search | Free LinkedIn Email Finder",
+  title: "Ellyn - Professional Email Finder & Outreach Platform | Find Anyone's Email",
   description:
-    "Stop sending your resume into the void. Find professional emails on LinkedIn, draft personalized outreach, and get referrals from decision-makers. 100% free, zero LinkedIn ban risk. 850+ interviews landed in 90 days.",
+    "Find verified professional emails for hiring managers, prospects, or decision-makers. AI-powered outreach drafts, contact management, and email verification. 95%+ accuracy. Start free.",
   keywords: [
-    "LinkedIn email finder",
-    "job search referrals",
+    "professional email finder",
+    "email discovery platform",
     "find professional emails",
     "cold email outreach",
-    "job referral tool",
+    "sales email finder",
     "email pattern finder",
     "free Hunter.io alternative",
-    "LinkedIn networking tool",
-    "job seeker email finder",
-    "career networking assistant",
-    "safe LinkedIn tool",
+    "LinkedIn email finder",
+    "B2B email finder",
+    "SDR prospecting tool",
+    "email verification",
     "email outreach templates",
     "hiring manager emails",
-    "recruiter email finder",
-    "job application referrals",
+    "cold outreach platform",
+    "AI email drafting",
   ],
   authors: [{ name: "Ellyn" }],
   openGraph: {
-    title: "Ellyn - Get Referrals & Land Interviews 3x Faster | Free LinkedIn Email Finder",
+    title: "Ellyn - Find Professional Emails & Send Personalized Outreach",
     description:
-      "Find decision-makers' emails in 10 seconds. Get proven outreach templates. Track your networking. 2,000+ job seekers landed interviews using Ellyn. 100% free forever, zero ban risk.",
+      "Discover verified emails, craft AI-powered messages, and manage your outreach pipeline. Trusted by job seekers and sales teams. Free to start.",
     type: "website",
   },
 };

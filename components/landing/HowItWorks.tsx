@@ -10,25 +10,25 @@ const steps = [
   {
     number: "01",
     icon: UserPlus,
-    title: "Find the Right Person",
+    title: "Identify Your Contact",
     description:
-      "Browse LinkedIn for someone at your target company. Click our extension to save their profile. Takes 10 seconds.",
+      "Browse LinkedIn or enter a name and company directly. Our Chrome extension captures profile data instantly, or use the dashboard for manual lookups.",
     time: "10 sec",
   },
   {
     number: "02",
     icon: MailCheck,
-    title: "Get Their Email",
+    title: "Get a Verified Email",
     description:
-      "We instantly show you their most likely email addresses with confidence scores. No guessing, no hunting.",
+      "Ellyn's 6-layer discovery engine finds the most accurate email address with confidence scores backed by real-time verification. 95%+ accuracy.",
     time: "5 sec",
   },
   {
     number: "03",
     icon: Send,
-    title: "Send & Get Results",
+    title: "Send Personalized Outreach",
     description:
-      "Use our proven template, add a personal touch, and send from your Gmail. Track responses in one place.",
+      "Use AI-generated drafts tailored to your goal — referral request, cold pitch, or intro. Send from your own email and track responses.",
     time: "2 min",
   },
 ];
@@ -52,11 +52,11 @@ export function HowItWorks() {
           className="text-center mb-20"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-foreground mb-4">
-            From LinkedIn to Inbox in{" "}
-            <span className="text-primary">Under 1 Minutes</span>
+            From Name to Inbox in{" "}
+            <span className="text-primary">Under 3 Minutes</span>
           </h2>
           <p className="text-xl font-dm-sans text-muted-foreground max-w-2xl mx-auto">
-            Most people spend hours finding emails and writing outreach. You'll do it in minutes.
+            Whether you&apos;re reaching a hiring manager or a sales prospect, the workflow is the same — fast, accurate, and personal.
           </p>
         </motion.div>
 
@@ -141,7 +141,7 @@ export function HowItWorks() {
               Total time: ~3 minutes per contact
             </p>
             <p className="text-sm font-dm-sans text-muted-foreground">
-              Sarah landed 3 interviews in her first week using this flow.
+              From job seekers landing interviews to sales teams booking demos — results in days, not weeks.
             </p>
           </div>
           <div>

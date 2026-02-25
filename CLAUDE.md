@@ -2,9 +2,9 @@
 
 ## What Is Ellyn?
 
-Ellyn is an email discovery and outreach platform for job seekers. It finds professional email addresses with 95%+ accuracy, verifies them, and helps users write personalized outreach emails — all at 100x lower cost than competitors like Hunter.io.
+Ellyn is an email discovery and outreach platform for job seekers and SMB sales professionals. It finds professional email addresses with 95%+ accuracy, verifies them, and helps users write personalized outreach emails — all at 100x lower cost than competitors like Hunter.io.
 
-**Core value prop:** "Stop applying blindly. Start connecting."
+**Core value prop:** "Find anyone's professional email. Reach out with confidence."
 
 **Company:** Eigenspace Technologies PVT. Ltd.
 
@@ -51,7 +51,9 @@ Ellyn is an email discovery and outreach platform for job seekers. It finds prof
 
 ### Target Users
 
-Job seekers who want to reach hiring managers, recruiters, and referral contacts directly via cold email rather than applying through job portals.
+Two primary audiences:
+1. **Job seekers** who want to reach hiring managers, recruiters, and referral contacts directly via cold email rather than applying through job portals.
+2. **SMB sales professionals**, SDRs, founders, and agencies who need to find prospect emails and run cold outreach campaigns at scale.
 
 ---
 
@@ -997,8 +999,10 @@ npx tsc --noEmit
 
 - **Theme:** Light — off-white (#FAFAFA), deep purple text (#2D2B55)
 - **Typography:** Fraunces serif for headings, DM Sans for body
-- **Tone:** Supportive, quiet, professional — not aggressive SaaS
-- **Sections:** Hero → Problem → Solution → How It Works → Features → Social Proof → CTA → Footer
+- **Tone:** Professional, trustworthy, enterprise-ready — appeals to both job seekers and sales professionals
+- **Sections:** Hero → Use Cases → Features → How It Works → Trust & Compliance → Pricing → Testimonials → About → FAQ → Final CTA → Footer
+- **Dual-audience strategy:** Unified messaging throughout (audience-neutral language), with a dedicated Use Cases section showing both audiences side-by-side
+- **Compliance emphasis:** Trust & Compliance section covers data protection, CAN-SPAM/GDPR, and no-LinkedIn-automation pledge
 - **Design:** Generous spacing (120px), max 1200px width, soft shadows, rounded corners
 
 ---

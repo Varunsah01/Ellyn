@@ -8,7 +8,7 @@ import { fadeInUp, staggerContainer } from "@/lib/animations";
 const testimonials = [
   {
     quote:
-      "Got 3 referral conversations in my first week. Before this, I was sending LinkedIn messages that went nowhere. Having actual emails made all the difference.",
+      "Got 3 referral conversations in my first week. Having verified emails made all the difference — I went straight to hiring managers instead of waiting in application queues.",
     name: "Priya Patel",
     role: "Software Engineer",
     company: "Landed at Google",
@@ -17,21 +17,21 @@ const testimonials = [
   },
   {
     quote:
-      "I was terrified of getting banned using automation tools. This is so much safer—I'm in control of every message. Used it for 60+ contacts, account still perfect.",
-    name: "David Chen",
-    role: "Product Manager",
-    company: "Career Switcher",
-    initials: "DC",
-    metric: "60+ safe contacts",
+      "We replaced Hunter.io and saved over $500/month. Ellyn's email accuracy is just as good, the AI drafts are better, and our SDR team books 40% more meetings now.",
+    name: "James Rodriguez",
+    role: "Head of Sales",
+    company: "SaaS Startup (Series A)",
+    initials: "JR",
+    metric: "40% more meetings booked",
   },
   {
     quote:
-      "Saved me $588 compared to Hunter.io. The email patterns are just as accurate, templates get 40% response rates, and it's completely free. No-brainer.",
-    name: "Maria Garcia",
-    role: "UX Designer",
-    company: "Landed at Meta",
-    initials: "MG",
-    metric: "40% response rate",
+      "I run outreach for a 5-person agency. Ellyn replaced three tools for us — email finder, template writer, and contact tracker. And it costs a fraction of what we were paying.",
+    name: "Sarah Kim",
+    role: "Business Development",
+    company: "Marketing Agency",
+    initials: "SK",
+    metric: "$500+/mo saved",
   },
 ];
 
@@ -58,7 +58,7 @@ export function Testimonials() {
             <span className="text-primary">Real Results.</span>
           </h2>
           <p className="text-xl font-dm-sans text-muted-foreground max-w-2xl mx-auto">
-            Job seekers are landing interviews faster with direct email outreach.
+            Professionals across industries are getting replies faster with Ellyn.
           </p>
         </motion.div>
 
@@ -144,7 +144,7 @@ export function Testimonials() {
             ))}
           </div>
           <p className="font-dm-sans text-muted-foreground">
-            Rated <span className="font-semibold text-foreground">4.9/5</span> by 2,000+ job seekers • <span className="font-semibold text-foreground">850+</span> landed interviews in the last 90 days
+            Trusted by <span className="font-semibold text-foreground">2,000+</span> professionals for job search, sales outreach, and business development
           </p>
         </motion.div>
       </div>

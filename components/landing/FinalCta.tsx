@@ -24,12 +24,12 @@ export function FinalCTA() {
           className="rounded-3xl border border-border bg-white p-10 md:p-14 text-center shadow-sm"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold mb-5 leading-tight">
-            Ready to get referrals
-            <span className="text-primary"> without the noise</span>?
+            Ready to reach
+            <span className="text-primary"> the right people</span>?
           </h2>
 
           <p className="font-dm-sans text-lg text-muted-foreground max-w-2xl mx-auto mb-8 leading-relaxed">
-            Start finding real decision-makers, write thoughtful outreach, and track your progress in one place.
+            Find verified emails, write personalized outreach, and track every conversation — all in one place.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

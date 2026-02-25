@@ -61,10 +61,10 @@ export function PricingSection() {
           className="text-center mb-12 md:mb-16"
         >
           <h2 className="text-3xl md:text-4xl lg:text-5xl font-fraunces font-bold text-foreground mb-4">
-            Simple Pricing for Serious Job Seekers
+            Simple, Transparent Pricing
           </h2>
           <p className="text-lg md:text-xl font-dm-sans text-muted-foreground max-w-2xl mx-auto">
-            Start free. Upgrade when you&apos;re ready to accelerate.
+            Start free with 50 email lookups. Scale up as your outreach grows.
           </p>
         </motion.div>
 
@@ -103,7 +103,7 @@ export function PricingSection() {
 
           <PricingCard
             planName="Pro"
-            planSubtitle="Built for high-intent outreach"
+            planSubtitle="For power users & teams"
             priceLabel={proPrice.amountLabel}
             billingLabel={proPrice.periodLabel}
             features={PRO_PLAN_FEATURES}

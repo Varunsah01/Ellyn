@@ -6,6 +6,7 @@ import Link from "next/link";
 const footerLinks = {
   product: [
     { name: "Features", href: "#features" },
+    { name: "Use Cases", href: "#use-cases" },
     { name: "Pricing", href: "#pricing" },
     { name: "How It Works", href: "#how-it-works" },
     { name: "Dashboard", href: "/dashboard" },
@@ -57,7 +58,7 @@ export function Footer() {
               </div>
             </Link>
             <p className="font-dm-sans text-muted-foreground text-sm leading-relaxed">
-              Your safe and effective outreach assistant for job seeking.
+              Professional email discovery and outreach for job seekers, sales teams, and founders.
             </p>
             <div className="flex gap-3">
               {socialLinks.map((social, index) => (
@@ -141,7 +142,7 @@ export function Footer() {
               © 2026 Eigenspace Technologies PVT.Ltd. All rights reserved.
             </p>
             <p className="font-dm-sans text-muted-foreground text-sm flex items-center gap-1">
-              Built with <span className="text-red-500">❤️</span> for jobseekers worldwide
+              Built with care for professionals worldwide
             </p>
           </div>
         </div>
