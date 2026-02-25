@@ -10,7 +10,8 @@ import { verifyDomainMX } from '@/lib/mx-verification';
 import {
   generateSmartEmailPatternsCached,
   estimateCompanySize,
-  getKnownDomain
+  getKnownDomain,
+  type EmailPattern,
 } from '@/lib/enhanced-email-patterns';
 import { getLearnedPatterns, applyLearning } from '@/lib/learning-system';
 import { EnrichSchema, formatZodError } from '@/lib/validation/schemas';
@@ -20,7 +21,81 @@ import {
   type DomainSource,
 } from '@/lib/domain-resolution-analytics';
 import { ApiCallError } from '@/lib/api-circuit-breaker';
-import { captureApiException } from '@/lib/monitoring/sentry'
+import { captureApiException } from '@/lib/monitoring/sentry';
+import { getGeminiClient } from '@/lib/gemini';
+import { verifyEmailZeroBounce } from '@/lib/zerobounce';
+
+/**
+ * Use Gemini Flash to rank the 6 candidate email patterns and return the top 2.
+ * Falls back to the top 2 by confidence score if Gemini is unavailable.
+ */
+async function rankWithGemini(
+  candidates: EmailPattern[],
+  context: {
+    firstName: string
+    lastName: string
+    domain: string
+    companySize: string
+    emailProvider: string
+    role: string | undefined
+  }
+): Promise<[EmailPattern, EmailPattern]> {
+  const first = candidates[0] as EmailPattern;
+  const second = (candidates[1] ?? candidates[0]) as EmailPattern;
+  const fallback: [EmailPattern, EmailPattern] = [first, second];
+
+  if (candidates.length < 2) return fallback;
+
+  const candidateList = candidates
+    .map((c, i) => `${i + 1}. ${c.email} (pattern: ${c.pattern}, confidence: ${c.confidence})`)
+    .join('\n');
+
+  const prompt = `You are an expert at predicting professional email addresses.
+
+Context:
+- Name: ${context.firstName} ${context.lastName}
+- Domain: ${context.domain}
+- Company size: ${context.companySize}
+- Email provider: ${context.emailProvider || 'unknown'}
+- Role: ${context.role || 'unknown'}
+
+Candidate emails:
+${candidateList}
+
+Select the 2 most probable email addresses for this person. Consider name conventions for the company size and email provider.
+
+Return ONLY valid JSON, no markdown:
+{"ranked": ["most_probable_email@domain.com", "second_most_probable@domain.com"]}`;
+
+  try {
+    const gemini = getGeminiClient();
+    const response = await gemini.generateText({
+      prompt,
+      maxTokens: 100,
+      temperature: 0,
+      action: 'email-ranking',
+    });
+
+    const cleaned = response.text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1) return fallback;
+
+    const parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as { ranked?: unknown };
+    if (!Array.isArray(parsed.ranked) || parsed.ranked.length < 2) return fallback;
+
+    const rank1Email = String(parsed.ranked[0]).toLowerCase();
+    const rank2Email = String(parsed.ranked[1]).toLowerCase();
+
+    const rank1 = (candidates.find(c => c.email === rank1Email) ?? candidates[0]) as EmailPattern;
+    const rank2 = (candidates.find(c => c.email === rank2Email) ?? candidates[1] ?? candidates[0]) as EmailPattern;
+
+    return [rank1, rank2];
+  } catch (err) {
+    console.warn('[Enrich] Gemini ranking failed, using confidence fallback:', err instanceof Error ? err.message : err);
+    return fallback;
+  }
+}
 
 function buildFailureSuggestion(layers: LayerAttempt[]): string {
   if (layers.some(l => l.errorType === 'circuit_open'))
@@ -221,11 +296,50 @@ export async function POST(request: NextRequest) {
       emailPatterns = applyLearning(emailPatterns, learnedPatterns);
     }
 
-    // 7. No address-level verification here.
-    // SMTP probe verification is handled in the extension pipeline.
-    const abstractEnabled = false;
+    // 7. Gemini Flash ranking — select top 2 from the 6 candidates
+    const top2 = await rankWithGemini(
+      emailPatterns,
+      { firstName, lastName, domain, companySize: companyProfile.estimatedSize, emailProvider: mxInfo.provider || '', role }
+    );
 
-    // 8. Log resolution outcome asynchronously (non-blocking)
+    // 8. Sequential ZeroBounce SMTP verification (max 2 checks per request)
+    let topResult: EmailPattern & { verified: boolean; verificationSource: 'zerobounce' | null; badge: 'verified' | 'most_probable' } = {
+      ...top2[0],
+      verified: false,
+      verificationSource: null,
+      badge: 'most_probable',
+    };
+    let emailsChecked = 0;
+
+    if (process.env.ZEROBOUNCE_API_KEY) {
+      // Check rank #1
+      const r1 = await verifyEmailZeroBounce(top2[0].email);
+      emailsChecked++;
+      if (r1.deliverability === 'DELIVERABLE') {
+        topResult = {
+          ...top2[0],
+          confidence: Math.min(95, top2[0].confidence + 20),
+          verified: true,
+          verificationSource: 'zerobounce',
+          badge: 'verified',
+        };
+      } else if (top2[1]) {
+        // Check rank #2 only if rank #1 is not deliverable
+        const r2 = await verifyEmailZeroBounce(top2[1].email);
+        emailsChecked++;
+        if (r2.deliverability === 'DELIVERABLE') {
+          topResult = {
+            ...top2[1],
+            confidence: Math.min(95, top2[1].confidence + 20),
+            verified: true,
+            verificationSource: 'zerobounce',
+            badge: 'verified',
+          };
+        }
+      }
+    }
+
+    // 9. Log resolution outcome asynchronously (non-blocking)
     logDomainResolution({
       companyName,
       domain,
@@ -235,7 +349,7 @@ export async function POST(request: NextRequest) {
       attemptedLayers,
     });
 
-    // 9. Return enriched data
+    // 10. Return enriched data
     return NextResponse.json({
       success: true,
       cost: 0,
@@ -249,10 +363,11 @@ export async function POST(request: NextRequest) {
         mxServers: mxInfo.mxServers
       },
       emails: emailPatterns,
+      topResult,
       verification: {
         mxVerified: mxInfo.verified,
-        abstractEnabled,
-        abstractValidated: 0
+        smtpVerified: topResult.verified,
+        emailsChecked,
       },
       confidence: {
         domainAccuracy: confidenceScore,

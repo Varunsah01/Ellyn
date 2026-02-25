@@ -27,7 +27,8 @@
       "mcp__ide__getDiagnostics",
       "Bash(test:*)",
       "Bash(git stash:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(grep -n \"incrementAIDraftGeneration\\\\|QuotaExceededError\" /c/Users/varun/Desktop/Coding/Ellyn/app/api/ai/*.ts)"
     ],
     "deny": [],
     "ask": []

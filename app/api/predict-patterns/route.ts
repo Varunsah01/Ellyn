@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 
+import { callLLMWithFallback, type LLMResponse } from '@/lib/llm-client'
 import { getAuthenticatedUser, getUserQuota } from '@/lib/auth/helpers'
 import {
   captureApiException,
   captureSlowApiRoute,
   withApiRouteSpan,
 } from '@/lib/monitoring/sentry'
-import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
+import { recordExternalApiUsage } from '@/lib/monitoring/performance'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { PredictPatternsSchema, formatZodError } from '@/lib/validation/schemas'
 
@@ -31,24 +31,7 @@ type QuotaSnapshot = {
   source: 'rpc' | 'table' | 'none'
 }
 
-type AnthropicUsage = {
-  input_tokens: number | null
-  output_tokens: number
-  cache_creation_input_tokens: number | null
-  cache_read_input_tokens: number | null
-}
-
-const ANTHROPIC_MODEL = 'claude-3-5-haiku-latest'
 const MAX_TOKENS = 300
-
-// Approximate public pricing for Claude 3.5 Haiku (per 1M tokens).
-// Keep these in code for transparent cost accounting.
-const PRICING_USD_PER_1M = {
-  input: 0.8,
-  output: 4.0,
-  cacheWrite: 1.0,
-  cacheRead: 0.08,
-}
 
 const SYSTEM_PROMPT = `You predict professional email address patterns for a given person. You MUST return exactly 8 patterns in ranked order by likelihood.
 Use ONLY these 8 template keys:
@@ -83,7 +66,6 @@ All 8 must appear. Confidence values must sum to approximately 1.0.`
  * fetch('/api/predict-patterns', { method: 'POST' })
  */
 export async function POST(request: NextRequest) {
-  const startedAt = Date.now()
   let userId = ''
   const warnings: string[] = []
 
@@ -112,38 +94,50 @@ export async function POST(request: NextRequest) {
         const estimatedSize = estimateCompanySize(domain, company)
 
         let result: PatternPredictionResult | null = null
-        let usage: AnthropicUsage | null = null
+        let llmResponse: LLMResponse | null = null
         let source: 'llm' | 'heuristic-fallback' = 'llm'
 
-        try {
-          const anthropicResponse = await predictWithClaude({
-            domain,
-            company,
-            role,
-            industry,
-            estimatedSize,
-            userId,
-          })
+        const userPrompt = `Domain: ${domain}
+Company: ${company}
+Size: ${estimatedSize}
+Role: ${role || 'unknown'}
+Industry: ${industry || 'unknown'}
+Predict the top 3 email patterns for this company.`
 
-          result = anthropicResponse.result
-          usage = anthropicResponse.usage
+        const startedAt = Date.now()
+        try {
+          llmResponse = await callLLMWithFallback({
+            systemPrompt: SYSTEM_PROMPT,
+            userPrompt,
+            maxTokens: MAX_TOKENS,
+            temperature: 0.1,
+            action: 'predict-patterns',
+          })
+          result = parsePredictionJson(llmResponse.text)
+
+          recordExternalApiUsage({
+            service: llmResponse.provider,
+            operation: `chat.completions:predict-patterns`,
+            costUsd: llmResponse.costUsd,
+            durationMs: Date.now() - startedAt,
+            statusCode: 200,
+            success: true,
+          })
         } catch (error) {
           source = 'heuristic-fallback'
 
           const safeError = sanitizeErrorForLog(error)
-          const isAnthropicRateLimit = isRateLimitError(error)
-
-          if (isAnthropicRateLimit) {
-            warnings.push('Anthropic rate limit encountered; returned heuristic fallback.')
+          if (isRateLimitError(error)) {
+            warnings.push('LLM rate limit encountered; returned heuristic fallback.')
           } else {
             warnings.push('LLM prediction failed; returned heuristic fallback.')
           }
 
-          console.error('[predict-patterns] Claude prediction failed:', safeError)
+          console.error('[predict-patterns] LLM prediction failed:', safeError)
           result = heuristicFallbackPatterns({ estimatedSize, role, domain, company, industry })
         }
 
-        const totalCostUsd = calculateCostUsd(usage)
+        const totalCostUsd = llmResponse?.costUsd ?? 0
 
         await trackCost({
           userId,
@@ -152,7 +146,7 @@ export async function POST(request: NextRequest) {
           role,
           industry,
           estimatedSize,
-          usage,
+          llmResponse,
           costUsd: totalCostUsd,
           source,
         })
@@ -177,12 +171,12 @@ export async function POST(request: NextRequest) {
             resetDate: quota.resetDate,
             source: quota.source,
           },
-          usage: usage
+          usage: llmResponse
             ? {
-                inputTokens: usage.input_tokens ?? 0,
-                outputTokens: usage.output_tokens ?? 0,
-                cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
-                cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+                inputTokens: llmResponse.inputTokens,
+                outputTokens: llmResponse.outputTokens,
+                provider: llmResponse.provider,
+                model: llmResponse.model,
               }
             : null,
           costUsd: totalCostUsd,
@@ -230,95 +224,6 @@ export async function GET() {
   )
 }
 
-async function predictWithClaude(params: {
-  domain: string
-  company: string
-  role: string | null
-  industry: string | null
-  estimatedSize: EstimatedCompanySize
-  userId: string
-}): Promise<{ result: PatternPredictionResult; usage: AnthropicUsage }> {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim()
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not configured')
-  }
-
-  const anthropic = new Anthropic({ apiKey })
-
-  const userPrompt = `Domain: ${params.domain}
-Company: ${params.company}
-Size: ${params.estimatedSize}
-Role: ${params.role || 'unknown'}
-Industry: ${params.industry || 'unknown'}
-Predict the top 3 email patterns for this company.`
-
-  const startedAt = Date.now()
-  try {
-    const response = await timeOperation(
-      'anthropic.predict-patterns.messages.create',
-      async () => await anthropic.messages.create({
-        model: ANTHROPIC_MODEL,
-        max_tokens: MAX_TOKENS,
-        temperature: 0.1,
-        system: [
-          {
-            type: 'text',
-            text: SYSTEM_PROMPT,
-            cache_control: { type: 'ephemeral', ttl: '1h' },
-          },
-        ],
-        messages: [
-          {
-            role: 'user',
-            content: userPrompt,
-          },
-        ],
-        metadata: {
-          user_id: params.userId,
-        },
-      }),
-      {
-        slowThresholdMs: 500,
-        context: {
-          route: '/api/predict-patterns',
-          domain: params.domain,
-        },
-      }
-    )
-
-    const rawText = extractTextContent(response.content)
-    const parsed = parsePredictionJson(rawText)
-
-    const usage: AnthropicUsage = {
-      input_tokens: response.usage?.input_tokens ?? 0,
-      output_tokens: response.usage?.output_tokens ?? 0,
-      cache_creation_input_tokens: response.usage?.cache_creation_input_tokens ?? 0,
-      cache_read_input_tokens: response.usage?.cache_read_input_tokens ?? 0,
-    }
-
-    recordExternalApiUsage({
-      service: 'anthropic',
-      operation: 'messages.create:predict-patterns',
-      costUsd: calculateCostUsd(usage),
-      durationMs: Date.now() - startedAt,
-      statusCode: 200,
-      success: true,
-    })
-
-    return { result: parsed, usage }
-  } catch (error) {
-    const statusCode = Number((error as { status?: number })?.status)
-    recordExternalApiUsage({
-      service: 'anthropic',
-      operation: 'messages.create:predict-patterns',
-      costUsd: 0,
-      durationMs: Date.now() - startedAt,
-      statusCode: Number.isFinite(statusCode) ? statusCode : 500,
-      success: false,
-    })
-    throw error
-  }
-}
 
 async function getQuotaSnapshot(userId: string): Promise<QuotaSnapshot> {
   const supabase = await createClient()
@@ -389,7 +294,7 @@ async function trackCost(params: {
   role: string | null
   industry: string | null
   estimatedSize: EstimatedCompanySize
-  usage: AnthropicUsage | null
+  llmResponse: LLMResponse | null
   costUsd: number
   source: 'llm' | 'heuristic-fallback'
 }) {
@@ -407,20 +312,19 @@ async function trackCost(params: {
       role: params.role,
       industry: params.industry,
       estimatedSize: params.estimatedSize,
-      model: ANTHROPIC_MODEL,
+      model: params.llmResponse?.model ?? 'unknown',
+      provider: params.llmResponse?.provider ?? 'unknown',
       source: params.source,
       tokens: {
-        input: params.usage?.input_tokens ?? 0,
-        output: params.usage?.output_tokens ?? 0,
-        cacheCreation: params.usage?.cache_creation_input_tokens ?? 0,
-        cacheRead: params.usage?.cache_read_input_tokens ?? 0,
+        input: params.llmResponse?.inputTokens ?? 0,
+        output: params.llmResponse?.outputTokens ?? 0,
       },
       timestamp: new Date().toISOString(),
     }
 
     const { error } = await serviceClient.from('api_costs').insert({
       user_id: params.userId,
-      service: 'anthropic',
+      service: 'other',
       cost_usd: params.costUsd,
       metadata,
     })
@@ -656,15 +560,6 @@ function extractJsonPayload(rawText: string): string {
   throw new Error('No JSON object found in Claude response')
 }
 
-function extractTextContent(content: Array<{ type: string; text?: string }>): string {
-  if (!Array.isArray(content)) return ''
-
-  return content
-    .filter((block) => block?.type === 'text' && typeof block.text === 'string')
-    .map((block) => block.text || '')
-    .join('\n')
-    .trim()
-}
 
 function normalizePatternConfidences(patterns: PatternPrediction[]): PatternPrediction[] {
   const total = patterns.reduce((sum, item) => sum + item.confidence, 0)
@@ -676,22 +571,6 @@ function normalizePatternConfidences(patterns: PatternPrediction[]): PatternPred
   }))
 }
 
-function calculateCostUsd(usage: AnthropicUsage | null): number {
-  if (!usage) return 0
-
-  const inputTokens = usage.input_tokens ?? 0
-  const outputTokens = usage.output_tokens ?? 0
-  const cacheCreationTokens = usage.cache_creation_input_tokens ?? 0
-  const cacheReadTokens = usage.cache_read_input_tokens ?? 0
-
-  const cost =
-    (inputTokens / 1_000_000) * PRICING_USD_PER_1M.input +
-    (outputTokens / 1_000_000) * PRICING_USD_PER_1M.output +
-    (cacheCreationTokens / 1_000_000) * PRICING_USD_PER_1M.cacheWrite +
-    (cacheReadTokens / 1_000_000) * PRICING_USD_PER_1M.cacheRead
-
-  return roundToSix(Math.max(0, cost))
-}
 
 function isRateLimitError(error: unknown): boolean {
   const status = (error as { status?: number })?.status
@@ -752,10 +631,6 @@ function clamp(value: number, min: number, max: number): number {
 
 function roundToTwo(value: number): number {
   return Math.round(value * 100) / 100
-}
-
-function roundToSix(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000
 }
 
 function sanitizeErrorForLog(error: unknown) {

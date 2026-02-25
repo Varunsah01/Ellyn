@@ -1,24 +1,17 @@
 /**
- * LLM-powered domain prediction using Claude Haiku.
+ * LLM-powered domain prediction using Gemini Flash / Mistral 3B / DeepSeek R1 fallback chain.
  * Layer 3.5 in the domain resolution cascade — runs after Brandfetch fails,
  * before falling back to Google Search.
  *
- * Cost target: <$0.0002 per call
- * Model: claude-haiku-4-5-20251001 (cheapest, fastest)
+ * Cost target: <$0.0002 per call (Gemini Flash primary)
  * Output cap: 200 tokens
  * Cache: 30 days for positive hits, 1 hour for misses
  */
 
-import Anthropic from '@anthropic-ai/sdk'
+import { callLLMWithFallback } from '@/lib/llm-client'
 import { batchVerifyDomains } from '@/lib/mx-verification'
 import { buildCacheKey, getOrSet } from '@/lib/cache/redis'
 import { CACHE_TAGS } from '@/lib/cache/tags'
-
-// Haiku 4.5 pricing (per million tokens)
-const INPUT_COST_PER_M  = 0.80
-const OUTPUT_COST_PER_M = 4.00
-const MAX_OUTPUT_TOKENS = 200
-const MODEL = 'claude-haiku-4-5-20251001'
 
 export interface LlmDomainPrediction {
   domain: string
@@ -89,20 +82,17 @@ function parsePredictions(text: string): LlmDomainPrediction[] {
   }
 }
 
-function calcCost(inputTokens: number, outputTokens: number): number {
-  return (inputTokens / 1_000_000) * INPUT_COST_PER_M +
-         (outputTokens / 1_000_000) * OUTPUT_COST_PER_M
-}
-
 /**
- * Ask Claude Haiku to predict candidate domains, then MX-verify them.
+ * Ask the LLM to predict candidate domains, then MX-verify them.
  * Returns the first MX-verified prediction, or null if none pass.
+ *
+ * Uses Gemini Flash 2.0 → Mistral 3B → DeepSeek R1 fallback chain.
  */
 export async function predictDomainWithLLM(
   companyName: string
 ): Promise<LlmDomainResult | null> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.warn('[LLMDomain] ANTHROPIC_API_KEY not set — skipping LLM layer')
+  if (!process.env.GOOGLE_AI_API_KEY && !process.env.MISTRAL_API_KEY && !process.env.DEEPSEEK_API_KEY) {
+    console.warn('[LLMDomain] No LLM API keys set — skipping LLM layer')
     return null
   }
 
@@ -115,32 +105,31 @@ export async function predictDomainWithLLM(
     nullTtlSeconds: 60 * 60,          // 1 hour for misses
     tags: [CACHE_TAGS.domainLookup],
     fetcher: async () => {
-      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-      let response: Anthropic.Message
+      let llmResult: { text: string; inputTokens: number; outputTokens: number; costUsd: number }
       try {
-        response = await client.messages.create({
-          model: MODEL,
-          max_tokens: MAX_OUTPUT_TOKENS,
-          messages: [{ role: 'user', content: buildPrompt(companyName) }],
+        const response = await callLLMWithFallback({
+          systemPrompt: buildPrompt(companyName),
+          userPrompt: '',
+          maxTokens: 200,
+          temperature: 0,
+          action: 'domain-prediction',
         })
+        llmResult = {
+          text: response.text,
+          inputTokens: response.inputTokens,
+          outputTokens: response.outputTokens,
+          costUsd: response.costUsd,
+        }
       } catch (err) {
-        console.error('[LLMDomain] Anthropic API error:', err)
+        console.error('[LLMDomain] All LLM tiers failed:', err)
         return null
       }
 
-      const inputTokens  = response.usage.input_tokens
-      const outputTokens = response.usage.output_tokens
-      const costUsd      = calcCost(inputTokens, outputTokens)
+      const { text, inputTokens, outputTokens, costUsd } = llmResult
 
       console.log(`[LLMDomain] ${companyName}: ${inputTokens} in / ${outputTokens} out / $${costUsd.toFixed(6)}`)
 
-      const rawText = response.content
-        .filter(block => block.type === 'text')
-        .map(block => (block as Anthropic.TextBlock).text)
-        .join('')
-
-      const predictions = parsePredictions(rawText)
+      const predictions = parsePredictions(text)
       if (predictions.length === 0) {
         console.warn('[LLMDomain] No parseable predictions for:', companyName)
         return null

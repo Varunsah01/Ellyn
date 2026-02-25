@@ -46,7 +46,7 @@ Ellyn is an email discovery and outreach platform for job seekers. It finds prof
 
 - Email pattern generation: free (local computation)
 - Domain resolution: $0 (Clearbit/Brandfetch are free) to $0.001 (Google/LLM fallback)
-- Email verification (ZeroBounce): ~$0.0002/check
+- Email verification (ZeroBounce): ~$0.008/check
 - Total per verified email: $0.001-$0.0025 (100x cheaper than Hunter.io)
 
 ### Target Users
@@ -65,7 +65,7 @@ Job seekers who want to reach hiring managers, recruiters, and referral contacts
 | Cache | Vercel KV / Upstash Redis |
 | Auth | Supabase Auth (JWT in HTTP-only cookies via `@supabase/ssr`) |
 | Payments | DodoPayments (NOT Stripe) |
-| AI | Anthropic Claude Haiku (domain prediction), Google Gemini Flash (email drafting) |
+| AI | Google Gemini Flash 2.0 (primary LLM), Mistral 3B (fallback), DeepSeek R1 (third fallback) |
 | Email Validation | ZeroBounce API |
 | Domain Lookup | Clearbit, Brandfetch, Google Custom Search |
 | Error Monitoring | Sentry |
@@ -182,14 +182,14 @@ User Input (name + company)
            │
            ▼
 ┌─────────────────────────────┐
-│  PHASE 2: PATTERN GENERATION │   8-15 email patterns with confidence
-│  (name + domain → emails)   │   adjusted by company size, role, provider
+│  PHASE 2: PATTERN GENERATION │   6 candidate email formats generated;
+│  (name + domain → emails)   │   Gemini Flash ranks & selects top 2
 └──────────┬──────────────────┘
            │
            ▼
 ┌─────────────────────────────┐
-│  PHASE 3: VERIFICATION       │   MX check + SMTP verify top candidates
-│  & RANKING                   │   learning boosts applied
+│  PHASE 3: VERIFICATION       │   MX check (always on) + sequential SMTP
+│  & RANKING                   │   verify top 2 only; early exit on hit
 └──────────┬──────────────────┘
            │
            ▼
@@ -266,9 +266,11 @@ Resolves a company name to its email domain using a **6-layer cascade** that sto
 
 Size estimation: Enterprise (pre-defined list or domain < 6 chars) → Large (secondary list) → Startup (`.io`/`.ai` domain or hyphenated) → Medium (default).
 
-#### Step 2b: Pattern Templates (15 total)
+#### Step 2b: Pattern Templates (6 candidates)
 
-`first.last`, `flast`, `firstlast`, `first`, `last.first`, `f.last`, `first_last`, `lastfirst`, `first.l`, `firstl`, `last`, `first-last`, `f_last`, `last_first`, `last.first`
+The engine selects the 6 highest-confidence patterns for a given name + domain, drawn from the full template library: `first.last`, `flast`, `firstlast`, `first`, `last.first`, `f.last`, `first_last`, `lastfirst`, `first.l`, `firstl`, `last`, `first-last`, `f_last`, `last_first`, `last.first`.
+
+Size, role, and provider adjustments (Steps 2c–2e) determine which 6 are selected and their confidence scores.
 
 #### Step 2c: Confidence by Company Size
 
@@ -300,6 +302,18 @@ Size estimation: Enterprise (pre-defined list or domain < 6 chars) → Large (se
 
 Handles: titles (Mr/Dr/Prof), suffixes (Jr/Sr/III/PhD), hyphenated names (tries both `mary-jane` and `maryjane`), middle names.
 
+#### Step 2g: Gemini Flash Ranking
+
+After the 6 candidates are generated, all 6 are sent to **Gemini Flash** for AI-assisted ranking:
+
+1. Gemini Flash receives the 6 email formats with their confidence scores and supporting context (name, domain, company size, email provider, role, historical patterns)
+2. Gemini ranks the candidates and selects the **top 2 most probable emails**
+3. Only these 2 emails proceed to Phase 3 verification
+
+**Fallback:** If Gemini Flash is unavailable, the top 2 by static confidence score are used.
+
+System now generates 6 candidate email formats. Gemini Flash ranks them and selects the top 2 most probable emails for verification.
+
 **Cache:** Patterns cached 24h, key built from `[domain, firstName, lastName, role, companySize, emailProvider]`.
 
 #### Advanced: AI-Enhanced Prediction (v2)
@@ -314,7 +328,7 @@ Uses Claude Haiku (`claude-3-5-haiku-20241022`) to rank patterns with contextual
 4. Claude returns ranked patterns with confidence + reasoning as JSON
 5. Apply learned boosts from `pattern_learning` table
 6. Fallback to static size-based distribution if Claude fails
-7. Deduplicate, sort by confidence desc, return top 15
+7. Deduplicate, sort by confidence desc; Gemini Flash selects top 2 for verification
 
 **Cost:** Input $0.80/M tokens, Output $4.00/M tokens, Cache read $0.08/M tokens. System prompt cached 1h. Token usage logged to `api_predictions` table (fire-and-forget).
 
@@ -324,17 +338,41 @@ Uses Claude Haiku (`claude-3-5-haiku-20241022`) to rank patterns with contextual
 
 ### Phase 3: Verification & Ranking
 
+#### Step 0: Primary Pattern Check (Domain Memory Fast Path)
+
+Before any other verification step:
+- Query Redis (`cache:domain-primary-pattern:{domain}`, TTL 7d) or `pattern_learning` where `is_primary = true`
+- **If primary pattern found:** Generate only 3 candidate patterns, skip Gemini Flash ranking, attempt SMTP verification on primary pattern directly
+  - If verified → stop and return immediately with `badge: "verified"`
+  - If not verified → fall back to standard flow (6 patterns + Gemini ranking)
+- **If no primary pattern:** Proceed with standard flow
+
+Primary pattern check counts as SMTP attempt #1. Maximum remains 2 SMTP attempts per request.
+
 #### Tier 1: MX Record Check (Free, Always On)
 
 - DNS lookup via `dns.resolveMx()`, 2s timeout
 - Validates domain can receive email
 - Cached 24h — key: `cache:mx-verification:email-verification:{domain}`
 
-#### Tier 2: SMTP Verification via ZeroBounce
+#### Tier 2: SMTP Verification via ZeroBounce (Sequential, Cost-Optimized)
 
-- Checks if the specific email address exists at the mail server
-- Cost: ~$0.0002/check
-- Only **top 3 candidates** verified per request (cost control)
+Verification proceeds sequentially against the 2 Gemini-ranked candidates and stops as soon as one is confirmed. **Never more than 2 ZeroBounce checks per request.**
+
+**Flow:**
+
+1. **Verify rank #1 email** (Gemini's top pick) via ZeroBounce SMTP check
+   - If **verified** → return immediately with `badge: "verified"`. Do not check rank #2.
+   - If **not verified** → proceed to step 2.
+
+2. **Verify rank #2 email** via ZeroBounce SMTP check
+   - If **verified** → return immediately with `badge: "verified"`.
+   - If **not verified** → do not verify any further candidates.
+
+3. **If neither is verified** → return rank #1 as unverified with `badge: "most_probable"` (LLM-suggested).
+
+**Properties:**
+- Cost: ~$0.0002/check, max $0.0004/request (2 checks)
 - Cached 7 days
 - Confidence adjustments: verified = **+50%**, risky = **+10-20%**, undeliverable = **set to 5%**
 
@@ -365,6 +403,37 @@ newConfidence = clamp(5, 95, baseConfidence + boost)
 
 Minimum **3 attempts** before learning kicks in (statistical significance).
 
+**Pattern Promotion:** If `success_rate ≥ 80%` AND `total_attempts ≥ 5` → set `is_primary = true` for that domain.
+
+**Pattern Demotion:** If the primary pattern bounce rate exceeds 40% over the last 10 attempts → set `is_primary = false`, re-enable Gemini ranking for that domain.
+
+---
+
+### Domain Pattern Memory System
+
+When a pattern is SMTP-verified successfully for a domain, the system stores it as the **primary pattern** for that domain. This turns Ellyn into a self-optimizing domain intelligence engine.
+
+**On SMTP verification success:**
+- Set `is_primary = true` on the `pattern_learning` row for that domain + pattern
+- Record `last_verified_at` timestamp
+- Cache under `cache:domain-primary-pattern:{domain}` (TTL 7 days)
+
+**On future lookups for the same domain:**
+1. Check Redis (`cache:domain-primary-pattern:{domain}`) or query `pattern_learning` where `is_primary = true`
+2. If a primary pattern exists:
+   - Generate only **3 candidate patterns** (not 6)
+   - Skip Gemini Flash ranking entirely
+   - Attempt SMTP verification on the primary pattern directly
+   - If verified → stop and return immediately
+   - If not verified → fall back to the standard 6-pattern + Gemini ranking flow
+3. If no primary pattern → use the default flow (6 patterns → Gemini ranking → sequential verification)
+
+**Benefits:**
+- Reduces LLM calls by skipping Gemini on warm domains
+- Lower latency for repeat lookups on known domains
+- Improves accuracy over time as the system learns per-domain conventions
+- Maximum SMTP attempts remains 2 per request; primary pattern counts as attempt #1
+
 ---
 
 ### End-to-End Example
@@ -373,31 +442,69 @@ Minimum **3 attempts** before learning kicks in (statistical significance).
 
 1. **Domain Resolution:** Known DB miss → Clearbit miss (timeout) → Brandfetch miss → LLM hit: `tcs.com` (70%, MX-verified)
 2. **Company Profile:** domain=`tcs.com`, size=`enterprise`, provider=`google`
-3. **Patterns:** Enterprise template + engineer boost + Google boost → `john.doe@tcs.com` (95%), `jdoe@tcs.com` (75%), `johndoe@tcs.com` (55%), ...
-4. **Learning:** `first.last` has 90% historical success on `tcs.com` → +20 boost (capped at 95%)
-5. **Verification:** Top 3 sent to ZeroBounce → `john.doe@tcs.com` confirmed deliverable
+3. **Patterns:** Engine generates 6 candidates using enterprise template + engineer boost + Google boost → `john.doe@tcs.com` (95%), `jdoe@tcs.com` (75%), `johndoe@tcs.com` (55%), `j.doe@tcs.com` (45%), `john@tcs.com` (30%), `doejohn@tcs.com` (20%)
+4. **Gemini Flash Ranking:** Selects top 2 → rank #1: `john.doe@tcs.com`, rank #2: `jdoe@tcs.com`
+5. **Learning:** `first.last` has 90% historical success on `tcs.com` → +20 boost (capped at 95%)
+6. **Verification:** `john.doe@tcs.com` sent to ZeroBounce → confirmed deliverable → stop immediately, `jdoe@tcs.com` not checked
+
+**If verified (rank #1 confirmed):**
+```json
+{
+  "success": true,
+  "result": {
+    "email": "john.doe@tcs.com",
+    "pattern": "first.last",
+    "confidence": 95,
+    "verified": true,
+    "verificationSource": "zerobounce",
+    "badge": "verified"
+  },
+  "topRecommendation": "john.doe@tcs.com",
+  "metadata": { "companySize": "enterprise", "emailProvider": "Google Workspace", "domainSource": "llm" }
+}
+```
+
+**If neither candidate verified:**
+```json
+{
+  "success": true,
+  "result": {
+    "email": "john.doe@tcs.com",
+    "pattern": "first.last",
+    "confidence": 92,
+    "verified": false,
+    "badge": "most_probable"
+  },
+  "topRecommendation": "john.doe@tcs.com",
+  "metadata": { "companySize": "enterprise", "emailProvider": "Google Workspace", "domainSource": "llm" }
+}
+```
+
+**Domain Memory Fast Path example** (warm domain):
 
 ```json
 {
   "success": true,
-  "patterns": [
-    { "email": "john.doe@tcs.com", "pattern": "first.last", "confidence": 95, "verified": true },
-    { "email": "jdoe@tcs.com", "pattern": "flast", "confidence": 75 },
-    { "email": "johndoe@tcs.com", "pattern": "firstlast", "confidence": 55 }
-  ],
-  "topRecommendation": "john.doe@tcs.com",
-  "metadata": { "companySize": "enterprise", "emailProvider": "Google Workspace", "domainSource": "llm" }
+  "topResult": {
+    "email": "john.doe@tcs.com",
+    "pattern": "first.last",
+    "verified": true,
+    "source": "primary_pattern",
+    "optimization": "domain_memory",
+    "badge": "verified"
+  }
 }
 ```
 
 ### Core Design Principles
 
 1. **Fail-safe cascade** — each layer independent; failure doesn't block the next
-2. **Cost-first ordering** — free methods before paid (DNS → Clearbit → Brandfetch → Claude → ZeroBounce)
+2. **Cost-first ordering** — free methods before paid (DNS → Clearbit → Brandfetch → Gemini → ZeroBounce)
 3. **Aggressive caching** — Redis + in-memory fallback, background refresh, tagged invalidation
 4. **Circuit breakers** — prevent cascading failures to external APIs
 5. **Learning loop** — historical success/bounce data improves future predictions
 6. **Non-blocking analytics** — all logging is fire-and-forget
+7. **Self-Optimizing Intelligence** — verified domain patterns become primary for future predictions, reducing LLM usage and latency over time
 
 ---
 
@@ -416,9 +523,17 @@ Minimum **3 attempts** before learning kicks in (statistical significance).
 - Rate limits: 100 operations/hour, 500/month
 - AI never auto-sends — only suggests text
 
-### Domain Prediction (Claude Haiku)
+### LLM Stack (Domain Prediction & Pattern Ranking)
 
-Used in domain resolution cascade layer 4 to predict company email domains when other lookups fail. Especially good at handling acronyms and non-obvious company names.
+All LLM tasks — domain prediction, pattern prediction, and email ranking — use a unified 3-tier fallback chain (`lib/llm-client.ts`):
+
+1. **Gemini Flash 2.0** (`gemini-2.0-flash-exp`) — primary, cheapest (~$0.0000188/1K input tokens)
+2. **Mistral 3B** (`ministral-3b-latest`) — fallback if Gemini is unavailable
+3. **DeepSeek R1** (`deepseek-reasoner`) — third fallback; `<think>` blocks are stripped before returning
+
+**Domain prediction** — Cascade layer 4; predicts company email domains from company name. Especially effective for acronyms and non-obvious names. Cached 30 days on hit, 1 hour on miss.
+
+**Pattern ranking** — After generating 6 candidates in Phase 2, Gemini Flash ranks them and selects the top 2 for SMTP verification.
 
 ### Personalization Engine
 
@@ -512,6 +627,10 @@ Helper: `getDodoProductId(region)` in `lib/pricing-config.ts`
 - Progress checklist tracking 5 milestones
 - Contextual empty states (queue, drafts, not on LinkedIn, no API key)
 - Keyboard shortcuts: `?` help, `Ctrl+Enter` send, `Ctrl+E` edit, `Ctrl+K` copy
+
+### Email Verification Badges
+
+If SMTP verification succeeds for either of the top 2 Gemini-ranked candidates, a **Verified** badge is shown next to the email in the extension sidepanel and dashboard. If verification fails for both candidates, the LLM's most probable email is displayed without a verified badge, labelled as "Most Probable (LLM Suggested)".
 
 ---
 
@@ -616,6 +735,7 @@ Sentry integration for error tracking and performance monitoring. Source maps up
 | Domain lookup | `cache:domain-lookup:clearbit:{company}` | 7d hit, 1h miss | Domain resolution |
 | MX verification | `cache:mx-verification:email-verification:{domain}` | 24h | DNS MX records |
 | Email patterns | `cache:email-patterns:{domain}` | 7d | Generated patterns |
+| Primary pattern | `cache:domain-primary-pattern:{domain}` | 7d | Fast path — skip Gemini if primary known |
 | Rate limiting | Per-user keys | Monthly | Quota enforcement |
 
 Redis layer: Vercel KV (`KV_REST_API_URL`) with Upstash fallback (`UPSTASH_REDIS_REST_URL`).
@@ -654,7 +774,8 @@ Background refresh enabled to prevent cache stampede.
 
 **domain_resolution_logs** — `id`, `user_id`, `company_name`, `domain`, `layers_attempted` (JSONB), `resolution_source`, `confidence_score`
 
-**pattern_learning** — `domain`, `pattern`, `success_count`, `total_attempts`, `success_rate`
+**pattern_learning** — `domain`, `pattern`, `success_count`, `total_attempts`, `success_rate`, `is_primary` (boolean, default false), `last_verified_at` (timestamp)
+- Index: `idx_pattern_learning_primary ON pattern_learning(domain, is_primary)`
 
 **dodo_webhook_events** — `id`, `event_type`, `user_id`, `raw_payload` (JSONB), `processed_at`
 
@@ -762,6 +883,11 @@ NEXT_PUBLIC_CHROME_EXTENSION_ID=
 
 # ZeroBounce Email Validation
 ZEROBOUNCE_API_KEY=
+
+# LLM Stack (Gemini primary, Mistral fallback, DeepSeek third fallback)
+GOOGLE_AI_API_KEY=
+MISTRAL_API_KEY=
+DEEPSEEK_API_KEY=
 
 # Redis / Vercel KV (cache + rate limiting)
 UPSTASH_REDIS_REST_URL=

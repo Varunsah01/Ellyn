@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 
+import { callLLMWithFallback, type LLMResponse } from '@/lib/llm-client'
 import {
   EMAIL_PREDICTION_SYSTEM_PROMPT,
   buildPredictionUserMessage,
@@ -23,7 +23,7 @@ import {
   captureSlowApiRoute,
   withApiRouteSpan,
 } from '@/lib/monitoring/sentry'
-import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
+import { recordExternalApiUsage } from '@/lib/monitoring/performance'
 import { applyLearnedBoosts, getLearnedPatterns } from '@/lib/pattern-learning'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { PredictEmailSchema, formatZodError } from '@/lib/validation/schemas'
@@ -57,19 +57,11 @@ interface PredictEmailResponse {
   details?: Array<{ path: string; message: string; code: string }>
 }
 
-type AnthropicUsage = {
-  input_tokens: number | null
-  output_tokens: number
-  cache_creation_input_tokens: number | null
-  cache_read_input_tokens: number | null
-}
-
 type ParsedAiPayload = {
   prediction: AIEmailPredictionResponse
   warnings: string[]
 }
 
-const ANTHROPIC_MODEL = 'claude-3-5-haiku-20241022'
 const MAX_TOKENS = 1500
 const RATE_LIMIT = 50
 const RATE_WINDOW_MS = 60 * 60 * 1000
@@ -225,7 +217,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<PredictEm
 
         const userMessage = buildPredictionUserMessage(context)
 
-        console.log('[AI][predict-email] Calling Claude', {
+        console.log('[AI][predict-email] Calling LLM', {
           userId: user.id,
           companyDomain,
           companySize,
@@ -233,58 +225,39 @@ export async function POST(request: NextRequest): Promise<NextResponse<PredictEm
           hasHistoricalData: historicalPatterns.length > 0,
         })
 
-        const anthropic = getAnthropicClient()
         const modelStartedAt = Date.now()
+        let llmResponse: LLMResponse
 
-        let message: Awaited<ReturnType<Anthropic['messages']['create']>>
         try {
-          message = await timeOperation(
-            'anthropic.predict-email.messages.create',
-            async () => await anthropic.messages.create({
-              model: ANTHROPIC_MODEL,
-              max_tokens: MAX_TOKENS,
-              temperature: 0.3,
-              system: [
-                {
-                  type: 'text',
-                  text: EMAIL_PREDICTION_SYSTEM_PROMPT,
-                  cache_control: { type: 'ephemeral' },
-                },
-              ],
-              messages: [
-                {
-                  role: 'user',
-                  content: userMessage,
-                },
-              ],
-              metadata: {
-                user_id: user.id,
-              },
-            }),
-            {
-              slowThresholdMs: 500,
-              context: {
-                route: '/api/predict-email',
-                domain: companyDomain,
-              },
-            }
-          )
-        } catch (error) {
-          const statusCode = Number((error as { status?: number })?.status)
+          llmResponse = await callLLMWithFallback({
+            systemPrompt: EMAIL_PREDICTION_SYSTEM_PROMPT,
+            userPrompt: userMessage,
+            maxTokens: MAX_TOKENS,
+            temperature: 0.3,
+            action: 'predict-email',
+          })
           recordExternalApiUsage({
-            service: 'anthropic',
-            operation: 'messages.create:predict-email',
+            service: llmResponse.provider,
+            operation: `chat.completions:predict-email`,
+            costUsd: llmResponse.costUsd,
+            durationMs: Date.now() - modelStartedAt,
+            statusCode: 200,
+            success: true,
+          })
+        } catch (error) {
+          recordExternalApiUsage({
+            service: 'unknown',
+            operation: 'chat.completions:predict-email',
             costUsd: 0,
             durationMs: Date.now() - modelStartedAt,
-            statusCode: Number.isFinite(statusCode) ? statusCode : 500,
+            statusCode: 500,
             success: false,
           })
           throw error
         }
 
         const aiLatencyMs = Date.now() - modelStartedAt
-        const rawText = extractTextContent(message.content)
-        const parsed = parseAiResponse(rawText, firstName, lastName, companyDomain)
+        const parsed = parseAiResponse(llmResponse.text, firstName, lastName, companyDomain)
 
         let patterns = parsed.prediction.patterns
 
@@ -307,29 +280,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<PredictEm
             'Top recommendation selected from ranked pattern confidence.',
         }
 
-        const usage = {
-          input_tokens: message.usage?.input_tokens ?? 0,
-          output_tokens: message.usage?.output_tokens ?? 0,
-          cache_creation_input_tokens: message.usage?.cache_creation_input_tokens ?? 0,
-          cache_read_input_tokens: message.usage?.cache_read_input_tokens ?? 0,
-        }
-
-        const estimatedCost = calculateCost(usage)
-        recordExternalApiUsage({
-          service: 'anthropic',
-          operation: 'messages.create:predict-email',
-          costUsd: estimatedCost,
-          durationMs: aiLatencyMs,
-          statusCode: 200,
-          success: true,
-        })
+        const estimatedCost = llmResponse.costUsd
 
         await logPrediction({
           userId: user.id,
           companyDomain,
           topPattern: patterns[0]?.pattern || 'unknown',
           aiLatencyMs,
-          usage,
+          inputTokens: llmResponse.inputTokens,
+          outputTokens: llmResponse.outputTokens,
           estimatedCost,
         })
 
@@ -343,14 +302,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<PredictEm
             hasHistoricalData: historicalPatterns.length > 0,
             historicalPatternCount: historicalPatterns.length,
             aiLatencyMs,
-            model: ANTHROPIC_MODEL,
+            model: llmResponse.model,
           },
           debug: {
             tokensUsed: {
-              inputTokens: usage.input_tokens ?? 0,
-              outputTokens: usage.output_tokens ?? 0,
-              cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
-              cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+              inputTokens: llmResponse.inputTokens,
+              outputTokens: llmResponse.outputTokens,
+              cacheCreationInputTokens: 0,
+              cacheReadInputTokens: 0,
             },
             estimatedCost,
           },
@@ -429,21 +388,6 @@ export async function GET(): Promise<NextResponse<PredictEmailResponse>> {
   )
 }
 
-let anthropicClient: Anthropic | null = null
-
-function getAnthropicClient(): Anthropic {
-  if (anthropicClient) {
-    return anthropicClient
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim()
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not configured')
-  }
-
-  anthropicClient = new Anthropic({ apiKey })
-  return anthropicClient
-}
 
 function checkRateLimit(userId: string): { allowed: boolean; retryAfterSeconds: number } {
   const now = Date.now()
@@ -738,15 +682,6 @@ function extractJsonObject(text: string): string {
   return '{}'
 }
 
-function extractTextContent(content: Array<{ type: string; text?: string }>): string {
-  if (!Array.isArray(content)) return ''
-
-  return content
-    .filter((block) => block?.type === 'text' && typeof block.text === 'string')
-    .map((block) => block.text || '')
-    .join('\n')
-    .trim()
-}
 
 function mapHistoricalPatterns(
   rows: Array<{
@@ -769,7 +704,8 @@ async function logPrediction(params: {
   companyDomain: string
   topPattern: string
   aiLatencyMs: number
-  usage: AnthropicUsage
+  inputTokens: number
+  outputTokens: number
   estimatedCost: number
 }): Promise<void> {
   try {
@@ -780,7 +716,7 @@ async function logPrediction(params: {
       company_domain: params.companyDomain,
       top_pattern: params.topPattern,
       ai_latency_ms: Math.max(0, Math.trunc(params.aiLatencyMs)),
-      tokens_used: (params.usage.input_tokens ?? 0) + (params.usage.output_tokens ?? 0),
+      tokens_used: params.inputTokens + params.outputTokens,
       estimated_cost: params.estimatedCost,
       created_at: new Date().toISOString(),
     }
@@ -801,13 +737,6 @@ async function logPrediction(params: {
   }
 }
 
-function calculateCost(usage: AnthropicUsage): number {
-  const input = Number(usage.input_tokens || 0)
-  const output = Number(usage.output_tokens || 0)
-  const inputCost = (input / 1_000_000) * 0.8
-  const outputCost = (output / 1_000_000) * 4
-  return roundToSix(inputCost + outputCost)
-}
 
 function sanitizeName(value: unknown): string {
   return String(value || '')
@@ -832,10 +761,6 @@ function clampInt(value: unknown, min: number, max: number): number {
   const n = Number(value)
   if (!Number.isFinite(n)) return min
   return Math.min(max, Math.max(min, Math.round(n)))
-}
-
-function roundToSix(value: number): number {
-  return Math.round(value * 1_000_000) / 1_000_000
 }
 
 function findReasoning(patterns: AIPredictedPattern[], patternType: string): string {

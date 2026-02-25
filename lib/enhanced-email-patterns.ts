@@ -236,10 +236,10 @@ export function generateSmartEmailPatterns(
     }
   }
 
-  // Sort by confidence and return top 15
+  // Sort by confidence and return top 6 candidates for Gemini Flash ranking
   return patterns
     .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 15);
+    .slice(0, 6);
 }
 
 /**
