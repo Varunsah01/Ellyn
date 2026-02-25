@@ -607,10 +607,10 @@ function ensureMinimumPatterns(
     const email = applyPatternTemplate(template, firstName, lastName, companyDomain)
     if (!isLikelyEmail(email)) continue
 
-    const confidence =
-      i < COMPLETE_PATTERN_CONFIDENCES.length
+    const confidence: number =
+      (i < COMPLETE_PATTERN_CONFIDENCES.length
         ? COMPLETE_PATTERN_CONFIDENCES[i]
-        : COMPLETE_PATTERN_CONFIDENCES[COMPLETE_PATTERN_CONFIDENCES.length - 1]
+        : COMPLETE_PATTERN_CONFIDENCES[COMPLETE_PATTERN_CONFIDENCES.length - 1]) ?? 20
 
     expanded.push({
       email,
