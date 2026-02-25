@@ -39,7 +39,7 @@ Ellyn is an email discovery and outreach platform for job seekers and SMB sales 
 | Plan | Email Lookups/mo | AI Drafts/mo | Price |
 |------|-----------------|--------------|-------|
 | Free | 50 | 0 | $0 |
-| Starter | 500 | 150 | $14.99/mo or $39.99/quarter |
+| Starter | 500 | 150 | $14.99/mo, $39.99/quarter, $149/year |
 | Pro | 1,500 | 500 | $34.99/mo, $89.99/quarter, $279/year |
 
 ### Cost Per Lookup
@@ -580,7 +580,7 @@ Webhook verification uses `client.webhooks.unwrap()` with headers: `webhook-id`,
 ### Product IDs
 
 Configured per plan and billing cycle via env vars:
-- `DODO_STARTER_PRODUCT_ID_GLOBAL_MONTHLY`, `_QUARTERLY`
+- `DODO_STARTER_PRODUCT_ID_GLOBAL_MONTHLY`, `_QUARTERLY`, `_YEARLY`
 - `DODO_PRO_PRODUCT_ID_GLOBAL_MONTHLY`, `_QUARTERLY`, `_YEARLY`
 
 Helper: `getDodoProductId(region)` in `lib/pricing-config.ts`
@@ -903,6 +903,7 @@ DODO_PAYMENTS_WEBHOOK_KEY=
 DODO_PAYMENTS_ENVIRONMENT=test_mode  # or live_mode
 DODO_STARTER_PRODUCT_ID_GLOBAL_MONTHLY=
 DODO_STARTER_PRODUCT_ID_GLOBAL_QUARTERLY=
+DODO_STARTER_PRODUCT_ID_GLOBAL_YEARLY=
 DODO_PRO_PRODUCT_ID_GLOBAL_MONTHLY=
 DODO_PRO_PRODUCT_ID_GLOBAL_QUARTERLY=
 DODO_PRO_PRODUCT_ID_GLOBAL_YEARLY=

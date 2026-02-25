@@ -46,11 +46,10 @@ export default function UpgradePage() {
       setIsCheckingOutPro(true)
     }
     try {
-      const effectiveCycle = planType === 'starter' && billingCycle === 'yearly' ? 'quarterly' : billingCycle
       const res = await supabaseAuthedFetch('/api/v1/subscription/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billingCycle: effectiveCycle, planType }),
+        body: JSON.stringify({ billingCycle, planType }),
       })
 
       const data = await res.json()
@@ -84,10 +83,7 @@ export default function UpgradePage() {
   const quarterlySavingsLabel = getQuarterlySavingsLabel(DEFAULT_PRICING_REGION)
   const yearlySavingsLabel = getYearlySavingsLabel(DEFAULT_PRICING_REGION)
 
-  const starterBillingLabel =
-    billingCycle === 'yearly'
-      ? '/quarter (billed quarterly)'
-      : starterPricing.periodLabel
+  const starterBillingLabel = starterPricing.periodLabel
 
   return (
     <DashboardShell>
@@ -177,7 +173,7 @@ export default function UpgradePage() {
 
               <PricingCard
                 planName="Pro"
-                planSubtitle="For serious job seekers"
+                planSubtitle="For power users & teams"
                 priceLabel={proPricing.amountLabel}
                 billingLabel={proPricing.periodLabel}
                 features={[...PRO_PLAN_FEATURES]}

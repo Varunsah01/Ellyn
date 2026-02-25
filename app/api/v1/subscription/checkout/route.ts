@@ -130,14 +130,6 @@ export async function POST(request: NextRequest) {
     const selectedPlan: 'starter' | 'pro' =
       planType === 'starter' ? 'starter' : 'pro'
 
-    // Starter does not offer yearly billing
-    if (selectedPlan === 'starter' && selectedCycle === 'yearly') {
-      return NextResponse.json(
-        { error: 'Starter plan does not offer yearly billing. Please choose monthly or quarterly.' },
-        { status: 400 }
-      )
-    }
-
     let productId: string
     try {
       productId = getDodoProductId(DEFAULT_PRICING_REGION, selectedCycle, selectedPlan)

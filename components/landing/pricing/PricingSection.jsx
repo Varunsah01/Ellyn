@@ -41,11 +41,7 @@ export function PricingSection() {
     [],
   );
 
-  // Starter doesn't offer yearly billing — show fallback note when yearly is selected
-  const starterBillingLabel =
-    billingCycle === "yearly"
-      ? "/quarter (billed quarterly)"
-      : starterPrice.periodLabel;
+  const starterBillingLabel = starterPrice.periodLabel;
 
   return (
     <section

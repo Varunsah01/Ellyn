@@ -68,6 +68,11 @@ const STARTER_PRICING_GLOBAL = {
     periodLabel: "/quarter",
     savingsLabel: "Save 11%",
   },
+  yearly: {
+    amountLabel: "$149",
+    periodLabel: "/year",
+    savingsLabel: "Save 17%",
+  },
 } as const;
 
 const PRO_PRICING_GLOBAL = {
@@ -118,15 +123,13 @@ export function getFreeDisplayPrice(region: PricingRegion) {
 
 /**
  * Get starter display price.
- * Starter does not offer yearly billing — falls back to quarterly when billingCycle='yearly'.
  */
 export function getStarterDisplayPrice(
   region: PricingRegion,
   billingCycle: BillingCycle,
 ) {
   void region;
-  const cycle = billingCycle === "yearly" ? "quarterly" : billingCycle;
-  return STARTER_PRICING_GLOBAL[cycle];
+  return STARTER_PRICING_GLOBAL[billingCycle];
 }
 
 /**
@@ -146,6 +149,14 @@ export function getProDisplayPrice(
 export function getStarterQuarterlySavingsLabel(region: PricingRegion) {
   void region;
   return STARTER_PRICING_GLOBAL.quarterly.savingsLabel;
+}
+
+/**
+ * Get starter yearly savings label.
+ */
+export function getStarterYearlySavingsLabel(region: PricingRegion) {
+  void region;
+  return STARTER_PRICING_GLOBAL.yearly.savingsLabel;
 }
 
 /**
@@ -183,9 +194,7 @@ export function getDodoProductId(
   void region;
 
   if (planType === "starter") {
-    // Starter does not offer yearly billing
-    const effectiveCycle = billingCycle === "yearly" ? "quarterly" : billingCycle;
-    const starterCandidates: Record<"monthly" | "quarterly", readonly string[]> = {
+    const starterCandidates: Record<BillingCycle, readonly string[]> = {
       monthly: [
         "DODO_STARTER_PRODUCT_ID_GLOBAL_MONTHLY",
         "DODO_STARTER_PRODUCT_ID_MONTHLY",
@@ -194,9 +203,13 @@ export function getDodoProductId(
         "DODO_STARTER_PRODUCT_ID_GLOBAL_QUARTERLY",
         "DODO_STARTER_PRODUCT_ID_QUARTERLY",
       ],
+      yearly: [
+        "DODO_STARTER_PRODUCT_ID_GLOBAL_YEARLY",
+        "DODO_STARTER_PRODUCT_ID_YEARLY",
+      ],
     };
 
-    for (const envKey of starterCandidates[effectiveCycle]) {
+    for (const envKey of starterCandidates[billingCycle]) {
       const value = process.env[envKey];
       if (typeof value === "string" && value.trim().length > 0) {
         return value.trim();
@@ -204,7 +217,7 @@ export function getDodoProductId(
     }
 
     throw new Error(
-      `Missing Dodo product ID env vars for starter "${effectiveCycle}". Expected one of: ${starterCandidates[effectiveCycle].join(", ")}`,
+      `Missing Dodo product ID env vars for starter "${billingCycle}". Expected one of: ${starterCandidates[billingCycle].join(", ")}`,
     );
   }
 
@@ -260,6 +273,8 @@ export function resolvePlanTypeFromProductId(productId: string | null): "starter
     "DODO_STARTER_PRODUCT_ID_MONTHLY",
     "DODO_STARTER_PRODUCT_ID_GLOBAL_QUARTERLY",
     "DODO_STARTER_PRODUCT_ID_QUARTERLY",
+    "DODO_STARTER_PRODUCT_ID_GLOBAL_YEARLY",
+    "DODO_STARTER_PRODUCT_ID_YEARLY",
   ];
 
   for (const envKey of starterEnvKeys) {
