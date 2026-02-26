@@ -4,6 +4,7 @@
  *
  * Load order — all of the following must be <script>-loaded before this file:
  *   utils/role-detector.js
+ *   utils/saved-templates.js
  *   templates/recruiter-templates.js
  *   components/contact-card.js
  *   components/email-type-selector.js
@@ -215,6 +216,304 @@ function _ensureDvStyles() {
       display: block;
     }
 
+    .dv-ai-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .dv-ai-actions--two {
+      grid-template-columns: 1fr auto;
+      align-items: stretch;
+    }
+
+    .dv-ai-scratch-btn {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #dbe2ee;
+      border-radius: 10px;
+      background: #ffffff;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 0 12px;
+      min-height: 44px;
+      cursor: pointer;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .dv-ai-scratch-btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+
+    .dv-ai-scratch-btn:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .dv-ai-scratch-btn--visible {
+      display: inline-flex;
+    }
+
+    .dv-ai-goal {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #ffffff;
+    }
+
+    .dv-ai-goal--visible {
+      display: flex;
+    }
+
+    .dv-ai-goal-input {
+      flex: 1;
+      border: 1px solid #dbe2ee;
+      border-radius: 8px;
+      height: 34px;
+      padding: 0 10px;
+      font-size: 12px;
+      color: #0f172a;
+      background: #ffffff;
+      outline: none;
+    }
+
+    .dv-ai-goal-input:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+    }
+
+    .dv-ai-goal-generate-btn {
+      height: 34px;
+      border: 1px solid #667eea;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #4f46e5;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 0 10px;
+      cursor: pointer;
+    }
+
+    .dv-ai-goal-generate-btn:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .dv-tmpl-section {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      overflow: hidden;
+    }
+
+    .dv-tmpl-toggle {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border: none;
+      background: #ffffff;
+      color: #0f172a;
+      cursor: pointer;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .dv-tmpl-toggle:hover {
+      background: #f8fafc;
+    }
+
+    .dv-tmpl-toggle-left {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .dv-tmpl-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      padding: 0 6px;
+      background: #eef2ff;
+      color: #4338ca;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .dv-tmpl-chevron {
+      color: #64748b;
+      font-size: 11px;
+      transition: transform 0.2s ease;
+    }
+
+    .dv-tmpl-section--expanded .dv-tmpl-chevron {
+      transform: rotate(180deg);
+    }
+
+    .dv-tmpl-body {
+      display: none;
+      padding: 0 14px 14px;
+      border-top: 1px solid #f1f5f9;
+      gap: 10px;
+      flex-direction: column;
+    }
+
+    .dv-tmpl-section--expanded .dv-tmpl-body {
+      display: flex;
+    }
+
+    .dv-tmpl-search {
+      width: 100%;
+      border: 1px solid #dbe2ee;
+      border-radius: 8px;
+      height: 34px;
+      padding: 0 10px;
+      font-size: 12px;
+      color: #0f172a;
+      background: #ffffff;
+      outline: none;
+    }
+
+    .dv-tmpl-search:focus {
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+    }
+
+    .dv-tmpl-list {
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #ffffff;
+    }
+
+    .dv-tmpl-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px;
+      align-items: start;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      cursor: pointer;
+    }
+
+    .dv-tmpl-row:last-child {
+      border-bottom: none;
+    }
+
+    .dv-tmpl-row:hover {
+      background: #f8fafc;
+    }
+
+    .dv-tmpl-row input[type="radio"] {
+      margin-top: 3px;
+    }
+
+    .dv-tmpl-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #0f172a;
+      line-height: 1.35;
+    }
+
+    .dv-tmpl-meta {
+      margin-top: 4px;
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+      font-size: 10px;
+      color: #64748b;
+    }
+
+    .dv-tmpl-badge {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid #dbe2ee;
+      border-radius: 999px;
+      padding: 2px 6px;
+      background: #f8fafc;
+      font-size: 10px;
+      color: #475569;
+      font-weight: 600;
+    }
+
+    .dv-tmpl-empty {
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.45;
+      color: #64748b;
+      padding: 10px 12px;
+      border: 1px dashed #dbe2ee;
+      border-radius: 10px;
+      background: #f8fafc;
+    }
+
+    .dv-tmpl-empty-link {
+      border: none;
+      background: none;
+      padding: 0;
+      color: #4f46e5;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .dv-tmpl-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    .dv-tmpl-apply-btn {
+      width: 100%;
+      border: 1px solid #667eea;
+      border-radius: 8px;
+      background: #667eea;
+      color: #ffffff;
+      height: 36px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .dv-tmpl-apply-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .dv-tmpl-manage-btn {
+      width: 100%;
+      border: 1px solid #dbe2ee;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #334155;
+      height: 34px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .dv-tmpl-manage-btn:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+    }
+
     /* ── Error banner ──────────────────────────────────────── */
     .dv-error-banner {
       display: flex;
@@ -295,6 +594,161 @@ function _dvStorageKey(contact) {
   const email = String(contact?.email ?? "").trim().toLowerCase();
   const safe  = email.replace(/[^a-z0-9@._-]/g, "_") || "unknown";
   return `dv_draft_${safe}`;
+}
+
+const _DV_DEFAULT_WEBAPP_ORIGIN = "https://www.useellyn.com";
+const _DV_AUTH_SOURCE_ORIGIN_KEY = "ellyn_auth_origin";
+const _DV_TEMPLATES_MANAGE_PATH = "/dashboard/templates";
+
+function _dvNormalizeHttpOrigin(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw);
+    if (!["https:", "http:"].includes(parsed.protocol)) return "";
+    return parsed.origin;
+  } catch {
+    return "";
+  }
+}
+
+function _dvSendRuntimeMessage(payload) {
+  return new Promise((resolve, reject) => {
+    try {
+      if (typeof chrome === "undefined" || !chrome.runtime?.sendMessage) {
+        resolve(null);
+        return;
+      }
+
+      chrome.runtime.sendMessage(payload, (response) => {
+        if (chrome.runtime?.lastError) {
+          reject(new Error(chrome.runtime.lastError.message || "Runtime message failed"));
+          return;
+        }
+        resolve(response ?? null);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+async function _dvResolveWebappOrigin() {
+  const originFromStorage = _dvNormalizeHttpOrigin(await _dvStorageGet(_DV_AUTH_SOURCE_ORIGIN_KEY));
+  if (originFromStorage) return originFromStorage;
+  return _DV_DEFAULT_WEBAPP_ORIGIN;
+}
+
+function _dvOpenWebappPath(pathname) {
+  const safePath = String(pathname || "").startsWith("/")
+    ? String(pathname || "")
+    : `/${String(pathname || "").trim()}`;
+
+  void (async () => {
+    const origin = await _dvResolveWebappOrigin();
+    const url = `${origin}${safePath}`;
+
+    if (typeof chrome !== "undefined" && chrome.tabs?.create) {
+      chrome.tabs.create({ url });
+      return;
+    }
+
+    window.open(url, "_blank", "noopener,noreferrer");
+  })();
+}
+
+function _dvSplitName(value) {
+  const fullName = String(value || "").trim().replace(/\s+/g, " ");
+  if (!fullName) {
+    return { firstName: "", lastName: "", fullName: "" };
+  }
+
+  const parts = fullName.split(" ").filter(Boolean);
+  if (parts.length === 1) {
+    return {
+      firstName: parts[0],
+      lastName: "",
+      fullName: parts[0],
+    };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+    fullName,
+  };
+}
+
+function _dvBuildTemplateContact(contact) {
+  const split = _dvSplitName(contact?.fullName || contact?.name);
+  const firstName = String(contact?.firstName || split.firstName || "").trim();
+  const lastName = String(contact?.lastName || split.lastName || "").trim();
+  const fullName = String(contact?.fullName || split.fullName || [firstName, lastName].filter(Boolean).join(" ")).trim();
+
+  return {
+    firstName,
+    lastName,
+    fullName,
+    company: String(contact?.company || contact?.companyName || "").trim(),
+    role: String(contact?.role || contact?.designation || "").trim(),
+    email: String(contact?.email || "").trim(),
+  };
+}
+
+function _dvNormalizeUseCase(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "job_seeker" || normalized === "smb_sales" || normalized === "general") {
+    return normalized;
+  }
+  return "";
+}
+
+function _dvLooksLikeSales(text) {
+  const normalized = String(text || "").toLowerCase();
+  if (!normalized) return false;
+
+  return (
+    normalized.includes("sales") ||
+    normalized.includes("account executive") ||
+    normalized.includes("account manager") ||
+    normalized.includes("sdr") ||
+    normalized.includes("bdr") ||
+    normalized.includes("business development") ||
+    normalized.includes("revenue")
+  );
+}
+
+async function _dvResolvePersonaUseCase(contact) {
+  try {
+    const stored = await _dvStorageGet("user");
+    const user = stored && typeof stored === "object" ? stored : {};
+    const meta = user?.user_metadata && typeof user.user_metadata === "object" ? user.user_metadata : {};
+
+    const fromMeta = _dvNormalizeUseCase(
+      meta?.use_case || meta?.persona || meta?.persona_type || meta?.audience
+    );
+    if (fromMeta) return fromMeta;
+  } catch {
+    // Ignore storage errors and continue fallback logic.
+  }
+
+  const roleHint = String(contact?.role || contact?.designation || "").trim();
+  if (_dvLooksLikeSales(roleHint)) {
+    return "smb_sales";
+  }
+
+  return "job_seeker";
+}
+
+function _dvDefaultGoalForUseCase(useCase) {
+  if (useCase === "smb_sales") {
+    return "Book a demo call";
+  }
+  if (useCase === "job_seeker") {
+    return "Get a job interview";
+  }
+  return "Start a useful conversation";
 }
 
 // ── Toast bridge ──────────────────────────────────────────────────────────────
@@ -448,9 +902,59 @@ function renderDraftView(contact) {
       </div>
     </div>
 
-    <!-- Generate draft button -->
-    <div class="dv-generate-btn-slot">
-      ${generateBtnHtml}
+    <!-- Saved templates -->
+    <section class="dv-tmpl-section" aria-label="Saved templates">
+      <button
+        type="button"
+        class="dv-tmpl-toggle"
+        aria-expanded="false"
+        aria-controls="dv-tmpl-body"
+      >
+        <span class="dv-tmpl-toggle-left">
+          <span aria-hidden="true">📋</span>
+          <span>Saved Templates</span>
+          <span class="dv-tmpl-count" id="dv-tmpl-count">0</span>
+        </span>
+        <span class="dv-tmpl-chevron" aria-hidden="true">▼</span>
+      </button>
+
+      <div class="dv-tmpl-body" id="dv-tmpl-body">
+        <input
+          type="search"
+          class="dv-tmpl-search"
+          placeholder="Search templates..."
+          aria-label="Search saved templates"
+        />
+
+        <div class="dv-tmpl-list" role="radiogroup" aria-label="Saved templates list"></div>
+
+        <p class="dv-tmpl-empty">
+          No saved templates yet.
+          <button type="button" class="dv-tmpl-empty-link">Save templates from the webapp →</button>
+        </p>
+
+        <div class="dv-tmpl-actions">
+          <button type="button" class="dv-tmpl-apply-btn" disabled>Apply Selected Template</button>
+          <button type="button" class="dv-tmpl-manage-btn">Manage Templates →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI draft actions -->
+    <div class="dv-ai-actions">
+      <div class="dv-generate-btn-slot">
+        ${generateBtnHtml}
+      </div>
+      <button type="button" class="dv-ai-scratch-btn">Draft from Scratch</button>
+    </div>
+    <div class="dv-ai-goal">
+      <input
+        type="text"
+        class="dv-ai-goal-input"
+        placeholder="What's your goal for this email?"
+        aria-label="AI draft goal"
+      />
+      <button type="button" class="dv-ai-goal-generate-btn">Generate</button>
     </div>
     <p class="dv-ai-disclosure" aria-live="polite">
       Email drafts are AI-generated
@@ -528,6 +1032,20 @@ async function initDraftView(container, contact) {
   const contactCardSlot  = root.querySelector(".dv-contact-card-slot");
   const typeSelectorSlot = root.querySelector(".dv-type-selector-slot");
   const generateBtnSlot  = root.querySelector(".dv-generate-btn-slot");
+  const templateSection  = root.querySelector(".dv-tmpl-section");
+  const templateToggle   = root.querySelector(".dv-tmpl-toggle");
+  const templateCount    = root.querySelector("#dv-tmpl-count");
+  const templateSearch   = root.querySelector(".dv-tmpl-search");
+  const templateList     = root.querySelector(".dv-tmpl-list");
+  const templateApplyBtn = root.querySelector(".dv-tmpl-apply-btn");
+  const templateManageBtn = root.querySelector(".dv-tmpl-manage-btn");
+  const templateEmpty    = root.querySelector(".dv-tmpl-empty");
+  const templateEmptyLink = root.querySelector(".dv-tmpl-empty-link");
+  const aiActionsWrap    = root.querySelector(".dv-ai-actions");
+  const aiScratchBtn     = root.querySelector(".dv-ai-scratch-btn");
+  const aiGoalWrap       = root.querySelector(".dv-ai-goal");
+  const aiGoalInput      = root.querySelector(".dv-ai-goal-input");
+  const aiGoalGenerateBtn = root.querySelector(".dv-ai-goal-generate-btn");
   const editorSlot       = root.querySelector(".dv-editor-slot");
   const gmailBtnSlot     = root.querySelector(".dv-gmail-btn-slot");
   const sentBadge        = root.querySelector(".dv-sent-badge");
@@ -543,6 +1061,252 @@ async function initDraftView(container, contact) {
     if (!editorVisible) {
       _dvShowEditorSection(root);
       editorVisible = true;
+    }
+  }
+
+  const templateState = {
+    expanded: false,
+    loaded: false,
+    loading: false,
+    templates: [],
+    filtered: [],
+    selectedId: "",
+  };
+
+  let isGeminiGenerating = false;
+  const personaUseCasePromise = _dvResolvePersonaUseCase(contact);
+
+  function _setTemplateCount(value) {
+    if (!templateCount) return;
+    const safeCount = Number.isFinite(Number(value)) ? Number(value) : 0;
+    templateCount.textContent = String(Math.max(0, safeCount));
+  }
+
+  function _setTemplateActionsState() {
+    if (!templateApplyBtn) return;
+    templateApplyBtn.disabled =
+      !templateState.selectedId || templateState.filtered.length === 0;
+  }
+
+  function _renderTemplateList() {
+    if (!templateList) return;
+
+    templateList.innerHTML = "";
+    const list = templateState.filtered;
+
+    if (list.length === 0) {
+      templateList.style.display = "none";
+      if (templateEmpty) templateEmpty.style.display = "block";
+      _setTemplateActionsState();
+      return;
+    }
+
+    templateList.style.display = "block";
+    if (templateEmpty) templateEmpty.style.display = "none";
+
+    for (const template of list) {
+      const row = document.createElement("label");
+      row.className = "dv-tmpl-row";
+
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "dv-template-choice";
+      radio.value = String(template.id || "");
+      radio.checked = templateState.selectedId === radio.value;
+      radio.addEventListener("change", () => {
+        templateState.selectedId = radio.value;
+        _setTemplateActionsState();
+      });
+
+      const content = document.createElement("div");
+      const name = document.createElement("div");
+      name.className = "dv-tmpl-name";
+      name.textContent = String(template.name || "Untitled template");
+
+      const meta = document.createElement("div");
+      meta.className = "dv-tmpl-meta";
+
+      const categoryBadge = document.createElement("span");
+      categoryBadge.className = "dv-tmpl-badge";
+      categoryBadge.textContent = String(template.category || template.use_case || "general");
+
+      const toneBadge = document.createElement("span");
+      toneBadge.className = "dv-tmpl-badge";
+      toneBadge.textContent = String(template.tone || "professional");
+
+      meta.appendChild(categoryBadge);
+      meta.appendChild(toneBadge);
+      content.appendChild(name);
+      content.appendChild(meta);
+
+      row.appendChild(radio);
+      row.appendChild(content);
+      templateList.appendChild(row);
+    }
+
+    _setTemplateActionsState();
+  }
+
+  function _filterTemplates(query) {
+    const normalized = String(query || "").trim().toLowerCase();
+    if (!normalized) {
+      templateState.filtered = [...templateState.templates];
+      if (!templateState.selectedId && templateState.filtered[0]?.id) {
+        templateState.selectedId = String(templateState.filtered[0].id);
+      }
+      _renderTemplateList();
+      return;
+    }
+
+    templateState.filtered = templateState.templates.filter((template) => {
+      const haystack = [
+        template?.name,
+        template?.subject,
+        template?.body,
+        template?.category,
+        template?.tone,
+        template?.use_case,
+      ]
+        .map((item) => String(item || "").toLowerCase())
+        .join(" ");
+      return haystack.includes(normalized);
+    });
+
+    const selectedStillVisible = templateState.filtered.some(
+      (template) => String(template?.id || "") === templateState.selectedId
+    );
+    if (!selectedStillVisible) {
+      templateState.selectedId = templateState.filtered[0]?.id
+        ? String(templateState.filtered[0].id)
+        : "";
+    }
+
+    _renderTemplateList();
+  }
+
+  async function _loadSavedTemplates() {
+    if (templateState.loading) return;
+
+    templateState.loading = true;
+    try {
+      const response = await _dvSendRuntimeMessage({ type: "ELLYN_GET_TEMPLATES" });
+      if (!response?.success) {
+        throw new Error(String(response?.error || "Failed to load templates"));
+      }
+
+      const rows = Array.isArray(response.templates) ? response.templates : [];
+      templateState.templates = rows;
+      templateState.loaded = true;
+      _setTemplateCount(rows.length);
+      templateState.selectedId = rows[0]?.id ? String(rows[0].id) : "";
+      _filterTemplates(templateSearch?.value || "");
+    } catch (error) {
+      templateState.templates = [];
+      templateState.filtered = [];
+      templateState.selectedId = "";
+      _setTemplateCount(0);
+      _renderTemplateList();
+      _dvShowError(root, error?.message || "Failed to load saved templates");
+    } finally {
+      templateState.loading = false;
+    }
+  }
+
+  async function _toggleTemplateSection() {
+    templateState.expanded = !templateState.expanded;
+    templateSection?.classList.toggle("dv-tmpl-section--expanded", templateState.expanded);
+    if (templateToggle) {
+      templateToggle.setAttribute("aria-expanded", templateState.expanded ? "true" : "false");
+    }
+
+    if (templateState.expanded && !templateState.loaded) {
+      await _loadSavedTemplates();
+    }
+  }
+
+  function _applySelectedSavedTemplate() {
+    const selected = templateState.templates.find(
+      (template) => String(template?.id || "") === templateState.selectedId
+    );
+    if (!selected) {
+      _dvToast("Select a template first", "info");
+      return;
+    }
+
+    if (typeof savedTemplatesApply !== "function") {
+      _dvShowError(root, "Template utility is not available in this view");
+      return;
+    }
+
+    const applied = savedTemplatesApply(selected, _dvBuildTemplateContact(contact));
+    _applyDraft(applied.subject || "", applied.body || "");
+    _dvToast("Template applied", "success");
+  }
+
+  function _setGeminiLoadingState(loading) {
+    isGeminiGenerating = loading === true;
+
+    if (aiScratchBtn) {
+      aiScratchBtn.disabled = isGeminiGenerating;
+      aiScratchBtn.textContent = isGeminiGenerating
+        ? "Generating..."
+        : "Draft from Scratch";
+    }
+
+    if (aiGoalGenerateBtn) {
+      aiGoalGenerateBtn.disabled = isGeminiGenerating;
+      aiGoalGenerateBtn.textContent = isGeminiGenerating
+        ? "Generating..."
+        : "Generate";
+    }
+  }
+
+  function _setAiScratchVisibility(visible) {
+    const show = visible === true;
+    aiScratchBtn?.classList.toggle("dv-ai-scratch-btn--visible", show);
+    aiActionsWrap?.classList.toggle("dv-ai-actions--two", show);
+
+    if (!show) {
+      aiGoalWrap?.classList.remove("dv-ai-goal--visible");
+    }
+  }
+
+  async function _generateGeminiDraft(goalValue) {
+    const goal = String(goalValue || "").trim();
+    if (!goal) {
+      _dvToast("Please enter a goal", "info");
+      return;
+    }
+
+    _setGeminiLoadingState(true);
+    try {
+      const response = await _dvSendRuntimeMessage({
+        type: "GENERATE_AI_DRAFT_GEMINI",
+        contactData: _dvBuildTemplateContact(contact),
+        useGemini: true,
+        goal,
+      });
+
+      if (!response?.success) {
+        if (response?.quotaExceeded) {
+          _dvShowError(root, "AI quota exceeded. Upgrade your plan to continue.");
+          _dvToast("AI quota exceeded", "error");
+          return;
+        }
+
+        throw new Error(String(response?.error || "Gemini draft generation failed"));
+      }
+
+      _applyDraft(String(response.subject || ""), String(response.body || ""));
+      _dvToast("Gemini draft generated", "success");
+      if (typeof trackEvent === "function") {
+        trackEvent("draft_generated", { source: "gemini" });
+      }
+    } catch (error) {
+      _dvShowError(root, error?.message || "Gemini draft generation failed");
+      _dvToast("Gemini draft generation failed.", "error");
+    } finally {
+      _setGeminiLoadingState(false);
     }
   }
 
@@ -567,6 +1331,7 @@ async function initDraftView(container, contact) {
   /** Called whenever the user picks a different email type. */
   function handleTypeChange({ value, draft, label }) {
     _setAiDisclosureVisible(value === "ai_generated");
+    _setAiScratchVisibility(value === "ai_generated");
 
     // Analytics: track the selected email type
     if (typeof trackEvent === "function") {
@@ -581,7 +1346,12 @@ async function initDraftView(container, contact) {
     }
 
     if (value === "ai_generated") {
-      _dvToast("AI mode selected. Click Generate Draft to create a personalised email.", "info");
+      void personaUseCasePromise.then((useCase) => {
+        if (aiGoalInput && !String(aiGoalInput.value || "").trim()) {
+          aiGoalInput.value = _dvDefaultGoalForUseCase(useCase);
+        }
+      });
+      _dvToast("AI mode selected. Use Generate or Draft from Scratch.", "info");
       return;
     }
 
@@ -598,6 +1368,60 @@ async function initDraftView(container, contact) {
       getEmailTypeSelectorValue(typeSelectorSlot)) ??
     "referral_request";
   _setAiDisclosureVisible(initialTypeValue === "ai_generated");
+  _setAiScratchVisibility(initialTypeValue === "ai_generated");
+
+  if (templateToggle) {
+    templateToggle.addEventListener("click", () => {
+      void _toggleTemplateSection();
+    });
+  }
+
+  templateSearch?.addEventListener("input", () => {
+    _filterTemplates(templateSearch.value);
+  });
+
+  templateApplyBtn?.addEventListener("click", () => {
+    _applySelectedSavedTemplate();
+  });
+
+  templateManageBtn?.addEventListener("click", () => {
+    _dvOpenWebappPath(_DV_TEMPLATES_MANAGE_PATH);
+  });
+
+  templateEmptyLink?.addEventListener("click", () => {
+    _dvOpenWebappPath(_DV_TEMPLATES_MANAGE_PATH);
+  });
+
+  aiScratchBtn?.addEventListener("click", () => {
+    if (isGeminiGenerating) return;
+
+    const goalVisible = aiGoalWrap?.classList.contains("dv-ai-goal--visible");
+    if (!goalVisible) {
+      void personaUseCasePromise.then((useCase) => {
+        if (aiGoalInput) {
+          aiGoalInput.value = aiGoalInput.value || _dvDefaultGoalForUseCase(useCase);
+          aiGoalInput.focus();
+          aiGoalInput.select();
+        }
+      });
+      aiGoalWrap?.classList.add("dv-ai-goal--visible");
+      return;
+    }
+
+    void _generateGeminiDraft(aiGoalInput?.value || "");
+  });
+
+  aiGoalGenerateBtn?.addEventListener("click", () => {
+    if (isGeminiGenerating) return;
+    void _generateGeminiDraft(aiGoalInput?.value || "");
+  });
+
+  aiGoalInput?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (isGeminiGenerating) return;
+    void _generateGeminiDraft(aiGoalInput.value || "");
+  });
 
   // ── 3. Generate draft button ──────────────────────────────────────────────
   let gdbHandle = null;
@@ -751,21 +1575,53 @@ async function initDraftView(container, contact) {
    * @param {string} subject
    * @param {string} body
    */
+  function _dvGetSubject() {
+    if (editorHandle && typeof editorHandle.getValue === "function") {
+      return String(editorHandle.getValue()?.subject ?? "");
+    }
+    return "";
+  }
+
+  function _dvGetMessage() {
+    if (editorHandle && typeof editorHandle.getValue === "function") {
+      return String(editorHandle.getValue()?.message ?? "");
+    }
+    return "";
+  }
+
+  function _dvSetSubject(subject) {
+    const currentMessage = _dvGetMessage();
+    if (editorHandle && typeof editorHandle.setValue === "function") {
+      editorHandle.setValue({
+        subject: String(subject ?? ""),
+        message: currentMessage,
+      });
+    }
+  }
+
+  function _dvSetMessage(message) {
+    const currentSubject = _dvGetSubject();
+    if (editorHandle && typeof editorHandle.setValue === "function") {
+      editorHandle.setValue({
+        subject: currentSubject,
+        message: String(message ?? ""),
+      });
+    }
+  }
+
   function _applyDraft(subject, body) {
     const message = body ?? "";
 
-    // Push content into editor
-    if (editorHandle) {
-      editorHandle.setValue({ subject, message });
-    }
+    _dvSetSubject(subject);
+    _dvSetMessage(message);
 
     // Sync Gmail button
     if (gmailHandle) {
-      gmailHandle.updateContent(contact?.email ?? "", subject, message);
+      gmailHandle.updateContent(contact?.email ?? "", _dvGetSubject(), _dvGetMessage());
     }
 
     // Persist so it survives a panel close
-    _dvStorageSet(storageKey, { subject, message });
+    _dvStorageSet(storageKey, { subject: _dvGetSubject(), message: _dvGetMessage() });
 
     // Reveal the editor section (idempotent after first call)
     showEditor();

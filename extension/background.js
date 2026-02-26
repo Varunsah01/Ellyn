@@ -15,12 +15,14 @@ loadOptionalScript('lib/sync.js', 'Supabase contact sync bridge');
 loadOptionalScript('lib/syncQueue.js', 'Supabase contact sync queue bridge');
 loadOptionalScript('utils/quota.js', 'quota utility script');
 loadOptionalScript('utils/analytics.js', 'analytics utility script');
+loadOptionalScript('utils/saved-templates.js', 'saved templates utility script');
 loadOptionalScript('background/email-predictor.js', 'AI email predictor utility script');
 loadOptionalScript('utils/safety.js', 'safety utility script');
 
 // Configuration
 const CONFIG = {
   API_BASE_URL: 'https://www.useellyn.com',
+  WEBAPP_URL: 'https://www.useellyn.com',
   CACHE_DURATION_MS: 30 * 24 * 60 * 60 * 1000, // 30 days
   COST_WINDOW_MS: 30 * 24 * 60 * 60 * 1000, // 30 days rolling cost window
   DISABLE_CREDIT_LIMITS: true,
@@ -41,6 +43,17 @@ const CONFIG = {
     verifyEmail: 0.001,
   },
 };
+
+const ALLOWED_ORIGINS = new Set([
+  'http://localhost:3000',
+  'https://useellyn.com',
+  'https://www.useellyn.com',
+  'https://ellyn.app',
+  'https://www.ellyn.app',
+  'https://app.ellyn.app',
+  'https://app.ellyn.ai',
+  'https://www.app.ellyn.ai',
+]);
 
 const CSRF_HEADER_NAME = 'X-CSRF-Token';
 const CSRF_REFRESH_PATH = '/api/v1';
@@ -761,6 +774,332 @@ async function handleGenerateAiDraftMessage(message, sendResponse) {
   }
 }
 
+function isAllowedExternalOrigin(value) {
+  const origin = normalizeOrigin(value);
+  if (!origin) return false;
+  return ALLOWED_ORIGINS.has(origin);
+}
+
+function hasSavedTemplateUtilities() {
+  return (
+    typeof savedTemplatesSave === 'function' &&
+    typeof savedTemplatesGet === 'function' &&
+    typeof savedTemplatesDelete === 'function'
+  );
+}
+
+function normalizeSavedTemplateMessage(template) {
+  if (!template || typeof template !== 'object') return null;
+
+  const id = toOptionalInlineString(template.id, 160);
+  const name = toOptionalInlineString(template.name, 220);
+  const subject = toOptionalInlineString(template.subject, 500);
+  const body = String(template.body || '').trim();
+
+  if (!id || !name || !subject || !body) {
+    return null;
+  }
+
+  const variables = Array.isArray(template.variables)
+    ? template.variables
+        .map((entry) => toOptionalInlineString(entry, 120))
+        .filter(Boolean)
+    : [];
+
+  return {
+    id,
+    name,
+    subject,
+    body,
+    tone: toOptionalInlineString(template.tone, 80) || 'professional',
+    category: toOptionalInlineString(template.category, 120) || 'general',
+    use_case: toOptionalInlineString(template.use_case, 120) || 'general',
+    variables,
+    savedAt: toOptionalInlineString(template.savedAt, 80) || new Date().toISOString(),
+  };
+}
+
+async function handleSaveTemplateMessage(message, sendResponse) {
+  try {
+    if (!hasSavedTemplateUtilities()) {
+      throw new Error('Saved templates utility unavailable');
+    }
+
+    const normalizedTemplate = normalizeSavedTemplateMessage(message?.template);
+    if (!normalizedTemplate) {
+      sendResponse?.({
+        success: false,
+        error: 'Invalid template payload (id, name, subject, body required)',
+      });
+      return;
+    }
+
+    await savedTemplatesSave(normalizedTemplate);
+    sendResponse?.({ success: true });
+  } catch (error) {
+    sendResponse?.({
+      success: false,
+      error: error?.message || 'Failed to save template',
+    });
+  }
+}
+
+async function handleGetTemplatesMessage(sendResponse) {
+  try {
+    if (!hasSavedTemplateUtilities()) {
+      throw new Error('Saved templates utility unavailable');
+    }
+
+    const templates = await savedTemplatesGet();
+    sendResponse?.({
+      success: true,
+      templates: Array.isArray(templates) ? templates : [],
+    });
+  } catch (error) {
+    sendResponse?.({
+      success: false,
+      error: error?.message || 'Failed to load templates',
+      templates: [],
+    });
+  }
+}
+
+async function handleDeleteTemplateMessage(message, sendResponse) {
+  try {
+    if (!hasSavedTemplateUtilities()) {
+      throw new Error('Saved templates utility unavailable');
+    }
+
+    const templateId = toOptionalInlineString(message?.id, 160);
+    if (!templateId) {
+      sendResponse?.({
+        success: false,
+        error: 'Template id is required',
+      });
+      return;
+    }
+
+    await savedTemplatesDelete(templateId);
+    sendResponse?.({ success: true });
+  } catch (error) {
+    sendResponse?.({
+      success: false,
+      error: error?.message || 'Failed to delete template',
+    });
+  }
+}
+
+function normalizeGeminiUseCase(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  const allowed = new Set(['job_seeker', 'smb_sales', 'general']);
+  return allowed.has(normalized) ? normalized : '';
+}
+
+function isSalesRole(role) {
+  const normalized = String(role || '').toLowerCase();
+  if (!normalized) return false;
+
+  return (
+    normalized.includes('sales') ||
+    normalized.includes('account executive') ||
+    normalized.includes('account manager') ||
+    normalized.includes('sdr') ||
+    normalized.includes('bdr') ||
+    normalized.includes('business development') ||
+    normalized.includes('revenue') ||
+    normalized.includes('growth')
+  );
+}
+
+function pickFirstInlineValue(maxLength, ...values) {
+  for (const value of values) {
+    const normalized = toOptionalInlineString(value, maxLength);
+    if (normalized) return normalized;
+  }
+  return undefined;
+}
+
+async function getStoredUserProfile() {
+  try {
+    const stored = await chrome.storage.local.get(['user']);
+    return stored?.user && typeof stored.user === 'object' ? stored.user : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildGeminiContactPayload(message) {
+  const contactData =
+    message?.contactData && typeof message.contactData === 'object'
+      ? message.contactData
+      : {};
+
+  const fullName = pickFirstInlineValue(220, contactData.fullName, contactData.name);
+  const splitName = splitHumanName(fullName || '');
+
+  const firstName =
+    pickFirstInlineValue(120, contactData.firstName, splitName.firstName, 'there') || 'there';
+  const company =
+    pickFirstInlineValue(160, contactData.company, contactData.companyName, 'their company') ||
+    'their company';
+  const role = pickFirstInlineValue(160, contactData.role, contactData.designation);
+
+  return {
+    firstName,
+    company,
+    ...(role ? { role } : {}),
+  };
+}
+
+async function buildGeminiSenderPayload() {
+  const user = await getStoredUserProfile();
+  const userMeta = user?.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {};
+
+  const name =
+    pickFirstInlineValue(
+      120,
+      userMeta?.full_name,
+      userMeta?.name,
+      typeof user?.email === 'string' ? user.email.split('@')[0] : '',
+      'Ellyn User'
+    ) || 'Ellyn User';
+
+  const context = pickFirstInlineValue(
+    180,
+    userMeta?.headline,
+    userMeta?.title,
+    userMeta?.context,
+    userMeta?.bio
+  );
+
+  return {
+    name,
+    ...(context ? { context } : {}),
+  };
+}
+
+async function resolveGeminiUseCase(message) {
+  const directUseCase = normalizeGeminiUseCase(message?.use_case || message?.payload?.use_case);
+  if (directUseCase) return directUseCase;
+
+  const directPersona = normalizeGeminiUseCase(message?.persona || message?.payload?.persona);
+  if (directPersona) return directPersona;
+
+  const user = await getStoredUserProfile();
+  const userMeta = user?.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {};
+  const userMetaUseCase = normalizeGeminiUseCase(
+    userMeta?.use_case || userMeta?.persona || userMeta?.persona_type || userMeta?.audience
+  );
+  if (userMetaUseCase) return userMetaUseCase;
+
+  const roleHint =
+    pickFirstInlineValue(
+      160,
+      message?.contactData?.role,
+      message?.contactData?.designation,
+      message?.payload?.contact?.role
+    ) || '';
+
+  return isSalesRole(roleHint) ? 'smb_sales' : 'job_seeker';
+}
+
+function defaultGoalForUseCase(useCase) {
+  if (useCase === 'smb_sales') {
+    return 'Book a demo call';
+  }
+  if (useCase === 'job_seeker') {
+    return 'Get a job interview';
+  }
+  return 'Start a useful conversation';
+}
+
+async function handleGenerateAiDraftGeminiMessage(message, sendResponse) {
+  try {
+    const authToken = await getAuthToken();
+    if (!authToken) {
+      sendResponse?.({
+        success: false,
+        error: 'Authentication required',
+      });
+      return;
+    }
+
+    const useCase = await resolveGeminiUseCase(message);
+    const goal =
+      toOptionalInlineString(message?.goal, 400) || defaultGoalForUseCase(useCase);
+    const contactPayload = buildGeminiContactPayload(message);
+    const senderPayload = await buildGeminiSenderPayload();
+
+    const webappUrl = String(CONFIG.WEBAPP_URL || CONFIG.API_BASE_URL || '').trim().replace(/\/+$/, '');
+    if (!webappUrl) {
+      throw new Error('WEBAPP_URL is not configured');
+    }
+
+    const response = await fetch(`${webappUrl}/api/v1/ai/draft-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        use_case: useCase,
+        tone: 'professional',
+        goal,
+        contact: contactPayload,
+        sender: senderPayload,
+      }),
+      credentials: 'include',
+      cache: 'no-store',
+      signal: createTimeoutSignal(35000),
+    });
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (response.status === 402) {
+      sendResponse?.({
+        success: false,
+        quotaExceeded: true,
+        error: 'AI draft quota exceeded',
+      });
+      return;
+    }
+
+    if (!response.ok) {
+      const errorMessage =
+        getApiErrorMessage(payload) ||
+        `Gemini draft request failed (${response.status})`;
+      sendResponse?.({
+        success: false,
+        error: errorMessage,
+      });
+      return;
+    }
+
+    const subject = String(payload?.subject || payload?.data?.subject || '').trim();
+    const body = String(payload?.body || payload?.data?.body || '').trim();
+    if (!subject || !body) {
+      throw new Error('Gemini draft payload was invalid');
+    }
+
+    sendResponse?.({
+      success: true,
+      subject,
+      body,
+    });
+  } catch (error) {
+    sendResponse?.({
+      success: false,
+      error: error?.message || 'Gemini draft generation failed',
+    });
+  }
+}
+
 // ============================================================================
 // MESSAGE HANDLERS
 // ============================================================================
@@ -840,8 +1179,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'ELLYN_SAVE_TEMPLATE') {
+    void handleSaveTemplateMessage(message, sendResponse);
+    return true;
+  }
+
+  if (message.type === 'ELLYN_GET_TEMPLATES') {
+    void handleGetTemplatesMessage(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'ELLYN_DELETE_TEMPLATE') {
+    void handleDeleteTemplateMessage(message, sendResponse);
+    return true;
+  }
+
   if (message.type === 'GENERATE_AI_DRAFT') {
     void handleGenerateAiDraftMessage(message, sendResponse);
+    return true;
+  }
+
+  if (message.type === 'GENERATE_AI_DRAFT_GEMINI') {
+    void handleGenerateAiDraftGeminiMessage(message, sendResponse);
     return true;
   }
 
@@ -877,6 +1236,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== 'object') return;
   const senderOrigin = normalizeOrigin(_sender?.url || _sender?.origin || '');
+  if (!isAllowedExternalOrigin(senderOrigin)) {
+    sendResponse?.({
+      ok: false,
+      error: 'Origin not allowed',
+    });
+    return false;
+  }
+
+  if (message.type === 'ELLYN_SAVE_TEMPLATE') {
+    void handleSaveTemplateMessage(message, sendResponse);
+    return true;
+  }
+
+  if (message.type === 'ELLYN_GET_TEMPLATES') {
+    void handleGetTemplatesMessage(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'ELLYN_DELETE_TEMPLATE') {
+    void handleDeleteTemplateMessage(message, sendResponse);
+    return true;
+  }
 
   if (message.type === 'ELLYN_SET_SESSION') {
     void setSupabaseSessionFromExternalMessage(message, sendResponse, {
