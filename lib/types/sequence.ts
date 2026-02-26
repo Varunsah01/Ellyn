@@ -1,5 +1,18 @@
 export type SequenceStatus = "draft" | "active" | "paused" | "completed" | "archived";
 
+export type StepType = "email" | "wait" | "task" | "linkedin";
+
+export type ConditionType = "always" | "no_reply" | "opened" | "clicked";
+
+export interface StepAttachment {
+  id: string;
+  name: string;
+  size: number;
+  type: "resume" | "portfolio" | "case_study" | "other";
+  url?: string;
+  localFile?: Blob;
+}
+
 export type EnrollmentStatus =
   | "active"
   | "not_started"
@@ -47,8 +60,14 @@ export interface SequenceStep {
   sequence_id?: string;
   order: number;
   type?: string;
+  stepType?: StepType;
+  conditionType?: ConditionType;
+  step_name?: string;
   delay_days: number;
   delayDays?: number;
+  send_on_days?: string[];
+  send_from_hour?: number;
+  send_to_hour?: number;
   template_id?: string | null;
   templateId?: string | null;
   subject: string;
@@ -56,6 +75,7 @@ export interface SequenceStep {
   status: "draft" | "active";
   stop_on_reply?: boolean;
   stop_on_bounce?: boolean;
+  attachments?: StepAttachment[];
 }
 
 export interface SequenceStats {

@@ -331,9 +331,11 @@ export default function SequencesPage() {
               />
               Refresh
             </Button>
-            <Button onClick={() => setDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Sequence
+            <Button asChild>
+              <Link href="/dashboard/sequences/new">
+                <Plus className="mr-2 h-4 w-4" />
+                New Sequence
+              </Link>
             </Button>
           </div>
         }
@@ -375,9 +377,11 @@ export default function SequencesPage() {
                 Templates
               </Link>
             </Button>
-            <Button size="sm" onClick={() => setDialogOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Sequence
+            <Button size="sm" asChild>
+              <Link href="/dashboard/sequences/new">
+                <Plus className="mr-2 h-4 w-4" />
+                New Sequence
+              </Link>
             </Button>
           </div>
         </CardContent>
@@ -421,13 +425,11 @@ export default function SequencesPage() {
                   <p className="mt-1 text-sm text-muted-foreground">
                     Create your first sequence to automate follow-ups
                   </p>
-                  <Button
-                    className="mt-4"
-                    size="sm"
-                    onClick={() => setDialogOpen(true)}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    New Sequence
+                  <Button className="mt-4" size="sm" asChild>
+                    <Link href="/dashboard/sequences/new">
+                      <Plus className="mr-2 h-4 w-4" />
+                      New Sequence
+                    </Link>
                   </Button>
                 </>
               )}

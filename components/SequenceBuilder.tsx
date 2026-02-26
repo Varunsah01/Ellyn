@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
 import { Input } from "@/components/ui/Input"
 import { Label } from "@/components/ui/Label"
 import { Textarea } from "@/components/ui/Textarea"
-import { StepBuilder } from "@/components/sequences/StepBuilder"
+import { VisualSequenceBuilder } from "@/components/sequences/VisualSequenceBuilder"
 import { useSequences } from "@/lib/hooks/useSequences"
 import { SequenceStep } from "@/lib/types/sequence"
 import { AlertCircle, ArrowRight, Loader2 } from "lucide-react"
@@ -15,6 +15,8 @@ import { AlertCircle, ArrowRight, Loader2 } from "lucide-react"
 interface SequenceBuilderProps {
   onSaved?: (sequenceId: string) => void
   onCancel?: () => void
+  initialName?: string
+  initialSteps?: SequenceStep[]
 }
 
 /**
@@ -24,20 +26,24 @@ interface SequenceBuilderProps {
  * @example
  * <SequenceBuilder />
  */
-export function SequenceBuilder({ onSaved, onCancel }: SequenceBuilderProps) {
+export function SequenceBuilder({ onSaved, onCancel, initialName, initialSteps }: SequenceBuilderProps) {
   const router = useRouter()
   const { templates } = useSequences()
-  const [name, setName] = useState("")
+  const [name, setName] = useState(initialName ?? "")
   const [description, setDescription] = useState("")
   const [goal, setGoal] = useState("")
-  const [steps, setSteps] = useState<SequenceStep[]>([])
+  const [steps, setSteps] = useState<SequenceStep[]>(initialSteps ?? [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const canSave =
     name.trim().length > 0 &&
     steps.length > 0 &&
-    steps.every((step) => step.subject.trim() && step.body.trim())
+    steps.every((step) => {
+      const type = step.stepType ?? "email"
+      if (type === "wait") return true
+      return Boolean(step.subject.trim()) && Boolean(step.body.trim())
+    })
 
   const saveSequence = async (launch: boolean) => {
     if (!canSave) return
@@ -121,7 +127,7 @@ export function SequenceBuilder({ onSaved, onCancel }: SequenceBuilderProps) {
           <CardTitle>Sequence Steps</CardTitle>
         </CardHeader>
         <CardContent>
-          <StepBuilder
+          <VisualSequenceBuilder
             steps={steps}
             onChange={setSteps}
             templates={templates.map((template) => ({

@@ -13,13 +13,14 @@ import {
   Trash2,
   Users,
 } from "lucide-react"
+import Link from "next/link"
 import { DashboardShell } from "@/components/dashboard/DashboardShell"
 import { Button } from "@/components/ui/Button"
 import { Badge } from "@/components/ui/Badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
 import { Skeleton } from "@/components/ui/Skeleton"
 import { SequenceTimeline } from "@/components/SequenceTimeline"
-import { EnrollContactsModal } from "@/components/sequences/EnrollContactsModal"
+import { SequenceTracker } from "@/components/sequences/SequenceTracker"
 import { createClient } from "@/lib/supabase/client"
 import { showToast } from "@/lib/toast"
 import { computeSequenceStats, getSequenceStatusLabel } from "@/lib/sequence-engine"
@@ -110,6 +111,7 @@ export default function SequenceDetailPage() {
   const [data, setData] = useState<SequenceDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<"overview" | "contacts">("overview")
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string | null>(null)
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [togglingStatus, setTogglingStatus] = useState(false)
@@ -359,16 +361,12 @@ export default function SequenceDetailPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <EnrollContactsModal
-              sequenceId={sequenceId}
-              trigger={
-                <Button variant="outline" size="sm">
-                  <Users className="mr-1.5 h-4 w-4" />
-                  Enroll Contacts
-                </Button>
-              }
-              onSuccess={() => void refresh()}
-            />
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/dashboard/sequences/${sequenceId}/enroll`}>
+                <Users className="mr-1.5 h-4 w-4" />
+                Enroll Contacts
+              </Link>
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -398,6 +396,33 @@ export default function SequenceDetailPage() {
             </Button>
           </div>
         </div>
+
+        {/* ── Tabs ────────────────────────────────────────────────────── */}
+        <div className="flex border-b gap-1">
+          {(["overview", "contacts"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                "px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 -mb-px",
+                activeTab === tab
+                  ? "border-violet-600 text-violet-700"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {tab === "overview" ? "Overview" : "Contacts"}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Contacts tab ────────────────────────────────────────────── */}
+        {activeTab === "contacts" && (
+          <SequenceTracker sequenceId={sequenceId} />
+        )}
+
+        {/* ── Overview tab ────────────────────────────────────────────── */}
+        {activeTab === "overview" && <>
 
         {/* ── Stats row ──────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -605,6 +630,8 @@ export default function SequenceDetailPage() {
             </CardContent>
           </Card>
         )}
+
+        </> /* end overview tab */}
       </div>
     </DashboardShell>
   )

@@ -52,6 +52,20 @@ export async function GET() {
     .maybeSingle<PersonaProfileRow>()
 
   if (error) {
+    // Graceful fallback: if persona or onboarding columns don't exist yet (migration not applied),
+    // return default values so the client still loads correctly.
+    if (
+      error.code === '42703' ||
+      /column .* does not exist/i.test(error.message)
+    ) {
+      console.warn('[persona] GET failed due to missing column — run migrations 010 and 016 in Supabase')
+      return NextResponse.json({
+        persona: null,
+        onboarding_completed: false,
+        onboarding_steps_completed: [],
+        extension_last_seen: null,
+      })
+    }
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
@@ -101,6 +115,15 @@ export async function PATCH(request: NextRequest) {
     .maybeSingle<PersonaMutationRow>()
 
   if (existingError) {
+    // Graceful fallback: if persona column doesn't exist yet (migration 010 not applied),
+    // return the requested value so the client-side localStorage state is accepted.
+    if (
+      existingError.code === '42703' ||
+      /column .* does not exist/i.test(existingError.message)
+    ) {
+      console.warn('[persona] persona column missing — run migration 010_user_persona.sql in Supabase')
+      return NextResponse.json({ persona: parsed.data.persona })
+    }
     return NextResponse.json({ error: existingError.message }, { status: 500 })
   }
 
@@ -135,6 +158,14 @@ export async function PATCH(request: NextRequest) {
     .single<PersonaMutationRow>()
 
   if (updateError) {
+    // Graceful fallback for missing columns (migration not yet applied)
+    if (
+      updateError.code === '42703' ||
+      /column .* does not exist/i.test(updateError.message)
+    ) {
+      console.warn('[persona] upsert failed due to missing column — run migrations in Supabase:', updateError.message)
+      return NextResponse.json({ persona: parsed.data.persona })
+    }
     return NextResponse.json({ error: updateError.message }, { status: 500 })
   }
 
