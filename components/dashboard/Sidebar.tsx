@@ -16,7 +16,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/DropdownMenu";
 import { mainNavItems, secondaryNavItems, type NavItem } from "@/lib/constants/navigation";
-import { ChevronLeft, LifeBuoy, LogOut, Sparkles, LayoutDashboard, BarChart2 } from "lucide-react";
+import { getPersonaCopy } from "@/lib/persona-copy";
+import { ChevronLeft, LifeBuoy, LogOut, Sparkles, LayoutDashboard, BarChart2, Briefcase, TrendingUp } from "lucide-react";
 import { usePersona } from "@/context/PersonaContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useAnalytics";
@@ -56,7 +57,7 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const { stats } = useDashboardStats();
   const { stats: sequenceStats } = useSequenceStats();
   const { plan_type } = useSubscription();
-  const { isJobSeeker, isSalesRep } = usePersona();
+  const { persona, setPersona, isJobSeeker, isSalesRep } = usePersona();
   const isPaidUser = plan_type === "pro";
   const [userFullName, setUserFullName] = useState("Account");
   const [userEmail, setUserEmail] = useState("");
@@ -159,7 +160,7 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
         {collapsed && (
           <Link href="/dashboard" className="w-8 h-8 mx-auto flex items-center justify-center">
-             <img
+            <img
               src="https://subsnacks.sirv.com/Ellyn_logo.png"
               alt="Ellyn logo"
               className="h-full w-full object-contain"
@@ -172,32 +173,32 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
         {/* Navigation Items */}
         <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
           {((): NavItem[] => {
-              const items = [...mainNavItems]
-              const contactsIdx = items.findIndex((i) => i.href === "/dashboard/contacts")
-              if (isJobSeeker) {
-                const trackerItem: NavItem = {
-                  name: "Tracker",
-                  href: "/dashboard/tracker",
-                  icon: LayoutDashboard,
-                }
-                items.splice(contactsIdx + 1, 0, trackerItem)
+            const items = [...mainNavItems]
+            const contactsIdx = items.findIndex((i) => i.href === "/dashboard/contacts")
+            if (isJobSeeker) {
+              const trackerItem: NavItem = {
+                name: "Tracker",
+                href: "/dashboard/tracker",
+                icon: LayoutDashboard,
               }
-              if (isSalesRep) {
-                const pipelineItem: NavItem = {
-                  name: "Pipeline",
-                  href: "/dashboard/pipeline",
-                  icon: BarChart2,
-                }
-                items.splice(contactsIdx + 1, 0, pipelineItem)
+              items.splice(contactsIdx + 1, 0, trackerItem)
+            }
+            if (isSalesRep) {
+              const pipelineItem: NavItem = {
+                name: "Pipeline",
+                href: "/dashboard/pipeline",
+                icon: BarChart2,
               }
-              return items
-            })().map((item) => {
+              items.splice(contactsIdx + 1, 0, pipelineItem)
+            }
+            return items
+          })().map((item) => {
             const isActive =
               item.href === "/dashboard"
                 ? pathname === item.href
                 : pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
-            
+
             // Map legacy stats to new structure
             let count: number | undefined;
             let extensionBadge = false;
@@ -256,6 +257,56 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
         </nav>
       </div>
 
+      {/* Persona Toggle */}
+      <div className="border-t px-3 py-2">
+        <button
+          type="button"
+          onClick={() => {
+            const next = persona === 'job_seeker' ? 'smb_sales' : 'job_seeker'
+            void setPersona(next)
+          }}
+          className={cn(
+            "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 hover:bg-secondary/60",
+            collapsed && "justify-center px-2"
+          )}
+          title={collapsed ? `Switch to ${persona === 'job_seeker' ? 'Enterprise' : 'Job Seeker'}` : undefined}
+        >
+          <div className="relative flex h-8 w-14 flex-shrink-0 items-center rounded-full bg-muted p-0.5 transition-colors">
+            <motion.div
+              className="absolute h-7 w-7 rounded-full bg-[#FF6B6B] shadow-sm"
+              animate={{ x: persona === 'smb_sales' ? 24 : 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+            />
+            <span className={cn(
+              "relative z-10 flex h-7 w-7 items-center justify-center transition-colors",
+              persona === 'job_seeker' ? 'text-white' : 'text-muted-foreground'
+            )}>
+              <Briefcase className="h-3.5 w-3.5" />
+            </span>
+            <span className={cn(
+              "relative z-10 flex h-7 w-7 items-center justify-center transition-colors",
+              persona === 'smb_sales' ? 'text-white' : 'text-muted-foreground'
+            )}>
+              <TrendingUp className="h-3.5 w-3.5" />
+            </span>
+          </div>
+          <AnimatePresence mode="wait">
+            {!collapsed && (
+              <motion.span
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                transition={{ duration: 0.2 }}
+                key={persona}
+                className="truncate text-xs text-muted-foreground"
+              >
+                {getPersonaCopy(persona).personaLabel}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </button>
+      </div>
+
       {/* User Profile Section */}
       <div className="border-t p-3 bg-background/50">
         <DropdownMenu>
@@ -301,7 +352,7 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            
+
             {/* Secondary Items */}
             {secondaryNavItems.map((item) => (
               <DropdownMenuItem key={item.href} asChild>

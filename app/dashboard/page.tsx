@@ -17,8 +17,12 @@ import { useDashboardMetrics } from "@/lib/hooks/useDashboardMetrics";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeContacts } from "@/hooks/useRealtimeContacts";
 import { SmartQuickActions } from "@/components/ContextualActions";
+import { usePersona } from "@/context/PersonaContext";
+import { getPersonaCopy } from "@/lib/persona-copy";
 
 export default function DashboardPage() {
+  const { persona } = usePersona();
+  const copy = getPersonaCopy(persona);
   const [userId, setUserId] = useState<string | null>(null);
   const [userLoading, setUserLoading] = useState(true);
 
@@ -111,19 +115,19 @@ export default function DashboardPage() {
   const nextSteps = [
     {
       key: "contacts",
-      title: "Add your first contacts",
-      description: "Build a contact base from LinkedIn profiles.",
+      title: copy.nextStepContactsTitle,
+      description: copy.nextStepContactsDesc,
       completed: metrics.totalContacts > 0,
       href: "/dashboard/contacts",
-      cta: "Go to Contacts",
+      cta: copy.nextStepContactsCTA,
     },
     {
       key: "templates",
-      title: "Create reusable templates",
-      description: "Save outreach templates so sending is faster.",
+      title: copy.nextStepTemplatesTitle,
+      description: copy.nextStepTemplatesDesc,
       completed: metrics.emailTemplates > 0,
       href: "/dashboard/templates",
-      cta: "Manage Templates",
+      cta: copy.nextStepTemplatesCTA,
     },
   ];
 
@@ -152,7 +156,7 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-3xl font-fraunces font-bold">{greeting}!</h1>
             <p className="text-muted-foreground mt-1">
-              {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+              {copy.dashboardSubtitle} &middot; {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -167,7 +171,7 @@ export default function DashboardPage() {
             </Button>
             <Button asChild>
               <Link href="/dashboard/contacts">
-                <Plus className="mr-2 h-4 w-4" />Add Contact
+                <Plus className="mr-2 h-4 w-4" />{copy.addContactCTA}
               </Link>
             </Button>
           </div>
@@ -179,7 +183,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              Visit any LinkedIn profile and click the Ellyn extension to capture contacts instantly.
+              {copy.extensionCTA}
             </p>
             <div className="flex items-center gap-2">
               <Button asChild>
@@ -250,7 +254,7 @@ export default function DashboardPage() {
               ) : hasNoWeeklyProgress ? (
                 <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-muted-foreground">
                   <p>
-                    Nothing yet this week &mdash; start by adding contacts on LinkedIn.
+                    {copy.weeklyProgressEmpty}
                   </p>
                   <Link href="/dashboard/contacts" className="mt-2 inline-block font-medium text-primary hover:underline">
                     Go to Contacts
@@ -278,7 +282,7 @@ export default function DashboardPage() {
           </Card>
 
           <StatCard
-            title="Total Contacts"
+            title={copy.statsContactsLabel}
             value={metricCardsLoading ? 0 : metrics.totalContacts}
             icon={Users}
             description={`${metrics.newContactsThisWeek} added this week`}
@@ -287,7 +291,7 @@ export default function DashboardPage() {
           />
 
           <StatCard
-            title="Discovered Leads"
+            title={copy.statsDiscoveredLabel}
             value={metricCardsLoading ? 0 : metrics.discoveredLeads}
             icon={Target}
             description="Contacts added from extension"
@@ -296,7 +300,7 @@ export default function DashboardPage() {
           />
 
           <StatCard
-            title="Email Templates"
+            title={copy.statsTemplatesLabel}
             value={metricCardsLoading ? 0 : metrics.emailTemplates}
             icon={Zap}
             description="Reusable outreach templates"
@@ -305,7 +309,7 @@ export default function DashboardPage() {
           />
 
           <StatCard
-            title="Emails Sent"
+            title={copy.statsEmailsLabel}
             value={metricCardsLoading ? 0 : metrics.emailsSent}
             {...(metrics.emailsSentThisWeek > 0
               ? { change: metrics.emailsSentThisWeek, trend: "up" as const }

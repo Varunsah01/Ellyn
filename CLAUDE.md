@@ -656,6 +656,37 @@ Sidebar layout with tabs: Account | Billing & Plan
 
 ---
 
+## Persona System
+
+Users switch between two personas that adapt the entire dashboard experience:
+
+| Persona | Key | Audience | Sidebar Extra Nav |
+|---------|-----|----------|-------------------|
+| **Job Seeker** | `job_seeker` | People reaching hiring managers & recruiters | Tracker |
+| **Enterprise / Sales** | `smb_sales` | SDRs, founders, agencies running cold outreach | Pipeline |
+
+### Sidebar Toggle
+
+A toggle switch in the sidebar (above the user profile section) lets users instantly switch between personas. Uses brand coral (`#FF6B6B`) with Briefcase ↔ TrendingUp icons and Framer Motion spring animation. Calls `setPersona()` from `PersonaContext`, which persists the choice to the server (`PATCH /api/v1/user/persona`) and localStorage.
+
+### Context & Copy
+
+- **`context/PersonaContext.tsx`** — `PersonaProvider` wraps the dashboard layout. Exposes `usePersona()` hook with `{ persona, setPersona, isJobSeeker, isSalesRep }`.
+- **`lib/persona-copy.ts`** — `getPersonaCopy(persona)` returns all persona-specific UI strings (stat labels, CTAs, empty states, next steps, etc.). Dashboard page and other components use these instead of hardcoded strings.
+
+### Dashboard Adaptation
+
+The dashboard page (`app/dashboard/page.tsx`) reads the persona via `usePersona()` and renders persona-driven text through `getPersonaCopy()`:
+- Stat card titles change (e.g. "Saved Profiles" ↔ "Total Leads")
+- Subtitle, CTAs, extension banner, next steps, and empty states all adapt
+- Layout and component structure remain identical — only text values change
+
+### Onboarding
+
+First-time users see a `PersonaOnboardingModal` asking how they intend to use Ellyn. The selection is saved and the dashboard tour starts automatically.
+
+---
+
 ## Outreach Sequences
 
 **Location:** `lib/sequence-engine.ts`, `lib/tracker-v2.ts`
