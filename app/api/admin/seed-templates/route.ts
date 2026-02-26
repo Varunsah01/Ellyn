@@ -14,7 +14,9 @@ function isUndefinedColumnError(error: unknown): boolean {
 export async function POST(request: NextRequest) {
   try {
     const guardResult = await adminEndpointGuard(request)
-    if (!guardResult.allowed) return guardResult.response
+    if (!guardResult.allowed) {
+      return guardResult.response ?? NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const supabase = await createServiceRoleClient()
 

@@ -3,12 +3,5 @@ import * as LegacyRoute from '@/app/api/sequences/[id]/stats/route'
 
 const legacyConfig = LegacyRoute as Record<string, unknown>
 
-export const runtime = legacyConfig.runtime as any
-export const preferredRegion = legacyConfig.preferredRegion as any
-export const dynamic = legacyConfig.dynamic as any
-export const dynamicParams = legacyConfig.dynamicParams as any
-export const revalidate = legacyConfig.revalidate as any
-export const fetchCache = legacyConfig.fetchCache as any
-export const maxDuration = legacyConfig.maxDuration as any
 
 export const GET = createVersionedHandler(legacyConfig.GET as any)
