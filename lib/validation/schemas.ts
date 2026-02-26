@@ -148,6 +148,9 @@ export const TemplateCategoryEnum = z.enum([
   'networking',
   'thank-you',
   'startup',
+  'job_seeker',
+  'smb_sales',
+  'general',
 ])
 
 export const EnhanceDraftActionEnum = z.enum(['enhance', 'shorten', 'lengthen', 'fix-grammar'])
@@ -168,6 +171,7 @@ export const SequenceExecuteActionEnum = z.enum([
   'mark_bounced',
   'pause_enrollment',
   'resume_enrollment',
+  'remove_enrollment',
 ])
 
 const contactBaseFields = {
@@ -257,6 +261,9 @@ export const TemplateCreateSchema = z.object({
   subject: requiredInline(1, 200),
   body: requiredMultiline(1, 10000),
   category: TemplateCategoryEnum.optional(),
+  tone: z.string().max(50).optional(),
+  use_case: z.string().max(100).optional(),
+  variables: z.array(z.string().max(100)).max(50).optional(),
   tags: z
     .array(safeTag())
     .max(20)
@@ -472,7 +479,8 @@ export const SequenceExecuteSchema = z
       (value.action === 'mark_replied' ||
         value.action === 'mark_bounced' ||
         value.action === 'pause_enrollment' ||
-        value.action === 'resume_enrollment') &&
+        value.action === 'resume_enrollment' ||
+        value.action === 'remove_enrollment') &&
       !value.enrollmentId
     ) {
       ctx.addIssue({

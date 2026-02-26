@@ -38,6 +38,7 @@ interface DataTableProps<TData, TValue> {
   searchKey?: string;
   searchPlaceholder?: string;
   onRowClick?: (row: TData) => void;
+  onSelectionChange?: (selectedRows: TData[]) => void;
 }
 
 /**
@@ -53,6 +54,7 @@ export function DataTable<TData, TValue>({
   searchKey,
   searchPlaceholder = "Search...",
   onRowClick,
+  onSelectionChange,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
@@ -80,6 +82,14 @@ export function DataTable<TData, TValue>({
       rowSelection,
     },
   });
+
+  // Notify parent whenever selection changes
+  React.useEffect(() => {
+    if (!onSelectionChange) return;
+    const rows = table.getFilteredSelectedRowModel().rows.map((r) => r.original);
+    onSelectionChange(rows);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowSelection, onSelectionChange]);
 
   return (
     <div className="space-y-4">

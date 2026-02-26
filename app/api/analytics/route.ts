@@ -261,7 +261,7 @@ async function getSequencePerformance(start: Date, end: Date, userId: string) {
 
   const { data: sequences } = await supabase
     .from("sequences")
-    .select("id, name, created_at")
+    .select("id, name, status, created_at")
     .eq("user_id", userId);
 
   if (!sequences) {
@@ -290,6 +290,7 @@ async function getSequencePerformance(start: Date, end: Date, userId: string) {
       return {
         id: seq.id,
         name: seq.name,
+        status: (seq as Record<string, unknown>).status as string | undefined,
         enrolled,
         sent,
         opened,

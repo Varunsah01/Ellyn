@@ -49,10 +49,12 @@ import {
   Plug,
   Save,
   Shield,
+  ShieldOff,
   Trash2,
   Upload,
   User,
 } from "lucide-react";
+import { SuppressionListSection } from "@/components/settings/SuppressionListSection";
 import type { LucideIcon } from "lucide-react";
 
 type EmailProvider = "gmail" | "outlook" | "smtp";
@@ -172,7 +174,8 @@ type SettingsSectionId =
   | "profile"
   | "email"
   | "privacy"
-  | "integrations";
+  | "integrations"
+  | "suppression";
 
 type SettingsSection = {
   id: SettingsSectionId;
@@ -185,6 +188,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   { id: "email", label: "Email", icon: Mail },
   { id: "privacy", label: "Privacy & Security", icon: Shield },
   { id: "integrations", label: "Integrations", icon: LinkIcon },
+  { id: "suppression", label: "Suppression List", icon: ShieldOff },
 ];
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -1274,6 +1278,9 @@ export default function SettingsPage() {
                   <div className="rounded-lg border p-4 space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="h-10 w-10 rounded-md bg-orange-100 text-orange-700 font-semibold flex items-center justify-center">Z</div><div><p className="font-medium">Zapier</p><p className="text-sm text-muted-foreground">Automation integration for workflows.</p></div></div><Badge variant="secondary">Coming Soon</Badge></div><Button variant="outline" disabled>Coming Soon</Button></div>
                 </CardContent>
               </Card>
+            )}
+            {activeSection === "suppression" && (
+              <SuppressionListSection />
             )}
           </div>
         </div>

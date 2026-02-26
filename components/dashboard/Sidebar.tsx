@@ -15,8 +15,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/DropdownMenu";
-import { mainNavItems, secondaryNavItems } from "@/lib/constants/navigation";
-import { ChevronLeft, LifeBuoy, LogOut, Sparkles } from "lucide-react";
+import { mainNavItems, secondaryNavItems, type NavItem } from "@/lib/constants/navigation";
+import { ChevronLeft, LifeBuoy, LogOut, Sparkles, LayoutDashboard, BarChart2 } from "lucide-react";
+import { usePersona } from "@/context/PersonaContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useAnalytics";
 import { useSequenceStats } from "@/lib/hooks/useSequences";
@@ -55,6 +56,7 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const { stats } = useDashboardStats();
   const { stats: sequenceStats } = useSequenceStats();
   const { plan_type } = useSubscription();
+  const { isJobSeeker, isSalesRep } = usePersona();
   const isPaidUser = plan_type === "pro";
   const [userFullName, setUserFullName] = useState("Account");
   const [userEmail, setUserEmail] = useState("");
@@ -169,7 +171,27 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Navigation Items */}
         <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
-          {mainNavItems.map((item) => {
+          {((): NavItem[] => {
+              const items = [...mainNavItems]
+              const contactsIdx = items.findIndex((i) => i.href === "/dashboard/contacts")
+              if (isJobSeeker) {
+                const trackerItem: NavItem = {
+                  name: "Tracker",
+                  href: "/dashboard/tracker",
+                  icon: LayoutDashboard,
+                }
+                items.splice(contactsIdx + 1, 0, trackerItem)
+              }
+              if (isSalesRep) {
+                const pipelineItem: NavItem = {
+                  name: "Pipeline",
+                  href: "/dashboard/pipeline",
+                  icon: BarChart2,
+                }
+                items.splice(contactsIdx + 1, 0, pipelineItem)
+              }
+              return items
+            })().map((item) => {
             const isActive =
               item.href === "/dashboard"
                 ? pathname === item.href

@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { SubscriptionProvider } from "@/context/SubscriptionContext";
 import { QuotaWarningBanner } from "@/components/subscription/QuotaWarningBanner";
 import { AppRefreshProvider } from "@/lib/context/AppRefreshContext";
+import { PersonaProvider } from "@/context/PersonaContext";
+import { PersonaOnboardingGate } from "@/components/dashboard/PersonaOnboardingGate";
 import type { Session } from "@supabase/supabase-js";
 
 export default function DashboardLayout({
@@ -189,6 +191,7 @@ export default function DashboardLayout({
     <DashboardWrapper>
       <AppRefreshProvider>
       <SubscriptionProvider>
+      <PersonaProvider>
         <div className="flex h-screen overflow-hidden bg-background">
           {/* Sidebar - Hidden on mobile, shown on tablet/desktop */}
           <div className="hidden sm:flex">
@@ -218,7 +221,9 @@ export default function DashboardLayout({
             </main>
           </div>
           <DashboardTour />
+          <PersonaOnboardingGate />
         </div>
+      </PersonaProvider>
       </SubscriptionProvider>
       </AppRefreshProvider>
     </DashboardWrapper>

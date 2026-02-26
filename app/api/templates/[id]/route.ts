@@ -83,6 +83,9 @@ export async function PATCH(
       subject,
       body: templateBody,
       category,
+      tone,
+      use_case,
+      variables,
       tags,
       icon,
       use_count: useCount,
@@ -104,6 +107,18 @@ export async function PATCH(
 
     if (typeof category === 'string' && category.trim()) {
       updatePayload.category = category.trim();
+    }
+
+    if (typeof tone === 'string' && tone.trim()) {
+      updatePayload.tone = tone.trim();
+    }
+
+    if (typeof use_case === 'string' && use_case.trim()) {
+      updatePayload.use_case = use_case.trim();
+    }
+
+    if (Array.isArray(variables)) {
+      updatePayload.variables = variables;
     }
 
     if (Array.isArray(tags)) {

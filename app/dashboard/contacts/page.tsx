@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Search, Linkedin } from "lucide-react";
+import { Plus, Search, Upload } from "lucide-react";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { ContactsTable } from "@/components/contacts/ContactsTable";
 import { Button } from "@/components/ui/Button";
@@ -13,24 +13,17 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/Dialog";
+import {
+  FilterPanel,
+  DEFAULT_FILTERS,
+  type ContactFilters,
+} from "@/components/contacts/FilterPanel";
+import { useAllUserTags } from "@/lib/hooks/useAllUserTags";
+import { usePersona } from "@/context/PersonaContext";
+import { getPersonaCopy } from "@/lib/persona-copy";
 import { showToast } from "@/lib/toast";
-import { cn } from "@/lib/utils";
 import { supabaseAuthedFetch } from "@/lib/auth/client-fetch";
-
-const STATUS_PILLS = [
-  { label: "All", value: "" },
-  { label: "New", value: "new" },
-  { label: "Contacted", value: "contacted" },
-  { label: "Replied", value: "replied" },
-  { label: "No Response", value: "no_response" },
-] as const;
-
-const SOURCE_PILLS = [
-  { label: "All Sources", value: "" },
-  { label: "Manual", value: "manual" },
-  { label: "Extension", value: "extension" },
-  { label: "CSV Import", value: "csv_import" },
-] as const;
+import { CsvImportDialog } from "@/components/contacts/CsvImportDialog";
 
 const EMPTY_FORM = {
   firstName: "",
@@ -41,14 +34,18 @@ const EMPTY_FORM = {
 };
 
 export default function ContactsPage() {
+  const { persona } = usePersona();
+  const copy = getPersonaCopy(persona);
+  const allUserTags = useAllUserTags();
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [status, setStatus] = useState("");
-  const [source, setSource] = useState("");
+  const [filters, setFilters] = useState<ContactFilters>(DEFAULT_FILTERS);
   const [refreshKey, setRefreshKey] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -65,107 +62,86 @@ export default function ContactsPage() {
         body: JSON.stringify(form),
       });
       if (!res.ok) {
-        const data = await res.json().catch(() => ({})) as { error?: string };
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
-      showToast.success("Contact added");
+      showToast.success(`${copy.contactSingular} added`);
       setDialogOpen(false);
       setForm(EMPTY_FORM);
       setRefreshKey((k) => k + 1);
     } catch (err) {
-      showToast.error(err instanceof Error ? err.message : "Failed to add contact");
+      showToast.error(
+        err instanceof Error
+          ? err.message
+          : `Failed to add ${copy.contactSingular.toLowerCase()}`
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <DashboardShell breadcrumbs={[{ label: "Contacts" }]}>
+    <DashboardShell breadcrumbs={[{ label: copy.contacts }]}>
       <div className="space-y-4">
         {/* Toolbar */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-xs">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search contacts..."
+              placeholder={`Search ${copy.contacts.toLowerCase()}…`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
             />
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setSource(source === "extension" ? "" : "extension")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                source === "extension"
-                  ? "border-[#0A66C2] bg-[#0A66C2]/10 text-[#0A66C2]"
-                  : "border-input bg-background text-muted-foreground hover:border-[#0A66C2]/50 hover:text-foreground"
-              )}
-            >
-              <Linkedin className="h-3.5 w-3.5" />
-              From Extension
-            </button>
+            <FilterPanel
+              filters={filters}
+              allUserTags={allUserTags}
+              onChange={setFilters}
+            />
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />
+              Import CSV
+            </Button>
             <Button onClick={() => setDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Add Contact
+              {copy.addContact}
             </Button>
           </div>
         </div>
 
-        {/* Status filter pills */}
-        <div className="flex flex-wrap gap-2">
-          {STATUS_PILLS.map((pill) => (
-            <button
-              key={pill.value}
-              type="button"
-              onClick={() => setStatus(pill.value)}
-              className={cn(
-                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                status === pill.value
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-input bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground"
-              )}
-            >
-              {pill.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Source filter pills */}
-        <div className="flex flex-wrap gap-2">
-          {SOURCE_PILLS.map((pill) => (
-            <button
-              key={pill.value}
-              type="button"
-              onClick={() => setSource(pill.value)}
-              className={cn(
-                "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
-                source === pill.value
-                  ? "border-[#0A66C2] bg-[#0A66C2]/10 text-[#0A66C2]"
-                  : "border-input bg-background text-muted-foreground hover:border-[#0A66C2]/50 hover:text-foreground"
-              )}
-            >
-              {pill.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Contacts table — key forces remount/refetch on status, source, search, or after add */}
+        {/* Contacts table — key forces remount/refetch on search or after add */}
         <ContactsTable
-          key={`${debouncedSearch}-${status}-${source}-${refreshKey}`}
+          key={`${debouncedSearch}-${refreshKey}`}
           search={debouncedSearch}
-          status={status}
-          source={source}
+          filters={filters}
         />
       </div>
 
+      {/* CSV Import Dialog */}
+      <CsvImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onSuccess={() => {
+          setImportOpen(false)
+          setRefreshKey((k) => k + 1)
+        }}
+      />
+
       {/* Add Contact Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setForm(EMPTY_FORM); }}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setForm(EMPTY_FORM);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Contact</DialogTitle>
+            <DialogTitle>{copy.addContact}</DialogTitle>
           </DialogHeader>
           <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
@@ -177,7 +153,9 @@ export default function ContactsPage() {
                   id="firstName"
                   required
                   value={form.firstName}
-                  onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, firstName: e.target.value })
+                  }
                   placeholder="Jane"
                 />
               </div>
@@ -189,7 +167,9 @@ export default function ContactsPage() {
                   id="lastName"
                   required
                   value={form.lastName}
-                  onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, lastName: e.target.value })
+                  }
                   placeholder="Doe"
                 />
               </div>
@@ -202,12 +182,16 @@ export default function ContactsPage() {
                 id="company"
                 required
                 value={form.company}
-                onChange={(e) => setForm({ ...form, company: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, company: e.target.value })
+                }
                 placeholder="Acme Inc."
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="role" className="text-sm font-medium">Role</label>
+              <label htmlFor="role" className="text-sm font-medium">
+                Role
+              </label>
               <Input
                 id="role"
                 value={form.role}
@@ -216,12 +200,16 @@ export default function ContactsPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="inferredEmail" className="text-sm font-medium">Email</label>
+              <label htmlFor="inferredEmail" className="text-sm font-medium">
+                Email
+              </label>
               <Input
                 id="inferredEmail"
                 type="email"
                 value={form.inferredEmail}
-                onChange={(e) => setForm({ ...form, inferredEmail: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, inferredEmail: e.target.value })
+                }
                 placeholder="jane@acme.com"
               />
             </div>
@@ -229,12 +217,15 @@ export default function ContactsPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => { setDialogOpen(false); setForm(EMPTY_FORM); }}
+                onClick={() => {
+                  setDialogOpen(false);
+                  setForm(EMPTY_FORM);
+                }}
               >
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting}>
-                {submitting ? "Adding..." : "Add Contact"}
+                {submitting ? "Adding…" : copy.addContact}
               </Button>
             </DialogFooter>
           </form>

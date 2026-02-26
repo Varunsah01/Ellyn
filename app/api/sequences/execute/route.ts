@@ -235,6 +235,21 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    if (action === "remove_enrollment" && enrollmentId) {
+      await supabase
+        .from("sequence_enrollment_steps")
+        .delete()
+        .eq("enrollment_id", enrollmentId)
+      await supabase
+        .from("sequence_events")
+        .delete()
+        .eq("enrollment_id", enrollmentId)
+      await supabase
+        .from("sequence_enrollments")
+        .delete()
+        .eq("id", enrollmentId)
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     return NextResponse.json(

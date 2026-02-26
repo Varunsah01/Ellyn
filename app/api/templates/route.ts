@@ -131,6 +131,9 @@ export async function POST(request: NextRequest) {
       subject,
       body: templateBody,
       category,
+      tone,
+      use_case,
+      variables,
       tags,
       icon,
       use_count: useCount,
@@ -147,6 +150,18 @@ export async function POST(request: NextRequest) {
 
     if (typeof category === 'string' && category.trim()) {
       templateData.category = category.trim();
+    }
+
+    if (typeof tone === 'string' && tone.trim()) {
+      templateData.tone = tone.trim();
+    }
+
+    if (typeof use_case === 'string' && use_case.trim()) {
+      templateData.use_case = use_case.trim();
+    }
+
+    if (Array.isArray(variables)) {
+      templateData.variables = variables;
     }
 
     if (Array.isArray(tags)) {

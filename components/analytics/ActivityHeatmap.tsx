@@ -58,12 +58,12 @@ export function ActivityHeatmap({ data, loading }: ActivityHeatmapProps) {
   );
 
   const getHeatmapColor = (count: number) => {
-    if (count === 0) return "bg-slate-100 dark:bg-slate-800";
+    if (count === 0) return "bg-[#F3F4F6]";
     const intensity = count / maxCount;
-    if (intensity > 0.75) return "bg-green-600";
-    if (intensity > 0.5) return "bg-green-500";
-    if (intensity > 0.25) return "bg-green-400";
-    return "bg-green-300";
+    if (intensity > 0.75) return "bg-[#4F46E5]";
+    if (intensity > 0.5) return "bg-[#6366F1]";
+    if (intensity > 0.25) return "bg-[#818CF8]";
+    return "bg-[#A5B4FC]";
   };
 
   const hours = Array.from({ length: 24 }, (_, i) => i);
@@ -106,7 +106,7 @@ export function ActivityHeatmap({ data, loading }: ActivityHeatmapProps) {
                       "aspect-square rounded-sm transition-colors cursor-pointer hover:ring-2 hover:ring-primary",
                       getHeatmapColor(hourData.count)
                     )}
-                    title={`${dayData.day} ${hourData.hour}:00 - ${hourData.count} emails`}
+                    title={`${dayData.day} ${hourData.hour}:00–${hourData.hour + 1}:00 — ${hourData.count} email${hourData.count !== 1 ? "s" : ""} sent`}
                   />
                 ))}
               </div>
@@ -117,11 +117,11 @@ export function ActivityHeatmap({ data, loading }: ActivityHeatmapProps) {
           <div className="flex items-center justify-end gap-2 pt-4 text-xs text-muted-foreground">
             <span>Less</span>
             <div className="flex gap-1">
-              <div className="w-4 h-4 rounded-sm bg-slate-100 dark:bg-slate-800" />
-              <div className="w-4 h-4 rounded-sm bg-green-300" />
-              <div className="w-4 h-4 rounded-sm bg-green-400" />
-              <div className="w-4 h-4 rounded-sm bg-green-500" />
-              <div className="w-4 h-4 rounded-sm bg-green-600" />
+              <div className="w-4 h-4 rounded-sm bg-[#F3F4F6]" />
+              <div className="w-4 h-4 rounded-sm bg-[#A5B4FC]" />
+              <div className="w-4 h-4 rounded-sm bg-[#818CF8]" />
+              <div className="w-4 h-4 rounded-sm bg-[#6366F1]" />
+              <div className="w-4 h-4 rounded-sm bg-[#4F46E5]" />
             </div>
             <span>More</span>
           </div>

@@ -16,6 +16,9 @@ export interface Contact {
   confirmed_email?: string;
   inferred_email?: string;
   email_confidence?: number;
+  email_verified?: boolean;
+  email_source?: string;
+  email_pattern?: string;
   status: 'new' | 'contacted' | 'replied' | 'no_response';
   linkedin_url?: string;
   notes?: string;
