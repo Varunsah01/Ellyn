@@ -60,6 +60,18 @@ export function DashboardTour() {
   }, [])
 
   useEffect(() => {
+    const handleStartTour = () => {
+      const state = getOnboardingState()
+      if (!state.tourDismissed && !state.tourCompleted) {
+        setOpen(true)
+        setStepIndex(0)
+      }
+    }
+    window.addEventListener("ellyn:start-tour", handleStartTour)
+    return () => window.removeEventListener("ellyn:start-tour", handleStartTour)
+  }, [])
+
+  useEffect(() => {
     if (!open || !step) return
 
     const updatePosition = () => {

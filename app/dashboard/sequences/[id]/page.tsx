@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
 import { Skeleton } from "@/components/ui/Skeleton"
 import { SequenceTimeline } from "@/components/SequenceTimeline"
 import { EnrollContactsModal } from "@/components/sequences/EnrollContactsModal"
+import { createClient } from "@/lib/supabase/client"
 import { showToast } from "@/lib/toast"
 import { computeSequenceStats, getSequenceStatusLabel } from "@/lib/sequence-engine"
 import { cn } from "@/lib/utils"
@@ -40,11 +41,14 @@ interface SequenceDetailResponse {
 }
 
 const ENROLLMENT_STATUS_BADGE: Record<string, string> = {
+  active: "border-blue-200 bg-blue-50 text-blue-700",
   in_progress: "border-blue-200 bg-blue-50 text-blue-700",
   completed: "border-green-200 bg-green-50 text-green-700",
   replied: "border-violet-200 bg-violet-50 text-violet-700",
   bounced: "border-red-200 bg-red-50 text-red-700",
   paused: "border-amber-200 bg-amber-50 text-amber-700",
+  unsubscribed: "border-amber-200 bg-amber-50 text-amber-700",
+  removed: "border-slate-300 bg-slate-100 text-slate-700",
   not_started: "border-slate-200 bg-slate-50 text-slate-600",
 }
 
@@ -101,6 +105,7 @@ export default function SequenceDetailPage() {
   const params = useParams()
   const router = useRouter()
   const sequenceId = params.id as string
+  const supabase = useMemo(() => createClient(), [])
 
   const [data, setData] = useState<SequenceDetailResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -134,6 +139,56 @@ export default function SequenceDetailPage() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  const updateEnrollmentStatus = useCallback(
+    (enrollmentId: string, nextStatus: string) => {
+      const normalizedStatus = nextStatus === "active" ? "in_progress" : nextStatus
+
+      setData((prev) => {
+        if (!prev) return prev
+
+        return {
+          ...prev,
+          enrollments: prev.enrollments.map((enrollment) =>
+            enrollment.id === enrollmentId
+              ? {
+                  ...enrollment,
+                  status: normalizedStatus as typeof enrollment.status,
+                }
+              : enrollment
+          ),
+        }
+      })
+    },
+    []
+  )
+
+  useEffect(() => {
+    if (!sequenceId) return
+
+    const channel = supabase
+      .channel(`sequence-${sequenceId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "sequence_enrollments",
+          filter: `sequence_id=eq.${sequenceId}`,
+        },
+        (payload) => {
+          const nextRow = payload.new as { id?: unknown; status?: unknown }
+          if (typeof nextRow.id === "string" && typeof nextRow.status === "string") {
+            updateEnrollmentStatus(nextRow.id, nextRow.status)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [sequenceId, supabase, updateEnrollmentStatus])
 
   const stats = useMemo(() => {
     if (!data) return null

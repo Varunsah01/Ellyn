@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import type { Contact } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase/client';
 
@@ -23,23 +22,6 @@ function upsertInMemoryContact(list: Contact[], incoming: Contact, limit: number
   const next = list.filter((contact) => contact.id !== incoming.id);
   next.unshift(incoming);
   return sortContactsByCreatedAtDesc(next).slice(0, limit);
-}
-
-function applyRealtimePayload(
-  previous: Contact[],
-  payload: RealtimePostgresChangesPayload<Record<string, unknown>>,
-  limit: number
-): Contact[] {
-  switch (payload.eventType) {
-    case 'INSERT':
-      return upsertInMemoryContact(previous, payload.new as unknown as Contact, limit);
-    case 'UPDATE':
-      return upsertInMemoryContact(previous, payload.new as unknown as Contact, limit);
-    case 'DELETE':
-      return previous.filter((contact) => contact.id !== String(payload.old.id ?? ''));
-    default:
-      return previous;
-  }
 }
 
 export function useRealtimeContacts(
@@ -85,6 +67,24 @@ export function useRealtimeContacts(
     }
   }, [limit, supabase, userId]);
 
+  const addContact = useCallback(
+    (contact: Contact) => {
+      setContacts((previous) => upsertInMemoryContact(previous, contact, limit));
+    },
+    [limit]
+  );
+
+  const updateContact = useCallback(
+    (contact: Contact) => {
+      setContacts((previous) => upsertInMemoryContact(previous, contact, limit));
+    },
+    [limit]
+  );
+
+  const removeContact = useCallback((contactId: string) => {
+    setContacts((previous) => previous.filter((contact) => contact.id !== contactId));
+  }, []);
+
   useEffect(() => {
     if (!userId) {
       setIsLive(false);
@@ -94,7 +94,7 @@ export function useRealtimeContacts(
     void fetchContacts();
 
     const channel = supabase
-      .channel(`contacts-realtime:${userId}`)
+      .channel('contacts-changes')
       .on(
         'postgres_changes',
         {
@@ -104,7 +104,15 @@ export function useRealtimeContacts(
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          setContacts((previous) => applyRealtimePayload(previous, payload, limit));
+          if (payload.eventType === 'INSERT') {
+            addContact(payload.new as Contact);
+          }
+          if (payload.eventType === 'UPDATE') {
+            updateContact(payload.new as Contact);
+          }
+          if (payload.eventType === 'DELETE') {
+            removeContact(String(payload.old.id ?? ''));
+          }
         }
       )
       .subscribe((status) => {
@@ -115,7 +123,7 @@ export function useRealtimeContacts(
       setIsLive(false);
       void supabase.removeChannel(channel);
     };
-  }, [fetchContacts, limit, supabase, userId]);
+  }, [addContact, fetchContacts, removeContact, supabase, updateContact, userId]);
 
   return {
     contacts,

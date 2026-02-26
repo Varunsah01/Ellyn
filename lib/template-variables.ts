@@ -1,30 +1,48 @@
 const VAR_RE = /\{\{([^}]+)\}\}/g
 
-/** Returns unique variable names found in the given text (e.g. ['first_name', 'company']). */
 export function extractVariables(text: string): string[] {
-  const names: string[] = []
-  let m: RegExpExecArray | null
-  VAR_RE.lastIndex = 0
-  while ((m = VAR_RE.exec(text)) !== null) {
-    const name = m[1]?.trim()
-    if (name && !names.includes(name)) names.push(name)
-  }
-  return names
+  const matches = text.match(/\{\{([^}]+)\}\}/g) ?? []
+  return [
+    ...new Set(
+      matches
+        .map((match) => match.replace(/^\{\{|\}\}$/g, '').trim())
+        .filter(Boolean)
+    ),
+  ]
 }
 
-/**
- * Replaces {{variable}} tokens with the supplied values.
- * Tokens with no matching value are left untouched so the caller
- * can highlight them as unfilled.
- */
-export function fillVariables(
-  text: string,
-  vars: Record<string, string>
-): string {
-  return text.replace(VAR_RE, (_match, key: string) => {
+export function fillVariables(text: string, vars: Record<string, string>): string {
+  return text.replace(VAR_RE, (match, key: string) => {
     const trimmed = key.trim()
-    return vars[trimmed] !== undefined ? vars[trimmed] : _match
+    return vars[trimmed] ?? match
   })
+}
+
+export const PREDEFINED_VARIABLES: Record<
+  string,
+  { label: string; description: string }
+> = {
+  first_name: { label: 'First Name', description: "Recipient's first name" },
+  last_name: { label: 'Last Name', description: "Recipient's last name" },
+  company: { label: 'Company', description: "Recipient's company name" },
+  role: { label: 'Role / Title', description: "Recipient's job title" },
+  sender_name: { label: 'Your Name', description: 'Your full name' },
+  your_company: { label: 'Your Company', description: 'Your company or university' },
+  pain_point: { label: 'Pain Point', description: 'Specific problem they may have' },
+  benefit: { label: 'Key Benefit', description: 'Main value you offer' },
+  department: { label: 'Department', description: 'Their team or department' },
+  their_specialty: {
+    label: 'Their Specialty',
+    description: 'Area they are known for',
+  },
+  target_field: {
+    label: 'Target Field',
+    description: 'Field you are moving into',
+  },
+  company_achievement: {
+    label: 'Company Achievement',
+    description: 'Something notable about their company',
+  },
 }
 
 export type PredefinedVariable = {
@@ -33,17 +51,10 @@ export type PredefinedVariable = {
   description: string
 }
 
-export const PREDEFINED_VARIABLES: PredefinedVariable[] = [
-  { name: 'first_name', label: 'First Name', description: "Recipient's first name" },
-  { name: 'last_name', label: 'Last Name', description: "Recipient's last name" },
-  { name: 'company', label: 'Company', description: "Recipient's company" },
-  { name: 'role', label: 'Role / Title', description: "Recipient's job title" },
-  { name: 'sender_name', label: 'Your Name', description: 'Your full name' },
-  { name: 'your_company', label: 'Your Company', description: 'Your company or product name' },
-  { name: 'pain_point', label: 'Pain Point', description: 'Specific challenge you are addressing' },
-  { name: 'benefit', label: 'Key Benefit', description: 'Main value you deliver' },
-  { name: 'department', label: 'Department', description: "Recipient's department or team" },
-  { name: 'target_field', label: 'Target Field', description: 'Industry or field you are targeting' },
-  { name: 'your_skill', label: 'Your Skill', description: 'Your key skill or area of expertise' },
-  { name: 'mutual_connection', label: 'Mutual Connection', description: 'Name of a shared contact' },
-]
+export const PREDEFINED_VARIABLE_LIST: PredefinedVariable[] = Object.entries(
+  PREDEFINED_VARIABLES
+).map(([name, value]) => ({
+  name,
+  label: value.label,
+  description: value.description,
+}))

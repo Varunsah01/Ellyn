@@ -5,7 +5,7 @@ import { PersonaOnboardingModal } from "@/components/dashboard/PersonaOnboarding
 import { usePersona } from "@/context/PersonaContext"
 
 export function PersonaOnboardingGate() {
-  const { isLoading } = usePersona()
+  const { isLoading, refreshOnboardingSteps } = usePersona()
   const [show, setShow] = useState(false)
 
   useEffect(() => {
@@ -20,21 +20,11 @@ export function PersonaOnboardingGate() {
     }
   }, [isLoading])
 
-  // Once the modal saves the persona it sets the flag; re-check to close
-  useEffect(() => {
-    if (!show) return
-    const interval = setInterval(() => {
-      try {
-        if (localStorage.getItem("ellyn_persona_onboarded")) {
-          setShow(false)
-        }
-      } catch {
-        clearInterval(interval)
-      }
-    }, 300)
-    return () => clearInterval(interval)
-  }, [show])
+  const handleClose = () => {
+    setShow(false)
+    refreshOnboardingSteps()
+  }
 
   if (!show) return null
-  return <PersonaOnboardingModal />
+  return <PersonaOnboardingModal onDismiss={handleClose} />
 }

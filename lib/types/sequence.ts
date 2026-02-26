@@ -1,17 +1,23 @@
-export type SequenceStatus = "draft" | "active" | "paused" | "completed";
+export type SequenceStatus = "draft" | "active" | "paused" | "completed" | "archived";
+
 export type EnrollmentStatus =
+  | "active"
   | "not_started"
   | "in_progress"
   | "completed"
   | "replied"
   | "bounced"
-  | "paused";
+  | "paused"
+  | "unsubscribed"
+  | "removed";
+
 export type EnrollmentStepStatus =
   | "pending"
   | "sent"
   | "skipped"
   | "bounced"
   | "replied";
+
 export type SequenceEventType =
   | "sent"
   | "opened"
@@ -19,7 +25,8 @@ export type SequenceEventType =
   | "bounced"
   | "skipped"
   | "paused"
-  | "resumed";
+  | "resumed"
+  | "removed";
 
 export interface Sequence {
   id: string;
@@ -37,10 +44,13 @@ export interface Sequence {
 
 export interface SequenceStep {
   id: string;
-  sequence_id: string;
+  sequence_id?: string;
   order: number;
+  type?: string;
   delay_days: number;
-  template_id?: string;
+  delayDays?: number;
+  template_id?: string | null;
+  templateId?: string | null;
   subject: string;
   body: string;
   status: "draft" | "active";
@@ -80,11 +90,14 @@ export interface SequenceEnrollment {
   sequence_id: string;
   contact_id: string;
   status: EnrollmentStatus;
-  start_date: string;
-  current_step: number;
+  start_date?: string;
+  enrolled_at?: string;
+  current_step?: number;
+  current_step_index?: number;
   next_step_at?: string | null;
-  created_at: string;
-  updated_at: string;
+  completed_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
   contact?: {
     id: string;
     full_name: string;
@@ -109,7 +122,7 @@ export interface SequenceEnrollmentStep {
 
 export interface SequenceEvent {
   id: string;
-  enrollment_id: string;
+  enrollment_id?: string | null;
   step_id?: string | null;
   event_type: SequenceEventType;
   metadata?: Record<string, any>;

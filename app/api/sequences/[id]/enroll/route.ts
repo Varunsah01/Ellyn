@@ -1,117 +1,332 @@
-import { NextRequest, NextResponse } from "next/server"
-import { supabase, isSupabaseConfigured } from "@/lib/supabase"
-import { buildEnrollmentSteps } from "@/lib/sequence-engine"
-import { SequenceEnrollSchema, formatZodError } from "@/lib/validation/schemas"
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+
+import { getAuthenticatedServiceRoleClient } from '@/lib/auth/api-user'
+import { formatZodError } from '@/lib/validation/schemas'
+import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
+
+type PlanType = 'free' | 'starter' | 'pro'
+
+type StoredSequenceStep = {
+  id: string
+  type: string
+  delayDays: number
+  subject: string
+  body: string
+  templateId?: string | null
+}
+
+type SequenceRow = {
+  id: string
+  user_id: string
+  status: 'draft' | 'active' | 'paused' | 'archived'
+  steps: unknown
+}
+
+type ContactRow = {
+  id: string
+  user_id: string
+  confirmed_email: string | null
+  inferred_email: string | null
+}
+
+type EnrollmentRow = {
+  id: string
+  sequence_id: string
+  contact_id: string
+  user_id: string
+  status: string
+  current_step_index: number
+  next_step_at: string | null
+  enrolled_at: string
+  completed_at: string | null
+}
+
+const enrollSchema = z.object({
+  contactIds: z.array(z.string().uuid()).min(1).max(500),
+  skipSuppressed: z.boolean().default(true),
+})
+
+const storedStepSchema = z.object({
+  id: z.string().min(1),
+  type: z.string().default('email'),
+  delayDays: z.coerce.number().int().min(0).default(0),
+  subject: z.string().min(1),
+  body: z.string().min(1),
+  templateId: z.string().uuid().nullable().optional(),
+})
+
+const enrollmentLimits: Record<PlanType, number> = {
+  free: 50,
+  starter: 500,
+  pro: 2000,
+}
+
+function normalizeSteps(raw: unknown): StoredSequenceStep[] {
+  if (!Array.isArray(raw)) return []
+  const parsed = z.array(storedStepSchema).safeParse(raw)
+  if (!parsed.success) return []
+  return parsed.data
+}
+
+function resolvePlanType(value: unknown): PlanType {
+  if (value === 'starter' || value === 'pro') return value
+  return 'free'
+}
+
+function buildQuotaExceededResponse(feature: string, used: number, limit: number, planType: PlanType) {
+  return NextResponse.json(
+    {
+      error: 'quota_exceeded',
+      feature,
+      used,
+      limit,
+      plan_type: planType,
+      upgrade_url: '/dashboard/settings?tab=billing',
+    },
+    { status: 402 }
+  )
+}
 
 /**
  * Handle POST requests for `/api/sequences/[id]/enroll`.
- * @param {NextRequest} request - Request input.
- * @param {{ params: { id: string } }} param2 - Param2 input.
- * @returns {unknown} JSON response for the POST /api/sequences/[id]/enroll request.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {ValidationError} If the request payload fails validation.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // POST /api/sequences/[id]/enroll
- * fetch('/api/sequences/[id]/enroll', { method: 'POST' })
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const { supabase, user } = await getAuthenticatedServiceRoleClient(request)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Rate limit: 10 enroll calls/hour per user
+  const rl = await checkApiRateLimit(`enroll:${user.id}`, 10, 3600)
+  if (!rl.allowed) return rateLimitExceeded(rl.resetAt)
+
+  const sequenceId = params.id
+
+  let body: unknown
   try {
-    if (!isSupabaseConfigured) {
-      return NextResponse.json({ error: "Supabase not configured" }, { status: 503 })
-    }
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
 
-    const sequenceId = params.id
-    const parsed = SequenceEnrollSchema.safeParse(await request.json())
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: formatZodError(parsed.error) },
-        { status: 400 }
-      )
-    }
-    const { contactIds, startDate, overrides } = parsed.data
-
-    const { data: steps, error: stepsError } = await supabase
-      .from("sequence_steps")
-      .select("*")
-      .eq("sequence_id", sequenceId)
-      .order("step_order", { ascending: true })
-
-    if (stepsError || !steps) {
-      return NextResponse.json(
-        { error: "Failed to load sequence steps" },
-        { status: 500 }
-      )
-    }
-
-    const { data: existing } = await supabase
-      .from("sequence_enrollments")
-      .select("contact_id")
-      .eq("sequence_id", sequenceId)
-      .in("contact_id", contactIds)
-
-    const existingIds = new Set(existing?.map((e) => e.contact_id))
-    const newContactIds = contactIds.filter((id) => !existingIds.has(id))
-
-    if (newContactIds.length === 0) {
-      return NextResponse.json({ message: "No new contacts to enroll" })
-    }
-
-    const startDateObj = startDate ? new Date(startDate) : new Date()
-    const now = new Date()
-
-    const enrollmentPayload = newContactIds.map((contactId) => ({
-      sequence_id: sequenceId,
-      contact_id: contactId,
-      status: startDateObj <= now ? "in_progress" : "not_started",
-      start_date: startDateObj.toISOString(),
-      current_step: 0,
-      next_step_at: startDateObj.toISOString(),
-    }))
-
-    const { data: enrollments, error: enrollError } = await supabase
-      .from("sequence_enrollments")
-      .insert(enrollmentPayload)
-      .select()
-
-    if (enrollError || !enrollments) {
-      return NextResponse.json(
-        { error: "Failed to enroll contacts", details: enrollError?.message },
-        { status: 500 }
-      )
-    }
-
-    const stepPayload = enrollments.flatMap((enrollment) =>
-      buildEnrollmentSteps({
-        steps: steps.map((step) => ({ ...step, order: step.step_order })),
-        startDate: startDateObj,
-        overrides,
-        contactId: enrollment.contact_id,
-      }).map((step) => ({
-        ...step,
-        enrollment_id: enrollment.id,
-      }))
-    )
-
-    const { error: stepError } = await supabase
-      .from("sequence_enrollment_steps")
-      .insert(stepPayload)
-
-    if (stepError) {
-      return NextResponse.json(
-        { error: "Failed to create enrollment steps", details: stepError.message },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
+  const parsed = enrollSchema.safeParse(body)
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown" },
+      { error: 'Validation failed', details: formatZodError(parsed.error) },
+      { status: 400 }
+    )
+  }
+
+  const { data: sequence, error: sequenceError } = await supabase
+    .from('sequences')
+    .select('id, user_id, status, steps')
+    .eq('id', sequenceId)
+    .eq('user_id', user.id)
+    .maybeSingle<SequenceRow>()
+
+  if (sequenceError) {
+    return NextResponse.json(
+      { error: 'Failed to fetch sequence', details: sequenceError.message },
       { status: 500 }
     )
   }
+
+  if (!sequence) {
+    return NextResponse.json({ error: 'Sequence not found' }, { status: 404 })
+  }
+
+  if (sequence.status !== 'active') {
+    return NextResponse.json(
+      { error: 'Sequence must be active before enrolling contacts' },
+      { status: 400 }
+    )
+  }
+
+  const sequenceSteps = normalizeSteps(sequence.steps)
+  if (sequenceSteps.length === 0) {
+    return NextResponse.json(
+      { error: 'Sequence must include at least one step' },
+      { status: 400 }
+    )
+  }
+
+  const contactIds = Array.from(new Set(parsed.data.contactIds))
+
+  const { data: contacts, error: contactsError } = await supabase
+    .from('contacts')
+    .select('id, user_id, confirmed_email, inferred_email')
+    .eq('user_id', user.id)
+    .in('id', contactIds)
+
+  if (contactsError) {
+    return NextResponse.json(
+      { error: 'Failed to fetch contacts', details: contactsError.message },
+      { status: 500 }
+    )
+  }
+
+  const contactMap = new Map<string, ContactRow>()
+  for (const contact of (contacts ?? []) as ContactRow[]) {
+    contactMap.set(contact.id, contact)
+  }
+
+  const { data: existingActiveEnrollments, error: existingError } = await supabase
+    .from('sequence_enrollments')
+    .select('contact_id')
+    .eq('sequence_id', sequenceId)
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .in('contact_id', contactIds)
+
+  if (existingError) {
+    return NextResponse.json(
+      { error: 'Failed to validate enrollments', details: existingError.message },
+      { status: 500 }
+    )
+  }
+
+  const existingActiveContactIds = new Set(
+    (existingActiveEnrollments ?? []).map((row) => String(row.contact_id))
+  )
+
+  const contactEmails = (contacts ?? [])
+    .map((contact) => contact.confirmed_email ?? contact.inferred_email)
+    .filter((email): email is string => Boolean(email))
+    .map((email) => email.trim().toLowerCase())
+
+  let suppressedEmails = new Set<string>()
+
+  if (contactEmails.length > 0) {
+    const { data: suppressions, error: suppressionError } = await supabase
+      .from('suppression_list')
+      .select('email')
+      .eq('user_id', user.id)
+      .in('email', Array.from(new Set(contactEmails)))
+
+    if (suppressionError) {
+      return NextResponse.json(
+        { error: 'Failed to validate suppression list', details: suppressionError.message },
+        { status: 500 }
+      )
+    }
+
+    suppressedEmails = new Set(
+      (suppressions ?? [])
+        .map((entry) => String(entry.email || '').trim().toLowerCase())
+        .filter(Boolean)
+    )
+  }
+
+  const skipped: Array<{ contactId: string; reason: string }> = []
+  const warnings: Array<{ contactId: string; message: string }> = []
+  const validContactIds: string[] = []
+
+  for (const contactId of contactIds) {
+    const contact = contactMap.get(contactId)
+
+    if (!contact) {
+      skipped.push({ contactId, reason: 'not_found_or_forbidden' })
+      continue
+    }
+
+    if (existingActiveContactIds.has(contactId)) {
+      skipped.push({ contactId, reason: 'already_enrolled' })
+      continue
+    }
+
+    const email = (contact.confirmed_email ?? contact.inferred_email ?? '').trim().toLowerCase()
+    if (parsed.data.skipSuppressed && email && suppressedEmails.has(email)) {
+      skipped.push({ contactId, reason: 'suppressed' })
+      continue
+    }
+
+    if (!email) {
+      warnings.push({
+        contactId,
+        message: 'Contact has no email and may not be executable until email is available',
+      })
+    }
+
+    validContactIds.push(contactId)
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('plan_type')
+    .eq('id', user.id)
+    .maybeSingle<{ plan_type: PlanType | null }>()
+
+  if (profileError) {
+    return NextResponse.json(
+      { error: 'Failed to fetch user profile', details: profileError.message },
+      { status: 500 }
+    )
+  }
+
+  const planType = resolvePlanType(profile?.plan_type)
+
+  const { count: activeEnrollmentCount, error: quotaCountError } = await supabase
+    .from('sequence_enrollments')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+
+  if (quotaCountError) {
+    return NextResponse.json(
+      { error: 'Failed to evaluate enrollment quota', details: quotaCountError.message },
+      { status: 500 }
+    )
+  }
+
+  const used = Number(activeEnrollmentCount ?? 0)
+  const limit = enrollmentLimits[planType]
+
+  if (used + validContactIds.length > limit) {
+    return buildQuotaExceededResponse('sequence_enrollments', used, limit, planType)
+  }
+
+  if (validContactIds.length === 0) {
+    return NextResponse.json({
+      enrolled: 0,
+      skipped,
+      warnings,
+      enrollments: [] as EnrollmentRow[],
+    })
+  }
+
+  const firstStep = sequenceSteps[0]!
+  const nextStepAt = new Date()
+  nextStepAt.setDate(nextStepAt.getDate() + (firstStep.delayDays ?? 0))
+
+  const enrollmentPayload = validContactIds.map((contactId) => ({
+    sequence_id: sequenceId,
+    contact_id: contactId,
+    user_id: user.id,
+    status: 'active',
+    current_step_index: 0,
+    next_step_at: nextStepAt.toISOString(),
+  }))
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('sequence_enrollments')
+    .insert(enrollmentPayload)
+    .select(
+      'id, sequence_id, contact_id, user_id, status, current_step_index, next_step_at, enrolled_at, completed_at'
+    )
+
+  if (insertError) {
+    return NextResponse.json(
+      { error: 'Failed to enroll contacts', details: insertError.message },
+      { status: 500 }
+    )
+  }
+
+  return NextResponse.json({
+    enrolled: inserted?.length ?? 0,
+    skipped,
+    warnings,
+    enrollments: (inserted ?? []) as EnrollmentRow[],
+  })
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { getUserQuota as getQuotaSnapshot } from '@/lib/quota'
 
 import {
   createQuotaClient,
@@ -18,6 +19,8 @@ type QuotaCheckResponse = {
   remaining: number
   resetDate: string | null
 }
+
+type QuotaFeature = 'email_generation' | 'ai_generation'
 
 /**
  * Handle POST requests for `/api/quota/check`.
@@ -84,11 +87,46 @@ export async function POST(request: NextRequest) {
  * // GET /api/quota/check
  * fetch('/api/quota/check')
  */
-export async function GET() {
-  return NextResponse.json(
-    { error: 'Method not allowed. Use POST.' },
-    { status: 405 }
-  )
+export async function GET(request: NextRequest) {
+  try {
+    const user = await getAuthenticatedUserFromRequest(request)
+    const rawFeature = request.nextUrl.searchParams.get('feature')
+    const feature: QuotaFeature =
+      rawFeature === 'ai_generation' ? 'ai_generation' : 'email_generation'
+
+    if (rawFeature && rawFeature !== 'ai_generation' && rawFeature !== 'email_generation') {
+      return NextResponse.json(
+        { error: 'Invalid feature. Use ai_generation or email_generation.' },
+        { status: 400 }
+      )
+    }
+
+    const quota = await getQuotaSnapshot(user.id)
+    const selected = feature === 'ai_generation' ? quota.ai_draft : quota.email
+
+    return NextResponse.json({
+      allowed: selected.remaining > 0,
+      feature,
+      used: selected.used,
+      limit: selected.limit,
+      remaining: selected.remaining,
+      plan_type: quota.plan_type,
+      reset_date: quota.reset_date,
+      upgrade_url: '/dashboard/upgrade',
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    if (message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    console.error('[quota/check GET] Internal error:', sanitizeErrorForLog(error))
+    captureApiException(error, { route: '/api/quota/check', method: 'GET' })
+    return NextResponse.json(
+      { error: 'Failed to check quota' },
+      { status: 500 }
+    )
+  }
 }
 
 async function checkAndIncrementQuota(client: Awaited<ReturnType<typeof createQuotaClient>>, userId: string) {

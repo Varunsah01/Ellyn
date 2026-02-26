@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
-import { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  createClient as createServerSupabaseClient,
+  createServiceRoleClient,
+} from "@/lib/supabase/server";
 import {
   ContactUpdateSchema,
   formatZodError,
@@ -9,6 +13,7 @@ import {
 } from "@/lib/validation/schemas";
 import { recordActivity } from "@/lib/utils/recordActivity";
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { delete as deleteCache } from "@/lib/cache/redis";
 
 type ContactDbClient = Awaited<ReturnType<typeof createServerSupabaseClient>>;
 
@@ -50,6 +55,33 @@ async function createRequestScopedSupabaseClient(
 
 interface RouteContext {
   params: { id: string };
+}
+
+const ContactStatusEnum = z.enum(["new", "contacted", "replied", "no_response"]);
+const SafeTagSchema = z.string().trim().min(1).max(20);
+const SetTagsSchema = z
+  .array(SafeTagSchema)
+  .max(10)
+  .transform((tags) => Array.from(new Set(tags)));
+
+const NonUpdateOperationSchema = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("add_tag"), tag: SafeTagSchema }),
+  z.object({ op: z.literal("remove_tag"), tag: SafeTagSchema }),
+  z.object({ op: z.literal("set_tags"), tags: SetTagsSchema }),
+  z.object({ op: z.literal("set_notes"), notes: z.string().max(500) }),
+  z.object({ op: z.literal("set_status"), status: ContactStatusEnum }),
+  z.object({ op: z.literal("set_stage"), stage_id: z.string().uuid().nullable() }),
+]);
+
+type UpdateOperationInput = { op: "update" } & ContactUpdateInput;
+type ContactOperationInput = z.infer<typeof NonUpdateOperationSchema> | UpdateOperationInput;
+
+function normalizeExistingTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  const normalized = tags
+    .map((tag) => (typeof tag === "string" ? tag.trim() : ""))
+    .filter((tag) => tag.length > 0);
+  return Array.from(new Set(normalized));
 }
 
 // GET /api/contacts/[id] - Get single contact
@@ -114,30 +146,226 @@ function buildUpdatePayload(body: ContactUpdateInput) {
   return updateData;
 }
 
-async function updateContact(request: NextRequest, id: string, userId: string) {
+async function updateContact(
+  request: NextRequest,
+  id: string,
+  userId: string,
+  method: "PUT" | "PATCH"
+) {
   try {
-    const supabase = await createRequestScopedSupabaseClient(request);
-    const parsed = ContactUpdateSchema.safeParse(await request.json());
-    if (!parsed.success) {
+    const supabase = await createServiceRoleClient();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const { data: existingContact, error: existingError } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("id", id)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (!existingContact) {
+      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    }
+
+    let operation: ContactOperationInput;
+    if (typeof body === "object" && body !== null && (body as { op?: unknown }).op === "update") {
+      const parsedUpdate = ContactUpdateSchema.safeParse(body);
+      if (!parsedUpdate.success) {
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: formatZodError(parsedUpdate.error),
+          },
+          { status: 400 }
+        );
+      }
+      operation = { op: "update", ...parsedUpdate.data };
+    } else {
+      const parsedOperation = NonUpdateOperationSchema.safeParse(body);
+      if (parsedOperation.success) {
+        operation = parsedOperation.data;
+      } else {
+        const fallbackUpdate = ContactUpdateSchema.safeParse(body);
+        if (!fallbackUpdate.success) {
+          return NextResponse.json(
+            {
+              error: "Validation failed",
+              details: formatZodError(parsedOperation.error),
+            },
+            { status: 400 }
+          );
+        }
+        operation = { op: "update", ...fallbackUpdate.data };
+      }
+    }
+
+    let updateData: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    let shouldInvalidateTagsCache = false;
+    let nextStatus: string | null = null;
+    let contactForNoOp: Record<string, unknown> | null = null;
+
+    switch (operation.op) {
+      case "update": {
+        const { op, ...fields } = operation;
+        void op;
+        if (
+          Array.isArray((fields as ContactUpdateInput).tags) &&
+          (fields as ContactUpdateInput).tags!.length > 10
+        ) {
+          return NextResponse.json(
+            { error: "A contact can have at most 10 tags" },
+            { status: 400 }
+          );
+        }
+        if (Array.isArray((fields as ContactUpdateInput).tags)) {
+          shouldInvalidateTagsCache = true;
+        }
+        updateData = buildUpdatePayload(fields as ContactUpdateInput);
+        break;
+      }
+      case "add_tag": {
+        const existingTags = normalizeExistingTags(existingContact.tags);
+        if (existingTags.includes(operation.tag)) {
+          contactForNoOp = existingContact;
+          break;
+        }
+        if (existingTags.length >= 10) {
+          return NextResponse.json(
+            { error: "A contact can have at most 10 tags" },
+            { status: 400 }
+          );
+        }
+        shouldInvalidateTagsCache = true;
+        updateData = {
+          tags: [...existingTags, operation.tag],
+          updated_at: new Date().toISOString(),
+        };
+        break;
+      }
+      case "remove_tag": {
+        const existingTags = normalizeExistingTags(existingContact.tags);
+        const nextTags = existingTags.filter((tag) => tag !== operation.tag);
+        if (nextTags.length === existingTags.length) {
+          contactForNoOp = existingContact;
+          break;
+        }
+        shouldInvalidateTagsCache = true;
+        updateData = {
+          tags: nextTags,
+          updated_at: new Date().toISOString(),
+        };
+        break;
+      }
+      case "set_tags": {
+        const tags = Array.from(new Set(operation.tags.map((tag) => tag.trim()))).filter(
+          Boolean
+        );
+        if (tags.length > 10) {
+          return NextResponse.json(
+            { error: "A contact can have at most 10 tags" },
+            { status: 400 }
+          );
+        }
+        shouldInvalidateTagsCache = true;
+        updateData = {
+          tags,
+          updated_at: new Date().toISOString(),
+        };
+        break;
+      }
+      case "set_notes": {
+        updateData = {
+          notes: operation.notes,
+          updated_at: new Date().toISOString(),
+        };
+        break;
+      }
+      case "set_status": {
+        if (existingContact.status !== operation.status) {
+          nextStatus = operation.status;
+        }
+        updateData = {
+          status: operation.status,
+          updated_at: new Date().toISOString(),
+        };
+        break;
+      }
+      case "set_stage": {
+        if (operation.stage_id) {
+          const { data: stage, error: stageError } = await supabase
+            .from("application_stages")
+            .select("id")
+            .eq("id", operation.stage_id)
+            .eq("user_id", userId)
+            .maybeSingle();
+          if (stageError) throw stageError;
+          if (!stage) {
+            return NextResponse.json({ error: "Stage not found" }, { status: 404 });
+          }
+        }
+        updateData = {
+          stage_id: operation.stage_id,
+          updated_at: new Date().toISOString(),
+        };
+        break;
+      }
+      default: {
+        return NextResponse.json({ error: "Unsupported operation" }, { status: 400 });
+      }
+    }
+
+    if (contactForNoOp) {
       return NextResponse.json(
-        {
-          error: "Validation failed",
-          details: formatZodError(parsed.error),
-        },
-        { status: 400 }
+        { success: true, contact: contactForNoOp, message: "Contact updated successfully" },
+        { headers: { "X-Trigger-Refresh": "contacts,stats" } }
       );
     }
-    const updateData = buildUpdatePayload(parsed.data);
 
-    const { data: contact, error } = await supabase
+    const { data: contact, error: updateError } = await supabase
       .from("contacts")
       .update(updateData)
       .eq("id", id)
       .eq("user_id", userId)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (error) throw error;
+    if (updateError) throw updateError;
+    if (!contact) {
+      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    }
+
+    if (shouldInvalidateTagsCache) {
+      void deleteCache(`contact-tags:${userId}`).catch((cacheError) => {
+        console.error("[contacts/[id]] Failed to invalidate tags cache", cacheError);
+      });
+    }
+
+    if (operation.op === "set_status" && nextStatus) {
+      void (async () => {
+        try {
+          await supabase.from("activity_log").insert({
+            user_id: userId,
+            type: `status_changed_to_${nextStatus}`,
+            description: `Status changed to ${nextStatus}`,
+            contact_id: id,
+            metadata: {
+              previous_status: existingContact.status,
+              action: `status_changed_to_${nextStatus}`,
+            },
+          });
+        } catch (logError) {
+          console.error(logError);
+        }
+      })();
+    }
 
     recordActivity({
       userId,
@@ -153,7 +381,7 @@ async function updateContact(request: NextRequest, id: string, userId: string) {
     );
   } catch (error) {
     console.error("Update contact error:", error);
-    captureApiException(error, { route: '/api/contacts/[id]', method: 'GET' })
+    captureApiException(error, { route: "/api/contacts/[id]", method })
     return NextResponse.json(
       {
         error: "Failed to update contact",
@@ -180,7 +408,7 @@ async function updateContact(request: NextRequest, id: string, userId: string) {
 export async function PUT(request: NextRequest, { params }: RouteContext) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
-    return updateContact(request, params.id, user.id);
+    return updateContact(request, params.id, user.id, "PUT");
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -212,7 +440,7 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
-    return updateContact(request, params.id, user.id);
+    return updateContact(request, params.id, user.id, "PATCH");
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

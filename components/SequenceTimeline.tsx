@@ -65,11 +65,14 @@ const NODE_STYLES: Record<
 }
 
 const ENROLLMENT_BADGE: Record<string, string> = {
+  active: "border-blue-200 bg-blue-50 text-blue-700",
   in_progress: "border-blue-200 bg-blue-50 text-blue-700",
   completed: "border-green-200 bg-green-50 text-green-700",
   replied: "border-violet-200 bg-violet-50 text-violet-700",
   bounced: "border-red-200 bg-red-50 text-red-700",
   paused: "border-amber-200 bg-amber-50 text-amber-700",
+  unsubscribed: "border-amber-200 bg-amber-50 text-amber-700",
+  removed: "border-slate-300 bg-slate-100 text-slate-700",
   not_started: "border-slate-200 bg-slate-50 text-slate-600",
 }
 
@@ -90,6 +93,7 @@ export function SequenceTimeline({
   })
 
   const totalDuration = steps.reduce((sum, s) => sum + s.delay_days, 0)
+  const isPausedLike = enrollmentStatus === "paused" || enrollmentStatus === "unsubscribed"
 
   return (
     <Card>
@@ -126,7 +130,7 @@ export function SequenceTimeline({
           >
             Mark Bounced
           </Button>
-          {enrollmentStatus === "paused" ? (
+          {isPausedLike ? (
             <Button
               size="sm"
               className="h-7 gap-1 text-xs"

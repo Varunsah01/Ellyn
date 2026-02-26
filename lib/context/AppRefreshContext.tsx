@@ -11,7 +11,7 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type RefreshScope = "contacts" | "sequences" | "stats" | "all"
+export type RefreshScope = "contacts" | "sequences" | "stats" | "deals" | "stages" | "all"
 
 type Listener = () => void
 
@@ -54,6 +54,8 @@ export function AppRefreshProvider({ children }: { children: ReactNode }) {
       fire("contacts")
       fire("sequences")
       fire("stats")
+      fire("deals")
+      fire("stages")
     } else {
       fire(scope)
     }

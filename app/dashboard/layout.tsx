@@ -6,7 +6,6 @@ import { Header } from "@/components/dashboard/Header";
 import { DashboardTour } from "@/components/DashboardTour";
 import { DashboardWrapper } from "@/components/DashboardWrapper";
 import { usePathname, useRouter } from "next/navigation";
-import { getOnboardingState } from "@/lib/onboarding";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useResponsive } from "@/hooks/useResponsive";
 import { cn } from "@/lib/utils";
@@ -15,7 +14,15 @@ import { QuotaWarningBanner } from "@/components/subscription/QuotaWarningBanner
 import { AppRefreshProvider } from "@/lib/context/AppRefreshContext";
 import { PersonaProvider } from "@/context/PersonaContext";
 import { PersonaOnboardingGate } from "@/components/dashboard/PersonaOnboardingGate";
+import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
+import { useRealtimeManager } from "@/hooks/useRealtimeManager";
 import type { Session } from "@supabase/supabase-js";
+
+/** Mounts the global Realtime channel manager once per authenticated session. */
+function RealtimeManagerMount({ userId }: { userId: string }) {
+  useRealtimeManager(userId)
+  return null
+}
 
 export default function DashboardLayout({
   children,
@@ -26,6 +33,7 @@ export default function DashboardLayout({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const isFullWidthWorkspaceRoute =
@@ -128,6 +136,7 @@ export default function DashboardLayout({
 
       setIsAuthenticated(true);
       setAuthChecking(false);
+      setUserId(data.session.user.id);
       void sendSessionToExtension(data.session);
     };
 
@@ -144,6 +153,7 @@ export default function DashboardLayout({
 
       if (event === "SIGNED_OUT" || !session) {
         setIsAuthenticated(false);
+        setUserId(null);
         sendLogoutToExtension();
 
         router.replace("/auth/login?next=/dashboard");
@@ -151,6 +161,7 @@ export default function DashboardLayout({
       }
 
       setIsAuthenticated(true);
+      setUserId(session.user.id);
       void sendSessionToExtension(session);
     });
 
@@ -159,15 +170,6 @@ export default function DashboardLayout({
       authSubscription.subscription.unsubscribe();
     };
   }, [router]);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    const state = getOnboardingState();
-    if (!state.completed && !state.dismissed) {
-      router.replace("/onboarding");
-    }
-  }, [isAuthenticated, router]);
 
   useEffect(() => {
     if (isTablet) {
@@ -220,8 +222,10 @@ export default function DashboardLayout({
               </div>
             </main>
           </div>
+          {userId && <RealtimeManagerMount userId={userId} />}
           <DashboardTour />
           <PersonaOnboardingGate />
+          <OnboardingChecklist />
         </div>
       </PersonaProvider>
       </SubscriptionProvider>

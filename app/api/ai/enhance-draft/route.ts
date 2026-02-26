@@ -1,12 +1,12 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 
-import { checkAiRateLimit, getRateLimitIdentifier } from '@/lib/ai-rate-limit'
 import { getGeminiClient } from '@/lib/gemini'
 import { buildPrompt, getPromptConfig, mapEnhanceAction } from '@/lib/template-prompts'
 import { EnhanceDraftSchema, formatZodError } from '@/lib/validation/schemas'
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { incrementAIDraftGeneration, QuotaExceededError } from '@/lib/quota'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { get as getCache, set as setCache } from '@/lib/cache/redis'
 
 interface EnhanceDraftResponse {
   success: boolean
@@ -38,9 +38,30 @@ export async function POST(request: NextRequest): Promise<NextResponse<EnhanceDr
   const startedAt = Date.now()
 
   try {
+    const user = await getAuthenticatedUserFromRequest(request)
+
+    const rateLimitKey = `ratelimit:ai-enhance:${user.id}`
+    const rateLimit = await checkRateLimit(rateLimitKey, 20, 3600)
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Rate limit exceeded. Try again in an hour.',
+          originalLength: 0,
+          newLength: 0,
+          cost: 0,
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(rateLimit.retryAfterSeconds),
+          },
+        }
+      )
+    }
+
     // Quota enforcement
     try {
-      const user = await getAuthenticatedUserFromRequest(request)
       await incrementAIDraftGeneration(user.id)
     } catch (quotaErr) {
       if (quotaErr instanceof QuotaExceededError) {
@@ -67,25 +88,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<EnhanceDr
         )
       }
       throw quotaErr
-    }
-
-    const limiter = checkAiRateLimit(getRateLimitIdentifier(request))
-    if (!limiter.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Rate limit exceeded. Please retry later.',
-          originalLength: 0,
-          newLength: 0,
-          cost: 0,
-        },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': String(Math.ceil(limiter.retryAfterMs / 1000)),
-          },
-        }
-      )
     }
 
     const parsed = EnhanceDraftSchema.safeParse(await request.json())
@@ -205,4 +207,29 @@ function toErrorMessage(error: unknown): string {
   }
 
   return 'Unknown error'
+}
+
+async function checkRateLimit(
+  key: string,
+  limit: number,
+  windowSeconds: number
+): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
+  const now = Date.now()
+  const windowStart = Math.floor(now / 1000 / windowSeconds)
+  const windowKey = `${key}:${windowStart}`
+
+  const current = Number((await getCache<number>(windowKey)) ?? 0)
+  if (current >= limit) {
+    const resetAtMs = (windowStart + 1) * windowSeconds * 1000
+    return {
+      allowed: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((resetAtMs - now) / 1000)),
+    }
+  }
+
+  const resetAtMs = (windowStart + 1) * windowSeconds * 1000
+  const ttl = Math.max(1, Math.ceil((resetAtMs - now) / 1000))
+  await setCache(windowKey, current + 1, ttl)
+
+  return { allowed: true, retryAfterSeconds: 0 }
 }

@@ -1,5 +1,6 @@
 import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
+import { NextResponse } from 'next/server'
 
 export type RateLimitScope = 'ip' | 'user'
 
@@ -202,6 +203,74 @@ async function runUpstashRateLimit(rule: RateLimitRule, identifier: string): Pro
     policy: resolvePolicy(rule),
   }
 }
+
+// ─── Per-route handler rate limit (sliding window, sorted set) ───────────────
+
+export interface ApiRateLimitResult {
+  allowed: boolean
+  remaining: number
+  resetAt: number
+}
+
+/**
+ * Sliding-window rate limiter for use directly inside API route handlers.
+ * Keyed by an arbitrary string (e.g. `import:${user.id}`).
+ * Fails open (allows the request) if Redis is unavailable.
+ *
+ * Example:
+ *   const rl = await checkApiRateLimit(`import:${user.id}`, 5, 3600)
+ *   if (!rl.allowed) return rateLimitExceeded(rl.resetAt)
+ */
+export async function checkApiRateLimit(
+  key: string,
+  maxRequests: number,
+  windowSeconds: number
+): Promise<ApiRateLimitResult> {
+  const now = Date.now()
+  const resetAt = now + windowSeconds * 1000
+  const redis = getRedisClient()
+
+  if (!redis) {
+    return { allowed: true, remaining: maxRequests, resetAt }
+  }
+
+  const redisKey = `ratelimit:${key}`
+  const windowStart = now - windowSeconds * 1000
+
+  try {
+    const pipe = redis.pipeline()
+    pipe.zremrangebyscore(redisKey, '-inf', windowStart)
+    pipe.zadd(redisKey, { score: now, member: `${now}-${Math.random()}` })
+    pipe.zcard(redisKey)
+    pipe.expire(redisKey, windowSeconds)
+    const results = await pipe.exec()
+
+    const count = (results?.[2] as number) ?? 0
+    return {
+      allowed: count <= maxRequests,
+      remaining: Math.max(0, maxRequests - count),
+      resetAt,
+    }
+  } catch {
+    return { allowed: true, remaining: maxRequests, resetAt }
+  }
+}
+
+/**
+ * Build a 429 response with Retry-After header.
+ */
+export function rateLimitExceeded(resetAt: number): NextResponse {
+  const retryAfter = Math.ceil((resetAt - Date.now()) / 1000)
+  return NextResponse.json(
+    { error: 'Rate limit exceeded' },
+    {
+      status: 429,
+      headers: { 'Retry-After': String(Math.max(1, retryAfter)) },
+    }
+  )
+}
+
+// ─── Middleware-style rate limit (route-pattern matching) ─────────────────────
 
 /**
  * Check rate limit.

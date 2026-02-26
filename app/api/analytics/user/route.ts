@@ -43,9 +43,30 @@ type SequenceAnalytics = {
   topPerforming: { id: string; name: string; replyRate: number }[]
 }
 
+type TrackingStats = {
+  totalSent: number
+  totalOpened: number
+  totalClicked: number
+  totalReplied: number
+  totalBounced: number
+  openRate: number
+  replyRate: number
+}
+
+type SequencePerformance = {
+  id: string
+  name: string
+  status: string
+  totalEnrolled: number
+  repliedCount: number
+  replyRate: number
+}
+
 export type ExtendedUserAnalyticsData = UserAnalyticsMetrics & {
   outreach: OutreachMetrics
+  tracking: TrackingStats
   sequences: SequenceAnalytics
+  sequencePerformance: SequencePerformance[]
   contactGrowth: { date: string; count: number }[]
   activityHeatmap: { day: number; hour: number; count: number }[]
   totalContacts: number
@@ -68,6 +89,7 @@ export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request)
     const period = normalizePeriod(request.nextUrl.searchParams.get('period'))
+    const rangeDays = parseRangeDays(request, period)
     const fmt = (request.nextUrl.searchParams.get('format') || 'json').toLowerCase()
     const startDateParam = request.nextUrl.searchParams.get('startDate')
     const endDateParam = request.nextUrl.searchParams.get('endDate')
@@ -81,7 +103,7 @@ export async function GET(request: NextRequest) {
 
     const [metrics, extended] = await Promise.all([
       getUserMetrics(serviceClient, user.id, period),
-      getExtendedMetrics(serviceClient, user.id, periodStart, periodEnd),
+      getExtendedMetrics(serviceClient, user.id, periodStart, periodEnd, rangeDays),
     ])
 
     const data: ExtendedUserAnalyticsData = { ...metrics, ...extended }
@@ -245,7 +267,8 @@ async function getExtendedMetrics(
   serviceClient: Awaited<ReturnType<typeof createServiceRoleClient>>,
   userId: string,
   periodStart: Date | null,
-  periodEnd: Date
+  periodEnd: Date,
+  rangeDays: number
 ): Promise<Omit<ExtendedUserAnalyticsData, keyof UserAnalyticsMetrics>> {
   const startStr = periodStart ? periodStart.toISOString() : '2000-01-01T00:00:00Z'
   const endStr = periodEnd.toISOString()
@@ -256,6 +279,10 @@ async function getExtendedMetrics(
       outreachRes,
       contactsRes,
       seqRes,
+      trackingRes,
+      heatmapRes,
+      contactGrowthRes,
+      sequencePerformanceRes,
     ] = await Promise.all([
       serviceClient
         .from('outreach')
@@ -272,19 +299,45 @@ async function getExtendedMetrics(
         .from('sequences')
         .select('id, name, status')
         .eq('user_id', userId),
+      serviceClient.rpc('get_tracking_stats', {
+        p_user_id: userId,
+        p_days: rangeDays,
+      }),
+      serviceClient.rpc('get_activity_heatmap', {
+        p_user_id: userId,
+        p_days: Math.min(Math.max(rangeDays, 1), 365),
+      }),
+      serviceClient.rpc('get_contact_growth', {
+        p_user_id: userId,
+        p_days: Math.min(Math.max(rangeDays, 1), 365),
+      }),
+      serviceClient.rpc('get_sequence_performance_stats', {
+        p_user_id: userId,
+      }),
     ])
 
     // ── Outreach metrics
     const outreachRows = outreachRes.data ?? []
-    const totalSent = outreachRows.length
-    const openedCount = outreachRows.filter(
+    const fallbackTotalSent = outreachRows.length
+    const fallbackOpenedCount = outreachRows.filter(
       (r) => r.status === 'opened' || r.status === 'replied'
     ).length
-    const repliedCount = outreachRows.filter((r) => r.status === 'replied').length
+    const fallbackRepliedCount = outreachRows.filter((r) => r.status === 'replied').length
+    const tracking = normalizeTrackingStats(trackingRes.data)
+    const hasTrackingStats = tracking.totalSent > 0
+    const totalSent = hasTrackingStats ? tracking.totalSent : fallbackTotalSent
     const outreach: OutreachMetrics = {
       totalSent,
-      openRate: totalSent > 0 ? roundTo((openedCount / totalSent) * 100, 1) : 0,
-      replyRate: totalSent > 0 ? roundTo((repliedCount / totalSent) * 100, 1) : 0,
+      openRate: hasTrackingStats
+        ? tracking.openRate
+        : totalSent > 0
+          ? roundTo((fallbackOpenedCount / totalSent) * 100, 1)
+          : 0,
+      replyRate: hasTrackingStats
+        ? tracking.replyRate
+        : totalSent > 0
+          ? roundTo((fallbackRepliedCount / totalSent) * 100, 1)
+          : 0,
       avgResponseDays: 0,
     }
 
@@ -303,7 +356,7 @@ async function getExtendedMetrics(
       const day = (c.created_at as string).slice(0, 10)
       growthMap.set(day, (growthMap.get(day) ?? 0) + 1)
     })
-    const contactGrowth = Array.from(growthMap.entries())
+    const fallbackContactGrowth = Array.from(growthMap.entries())
       .map(([date, count]) => ({ date, count }))
       .sort((a, b) => a.date.localeCompare(b.date))
 
@@ -315,10 +368,36 @@ async function getExtendedMetrics(
       const key = `${d.getDay()}_${d.getHours()}`
       heatmapMap.set(key, (heatmapMap.get(key) ?? 0) + 1)
     })
-    const activityHeatmap = Array.from(heatmapMap.entries()).map(([key, count]) => {
+    const fallbackActivityHeatmap = Array.from(heatmapMap.entries()).map(([key, count]) => {
       const parts = key.split('_')
       return { day: Number(parts[0] ?? 0), hour: Number(parts[1] ?? 0), count }
     })
+
+    const activityHeatmap = Array.isArray(heatmapRes.data)
+      ? heatmapRes.data.map((row: any) => ({
+          day: toSafeNumber(row.day_of_week, 0),
+          hour: toSafeNumber(row.hour_of_day, 0),
+          count: toSafeNumber(row.event_count, 0),
+        }))
+      : fallbackActivityHeatmap
+
+    const contactGrowth = Array.isArray(contactGrowthRes.data)
+      ? contactGrowthRes.data.map((row: any) => ({
+          date: String(row.date),
+          count: toSafeNumber(row.new_contacts, 0),
+        }))
+      : fallbackContactGrowth
+
+    const sequencePerformance = Array.isArray(sequencePerformanceRes.data)
+      ? sequencePerformanceRes.data.map((row: any) => ({
+          id: String(row.id),
+          name: String(row.name || 'Sequence'),
+          status: String(row.status || 'draft'),
+          totalEnrolled: toSafeNumber(row.total_enrolled, 0),
+          repliedCount: toSafeNumber(row.replied_count, 0),
+          replyRate: roundTo(toSafeNumber(row.reply_rate, 0), 1),
+        }))
+      : []
 
     // ── Sequence analytics
     const seqRows = seqRes.data ?? []
@@ -344,34 +423,49 @@ async function getExtendedMetrics(
       const completionRate =
         totalEnrolled > 0 ? roundTo((completedCount / totalEnrolled) * 100, 1) : 0
 
-      // Compute per-sequence reply rate for topPerforming
-      const seqStats = new Map<string, { total: number; replied: number }>()
-      allEnrollments.forEach((e) => {
-        const s = seqStats.get(e.sequence_id) ?? { total: 0, replied: 0 }
-        s.total++
-        if (e.status === 'replied') s.replied++
-        seqStats.set(e.sequence_id, s)
-      })
-
-      const topPerforming = seqRows
-        .map((s) => {
-          const stats = seqStats.get(s.id) ?? { total: 0, replied: 0 }
-          return {
-            id: s.id as string,
-            name: s.name as string,
-            replyRate: stats.total > 0 ? roundTo((stats.replied / stats.total) * 100, 1) : 0,
-          }
-        })
-        .filter((s) => (seqStats.get(s.id)?.total ?? 0) > 0)
+      let topPerforming = sequencePerformance
+        .filter((entry) => entry.totalEnrolled > 0)
         .sort((a, b) => b.replyRate - a.replyRate)
         .slice(0, 3)
+        .map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          replyRate: entry.replyRate,
+        }))
+
+      if (topPerforming.length === 0) {
+        const sequenceStats = new Map<string, { total: number; replied: number }>()
+        allEnrollments.forEach((enrollment) => {
+          const stats = sequenceStats.get(enrollment.sequence_id) ?? { total: 0, replied: 0 }
+          stats.total += 1
+          if (enrollment.status === 'replied') {
+            stats.replied += 1
+          }
+          sequenceStats.set(enrollment.sequence_id, stats)
+        })
+
+        topPerforming = seqRows
+          .map((sequence) => {
+            const stats = sequenceStats.get(sequence.id) ?? { total: 0, replied: 0 }
+            return {
+              id: String(sequence.id),
+              name: String(sequence.name ?? 'Sequence'),
+              replyRate: stats.total > 0 ? roundTo((stats.replied / stats.total) * 100, 1) : 0,
+            }
+          })
+          .filter((entry) => (sequenceStats.get(entry.id)?.total ?? 0) > 0)
+          .sort((a, b) => b.replyRate - a.replyRate)
+          .slice(0, 3)
+      }
 
       sequences = { active, totalEnrolled, completionRate, topPerforming }
     }
 
     return {
       outreach,
+      tracking,
       sequences,
+      sequencePerformance,
       contactGrowth,
       activityHeatmap,
       totalContacts,
@@ -381,7 +475,17 @@ async function getExtendedMetrics(
     // Return zero-state on any error so the page still renders
     return {
       outreach: { totalSent: 0, openRate: 0, replyRate: 0, avgResponseDays: 0 },
+      tracking: {
+        totalSent: 0,
+        totalOpened: 0,
+        totalClicked: 0,
+        totalReplied: 0,
+        totalBounced: 0,
+        openRate: 0,
+        replyRate: 0,
+      },
       sequences: { active: 0, totalEnrolled: 0, completionRate: 0, topPerforming: [] },
+      sequencePerformance: [],
       contactGrowth: [],
       activityHeatmap: [],
       totalContacts: 0,
@@ -391,6 +495,66 @@ async function getExtendedMetrics(
 }
 
 // ── CSV builder ───────────────────────────────────────────────────────────
+
+function normalizeTrackingStats(raw: unknown): TrackingStats {
+  const data = Array.isArray(raw) ? raw[0] : raw
+  if (!data || typeof data !== 'object') {
+    return {
+      totalSent: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      totalReplied: 0,
+      totalBounced: 0,
+      openRate: 0,
+      replyRate: 0,
+    }
+  }
+
+  const row = data as Record<string, unknown>
+  return {
+    totalSent: toSafeNumber(row.total_sent, 0),
+    totalOpened: toSafeNumber(row.total_opened, 0),
+    totalClicked: toSafeNumber(row.total_clicked, 0),
+    totalReplied: toSafeNumber(row.total_replied, 0),
+    totalBounced: toSafeNumber(row.total_bounced, 0),
+    openRate: roundTo(toSafeNumber(row.open_rate, 0), 1),
+    replyRate: roundTo(toSafeNumber(row.reply_rate, 0), 1),
+  }
+}
+
+function parseRangeDays(request: NextRequest, period: AnalyticsPeriod): number {
+  const rawRange = request.nextUrl.searchParams.get('range')?.trim().toLowerCase() || ''
+  if (rawRange) {
+    const match = rawRange.match(/^(\d+)(d)?$/)
+    if (match?.[1]) {
+      return clampDays(Number(match[1]))
+    }
+  }
+
+  const startDateRaw = request.nextUrl.searchParams.get('startDate')
+  const endDateRaw = request.nextUrl.searchParams.get('endDate')
+  if (startDateRaw && endDateRaw) {
+    const start = new Date(startDateRaw)
+    const end = new Date(endDateRaw)
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start) {
+      const diffMs = end.getTime() - start.getTime()
+      const days = Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1
+      return clampDays(days)
+    }
+  }
+
+  if (period === 'day') return 1
+  if (period === 'week') return 7
+  if (period === 'month') return 30
+  if (period === 'all') return 365
+  return 30
+}
+
+function clampDays(value: number): number {
+  if (!Number.isFinite(value)) return 30
+  const normalized = Math.trunc(value)
+  return Math.min(Math.max(normalized, 1), 365)
+}
 
 function buildUserAnalyticsCsv(
   period: AnalyticsPeriod,
@@ -413,6 +577,10 @@ function buildUserAnalyticsCsv(
     ['emails_sent', metrics.outreach.totalSent],
     ['open_rate_percent', metrics.outreach.openRate],
     ['reply_rate_percent', metrics.outreach.replyRate],
+    ['tracking_total_opened', metrics.tracking.totalOpened],
+    ['tracking_total_clicked', metrics.tracking.totalClicked],
+    ['tracking_total_replied', metrics.tracking.totalReplied],
+    ['tracking_total_bounced', metrics.tracking.totalBounced],
     ['active_sequences', metrics.sequences.active],
     ['total_enrolled', metrics.sequences.totalEnrolled],
     ['completion_rate_percent', metrics.sequences.completionRate],

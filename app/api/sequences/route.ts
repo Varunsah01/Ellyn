@@ -1,187 +1,370 @@
-import { NextRequest, NextResponse } from "next/server"
-import { supabase, isSupabaseConfigured } from "@/lib/supabase"
-import { computeSequenceStats } from "@/lib/sequence-engine"
-import { SequenceCreateSchema, formatZodError } from "@/lib/validation/schemas"
+import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
+import { z } from 'zod'
 
+import { getAuthenticatedServiceRoleClient } from '@/lib/auth/api-user'
+import { formatZodError } from '@/lib/validation/schemas'
+
+type PlanType = 'free' | 'starter' | 'pro'
+
+type SequenceStepJson = {
+  id: string
+  type: string
+  delayDays: number
+  subject: string
+  body: string
+  templateId?: string | null
+}
+
+type SequenceRow = {
+  id: string
+  user_id: string
+  name: string
+  description: string | null
+  goal: string | null
+  status: 'draft' | 'active' | 'paused' | 'archived'
+  steps: SequenceStepJson[] | null
+  created_at: string
+  updated_at: string
+}
+
+type SequenceEnrollmentRow = {
+  id: string
+  sequence_id: string
+  contact_id: string
+  status: string
+}
+
+type SequenceTrackingEventRow = {
+  sequence_id: string | null
+  event_type: 'sent' | 'opened' | 'replied' | 'bounced'
+}
+
+const sequenceStatusSchema = z.enum(['draft', 'active', 'paused', 'archived'])
+
+const stepSchema = z.object({
+  id: z.string().min(1).max(100).optional(),
+  type: z.string().min(1).max(50).default('email'),
+  delayDays: z.coerce.number().int().min(0).max(3650).optional(),
+  delay_days: z.coerce.number().int().min(0).max(3650).optional(),
+  subject: z.string().trim().min(1).max(300),
+  body: z.string().trim().min(1).max(20000),
+  templateId: z.string().uuid().nullable().optional(),
+  template_id: z.string().uuid().nullable().optional(),
+})
+
+const createSequenceSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(3000).optional().nullable(),
+  goal: z.string().trim().max(500).optional().nullable(),
+  status: sequenceStatusSchema.default('draft'),
+  steps: z.array(stepSchema).min(1).max(100),
+})
+
+const searchParamsSchema = z.object({
+  search: z.string().trim().max(100).optional(),
+})
+
+const planSequenceLimits: Record<PlanType, number> = {
+  free: 3,
+  starter: 10,
+  pro: Number.POSITIVE_INFINITY,
+}
+
+function normalizeSequenceStep(
+  step: z.infer<typeof stepSchema>,
+  index: number
+): SequenceStepJson {
+  const delayDays = step.delayDays ?? step.delay_days ?? 0
+
+  return {
+    id: step.id ?? `step_${index + 1}_${randomUUID().slice(0, 8)}`,
+    type: step.type || 'email',
+    delayDays,
+    subject: step.subject,
+    body: step.body,
+    templateId: step.templateId ?? step.template_id ?? null,
+  }
+}
+
+function normalizeSequenceSteps(rawSteps: unknown): SequenceStepJson[] {
+  if (!Array.isArray(rawSteps)) return []
+
+  const normalized: SequenceStepJson[] = []
+  for (let index = 0; index < rawSteps.length; index += 1) {
+    const parsed = stepSchema.safeParse(rawSteps[index])
+    if (!parsed.success) continue
+    normalized.push(normalizeSequenceStep(parsed.data, index))
+  }
+
+  return normalized
+}
+
+function toClientSequenceStep(step: SequenceStepJson, sequenceId: string, index: number) {
+  return {
+    id: step.id,
+    sequence_id: sequenceId,
+    order: index + 1,
+    type: step.type,
+    delayDays: step.delayDays,
+    delay_days: step.delayDays,
+    templateId: step.templateId ?? null,
+    template_id: step.templateId ?? null,
+    subject: step.subject,
+    body: step.body,
+    status: 'active' as const,
+  }
+}
+
+function buildSequenceStats(
+  enrollments: SequenceEnrollmentRow[],
+  events: SequenceTrackingEventRow[]
+) {
+  const emailsSent = events.filter((event) => event.event_type === 'sent').length
+  const opened = events.filter((event) => event.event_type === 'opened').length
+  const replied = events.filter((event) => event.event_type === 'replied').length
+  const bounced = events.filter((event) => event.event_type === 'bounced').length
+  const totalContacts = enrollments.length
+  const inProgress = enrollments.filter((enrollment) => enrollment.status === 'active').length
+  const completed = enrollments.filter((enrollment) => enrollment.status === 'completed').length
+
+  return {
+    totalContacts,
+    emailsSent,
+    opened,
+    replied,
+    bounced,
+    unsubscribed: enrollments.filter((enrollment) => enrollment.status === 'unsubscribed').length,
+    inProgress,
+    completionRate: totalContacts > 0 ? Math.round((completed / totalContacts) * 100) : 0,
+  }
+}
+
+function toClientSequence(
+  sequence: SequenceRow,
+  enrollments: SequenceEnrollmentRow[],
+  events: SequenceTrackingEventRow[]
+) {
+  const normalizedSteps = normalizeSequenceSteps(sequence.steps)
+
+  return {
+    ...sequence,
+    status: sequence.status,
+    steps: normalizedSteps.map((step, index) =>
+      toClientSequenceStep(step, sequence.id, index)
+    ),
+    contacts: enrollments.map((enrollment) => enrollment.contact_id),
+    stats: buildSequenceStats(enrollments, events),
+    createdAt: sequence.created_at,
+    updatedAt: sequence.updated_at,
+  }
+}
+
+function quotaExceededResponse(feature: string, used: number, limit: number, planType: PlanType) {
+  return NextResponse.json(
+    {
+      error: 'quota_exceeded',
+      feature,
+      used,
+      limit,
+      plan_type: planType,
+      upgrade_url: '/dashboard/settings?tab=billing',
+    },
+    { status: 402 }
+  )
+}
 
 /**
  * Handle GET requests for `/api/sequences`.
- * @returns {unknown} JSON response for the GET /api/sequences request.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // GET /api/sequences
- * fetch('/api/sequences')
  */
 export async function GET(request: NextRequest) {
-  try {
-    if (!isSupabaseConfigured) {
+  const { supabase, user } = await getAuthenticatedServiceRoleClient(request)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const parsedQuery = searchParamsSchema.safeParse({
+    search: request.nextUrl.searchParams.get('search') ?? undefined,
+  })
+
+  if (!parsedQuery.success) {
+    return NextResponse.json(
+      { error: 'Validation failed', details: formatZodError(parsedQuery.error) },
+      { status: 400 }
+    )
+  }
+
+  const search = parsedQuery.data.search?.toLowerCase() ?? ''
+
+  const { data: sequences, error: sequenceError } = await supabase
+    .from('sequences')
+    .select('id, user_id, name, description, goal, status, steps, created_at, updated_at')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (sequenceError) {
+    return NextResponse.json(
+      { error: 'Failed to fetch sequences', details: sequenceError.message },
+      { status: 500 }
+    )
+  }
+
+  const sequenceRows = (sequences ?? []) as SequenceRow[]
+  const sequenceIds = sequenceRows.map((sequence) => sequence.id)
+
+  let enrollments: SequenceEnrollmentRow[] = []
+  let events: SequenceTrackingEventRow[] = []
+
+  if (sequenceIds.length > 0) {
+    const [enrollmentResult, eventResult] = await Promise.all([
+      supabase
+        .from('sequence_enrollments')
+        .select('id, sequence_id, contact_id, status')
+        .eq('user_id', user.id)
+        .in('sequence_id', sequenceIds),
+      supabase
+        .from('email_tracking_events')
+        .select('sequence_id, event_type')
+        .eq('user_id', user.id)
+        .in('sequence_id', sequenceIds)
+        .in('event_type', ['sent', 'opened', 'replied', 'bounced']),
+    ])
+
+    if (enrollmentResult.error) {
       return NextResponse.json(
-        { error: "Supabase not configured" },
-        { status: 503 }
-      )
-    }
-
-    const search = request.nextUrl.searchParams.get("search") ?? ""
-
-    const [{ data: sequences, error: seqError }, { data: steps }, { data: enrollments }, { data: events }] =
-      await Promise.all([
-        supabase.from("sequences").select("*").order("created_at", { ascending: false }),
-        supabase.from("sequence_steps").select("*"),
-        supabase.from("sequence_enrollments").select("*"),
-        supabase.from("sequence_events").select("*"),
-      ])
-
-    if (seqError) {
-      return NextResponse.json(
-        { error: "Failed to fetch sequences", details: seqError.message },
+        { error: 'Failed to fetch enrollments', details: enrollmentResult.error.message },
         { status: 500 }
       )
     }
 
-    const stepsBySequence = new Map<string, any[]>()
-    steps?.forEach((step) => {
-      const list = stepsBySequence.get(step.sequence_id) ?? []
-      list.push({
-        ...step,
-        order: step.step_order,
-      })
-      stepsBySequence.set(step.sequence_id, list)
-    })
-
-    const enrollmentsBySequence = new Map<string, any[]>()
-    enrollments?.forEach((enrollment) => {
-      const list = enrollmentsBySequence.get(enrollment.sequence_id) ?? []
-      list.push(enrollment)
-      enrollmentsBySequence.set(enrollment.sequence_id, list)
-    })
-
-    const eventsBySequence = new Map<string, any[]>()
-    events?.forEach((event) => {
-      const enrollment = enrollments?.find((e) => e.id === event.enrollment_id)
-      if (!enrollment) return
-      const list = eventsBySequence.get(enrollment.sequence_id) ?? []
-      list.push(event)
-      eventsBySequence.set(enrollment.sequence_id, list)
-    })
-
-    const enriched = (sequences || []).map((sequence) => {
-      const sequenceSteps = (stepsBySequence.get(sequence.id) ?? []).sort(
-        (a, b) => a.order - b.order
+    if (eventResult.error) {
+      return NextResponse.json(
+        { error: 'Failed to fetch sequence events', details: eventResult.error.message },
+        { status: 500 }
       )
-      const sequenceEnrollments = enrollmentsBySequence.get(sequence.id) ?? []
-      const sequenceEvents = eventsBySequence.get(sequence.id) ?? []
+    }
 
-      const stats = computeSequenceStats({
-        enrollments: sequenceEnrollments,
-        events: sequenceEvents,
-      })
+    enrollments = (enrollmentResult.data ?? []) as SequenceEnrollmentRow[]
+    events = (eventResult.data ?? []) as SequenceTrackingEventRow[]
+  }
 
-      return {
-        ...sequence,
-        steps: sequenceSteps,
-        contacts: sequenceEnrollments.map((e) => e.contact_id),
-        stats,
-        createdAt: sequence.created_at,
-        updatedAt: sequence.updated_at,
-      }
+  const enrollmentsBySequence = new Map<string, SequenceEnrollmentRow[]>()
+  for (const enrollment of enrollments) {
+    const items = enrollmentsBySequence.get(enrollment.sequence_id) ?? []
+    items.push(enrollment)
+    enrollmentsBySequence.set(enrollment.sequence_id, items)
+  }
+
+  const eventsBySequence = new Map<string, SequenceTrackingEventRow[]>()
+  for (const event of events) {
+    if (!event.sequence_id) continue
+    const items = eventsBySequence.get(event.sequence_id) ?? []
+    items.push(event)
+    eventsBySequence.set(event.sequence_id, items)
+  }
+
+  const enriched = sequenceRows
+    .map((sequence) =>
+      toClientSequence(
+        sequence,
+        enrollmentsBySequence.get(sequence.id) ?? [],
+        eventsBySequence.get(sequence.id) ?? []
+      )
+    )
+    .filter((sequence) => {
+      if (!search) return true
+      const haystack = `${sequence.name} ${sequence.description ?? ''}`.toLowerCase()
+      return haystack.includes(search)
     })
 
-    const filtered = search
-      ? (() => {
-          const q = search.toLowerCase()
-          return enriched.filter(
-            (s) =>
-              s.name.toLowerCase().includes(q) ||
-              (s.description && (s.description as string).toLowerCase().includes(q))
-          )
-        })()
-      : enriched
-
-    return NextResponse.json({ sequences: filtered })
-  } catch (error) {
-    return NextResponse.json(
-      { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown" },
-      { status: 500 }
-    )
-  }
+  return NextResponse.json({ sequences: enriched })
 }
 
 /**
  * Handle POST requests for `/api/sequences`.
- * @param {NextRequest} request - Request input.
- * @returns {unknown} JSON response for the POST /api/sequences request.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {ValidationError} If the request payload fails validation.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // POST /api/sequences
- * fetch('/api/sequences', { method: 'POST' })
  */
 export async function POST(request: NextRequest) {
+  const { supabase, user } = await getAuthenticatedServiceRoleClient(request)
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  let body: unknown
   try {
-    if (!isSupabaseConfigured) {
-      return NextResponse.json(
-        { error: "Supabase not configured" },
-        { status: 503 }
-      )
-    }
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+  }
 
-    const parsed = SequenceCreateSchema.safeParse(await request.json())
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: formatZodError(parsed.error) },
-        { status: 400 }
-      )
-    }
-    const { name, description, goal, status = "draft", steps } = parsed.data
-
-    const { data: sequence, error: seqError } = await supabase
-      .from("sequences")
-      .insert({
-        name,
-        description,
-        goal,
-        status,
-      })
-      .select()
-      .single()
-
-    if (seqError || !sequence) {
-      return NextResponse.json(
-        { error: "Failed to create sequence", details: seqError?.message },
-        { status: 500 }
-      )
-    }
-
-    const stepPayload = steps.map((step, index: number) => ({
-      sequence_id: sequence.id,
-      step_order: step.order ?? index + 1,
-      delay_days: step.delay_days ?? 0,
-      template_id: step.template_id ?? null,
-      subject: step.subject,
-      body: step.body,
-      stop_on_reply: step.stop_on_reply ?? true,
-      stop_on_bounce: step.stop_on_bounce ?? true,
-      status: step.status ?? "active",
-    }))
-
-    const { error: stepError } = await supabase
-      .from("sequence_steps")
-      .insert(stepPayload)
-
-    if (stepError) {
-      return NextResponse.json(
-        { error: "Failed to create sequence steps", details: stepError.message },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({ sequence }, { status: 201 })
-  } catch (error) {
+  const parsed = createSequenceSchema.safeParse(body)
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown" },
+      { error: 'Validation failed', details: formatZodError(parsed.error) },
+      { status: 400 }
+    )
+  }
+
+  const normalizedSteps = parsed.data.steps.map((step, index) =>
+    normalizeSequenceStep(step, index)
+  )
+
+  const { data: profile, error: profileError } = await supabase
+    .from('user_profiles')
+    .select('plan_type')
+    .eq('id', user.id)
+    .maybeSingle<{ plan_type: PlanType | null }>()
+
+  if (profileError) {
+    return NextResponse.json(
+      { error: 'Failed to fetch user profile', details: profileError.message },
       { status: 500 }
     )
   }
+
+  const planType: PlanType =
+    profile?.plan_type === 'starter' || profile?.plan_type === 'pro'
+      ? profile.plan_type
+      : 'free'
+
+  const { count, error: countError } = await supabase
+    .from('sequences')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+
+  if (countError) {
+    return NextResponse.json(
+      { error: 'Failed to evaluate quota', details: countError.message },
+      { status: 500 }
+    )
+  }
+
+  const used = Number(count ?? 0)
+  const limit = planSequenceLimits[planType]
+
+  if (Number.isFinite(limit) && used >= limit) {
+    return quotaExceededResponse('sequences', used, limit, planType)
+  }
+
+  const { data: created, error: createError } = await supabase
+    .from('sequences')
+    .insert({
+      user_id: user.id,
+      name: parsed.data.name,
+      description: parsed.data.description ?? null,
+      goal: parsed.data.goal ?? null,
+      status: parsed.data.status,
+      steps: normalizedSteps,
+    })
+    .select('id, user_id, name, description, goal, status, steps, created_at, updated_at')
+    .single<SequenceRow>()
+
+  if (createError || !created) {
+    return NextResponse.json(
+      { error: 'Failed to create sequence', details: createError?.message },
+      { status: 500 }
+    )
+  }
+
+  return NextResponse.json(
+    {
+      sequence: toClientSequence(created, [], []),
+    },
+    { status: 201 }
+  )
 }

@@ -948,6 +948,22 @@ ADMIN_IP_WHITELIST=127.0.0.1
 - **UI components:** `components/ui/Button`, `Card`, `CardContent`, `CardHeader`, `CardTitle`, etc.
 - Conversion helpers: `toSnakeCase`, `toCamelCase`, `toPascalCase` from `lib/utils/naming.ts`
 
+### Webapp Backend Prompt Checklist (Cross-Reference)
+- For future webapp backend prompts, use this checklist before writing API routes or backend context integrations.
+- **Server client:** `createServiceRoleClient()` from `lib/supabase/server.ts` (async, always `await`)
+- **Browser client:** `createClient()` from `lib/supabase/client.ts`
+- **Quota helpers:** `QuotaExceededError`, `incrementEmailGeneration()`, `incrementAIDraftGeneration()` from `lib/quota.ts`
+- **Quota exceeded response:** `402 { error: 'quota_exceeded', feature, used, limit, plan_type, upgrade_url }`
+- **Toast:** `showToast` from `lib/toast`
+- **Auth guard:** `const { data: { user } } = await supabase.auth.getUser()` and return `401 { error: 'Unauthorized' }` if `!user`
+- **Rate limiting:** Upstash Redis via `lib/cache/redis.ts`
+- **Circuit breaker:** `lib/api-circuit-breaker.ts` for external APIs
+- **Naming:** DB `snake_case`; variables/functions `camelCase`; components `PascalCase`
+- **Fire-and-forget:** `void asyncFn().catch(err => console.error(err))`
+- **Migrations:** `lib/db/migrations/` numbered, idempotent, and run manually in Supabase SQL editor
+- **Validation:** Validate all request bodies with Zod before DB operations
+- **Plan types:** `'free' | 'starter' | 'pro'` from `user_profiles.plan_type`
+
 ### Pre-PR Checks
 ```bash
 npm run lint

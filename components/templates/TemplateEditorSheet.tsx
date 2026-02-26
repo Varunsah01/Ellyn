@@ -34,18 +34,16 @@ import { showToast } from "@/lib/toast"
 import { supabaseAuthedFetch } from "@/lib/auth/client-fetch"
 import {
   extractVariables,
-  PREDEFINED_VARIABLES,
+  PREDEFINED_VARIABLE_LIST,
 } from "@/lib/template-variables"
 import { useQuotaGate } from "@/hooks/useQuotaGate"
 import type { TemplateItem } from "@/components/templates/TemplateCard"
 
 const TONES = [
   "professional",
-  "friendly",
   "casual",
-  "confident",
-  "humble",
-  "warm",
+  "formal",
+  "friendly",
 ]
 
 const CATEGORIES = [
@@ -159,13 +157,43 @@ export function TemplateEditorSheet({
     }
   }
 
-  const handleEnhance = async () => {
+  const checkAiQuotaBeforeGenerate = async (): Promise<boolean> => {
     if (!canUse) {
       openUpgradeModal()
-      return
+      return false
     }
+
+    try {
+      const response = await supabaseAuthedFetch(
+        "/api/quota/check?feature=ai_generation",
+        { method: "GET" }
+      )
+      const payload = (await response.json().catch(() => null)) as
+        | { allowed?: boolean }
+        | null
+
+      if (!response.ok) {
+        return canUse
+      }
+
+      if (payload?.allowed === false) {
+        openUpgradeModal()
+        return false
+      }
+
+      return true
+    } catch {
+      return canUse
+    }
+  }
+
+  const handleEnhance = async () => {
     if (!form.body.trim()) {
       showToast.error("Write a body first before enhancing")
+      return
+    }
+    const allowed = await checkAiQuotaBeforeGenerate()
+    if (!allowed) {
       return
     }
     setEnhancing(true)
@@ -175,7 +203,7 @@ export function TemplateEditorSheet({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           draft: form.body,
-          action: "improve",
+          action: "enhance",
           additionalContext: { tone: form.tone },
         }),
       })
@@ -219,12 +247,12 @@ export function TemplateEditorSheet({
   }
 
   const handleToneChange = async (targetTone: string) => {
-    if (!canUse) {
-      openUpgradeModal()
-      return
-    }
     if (!form.body.trim()) {
       showToast.error("Write a body first")
+      return
+    }
+    const allowed = await checkAiQuotaBeforeGenerate()
+    if (!allowed) {
       return
     }
     setChangingTone(true)
@@ -360,7 +388,7 @@ export function TemplateEditorSheet({
                       Common Variables
                     </p>
                     <div className="space-y-0.5">
-                      {PREDEFINED_VARIABLES.map((v) => (
+                      {PREDEFINED_VARIABLE_LIST.map((v) => (
                         <button
                           key={v.name}
                           type="button"

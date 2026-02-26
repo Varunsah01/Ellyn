@@ -127,3 +127,24 @@ export function requireAdminEndpointAccess(request: NextRequest): AdminGuardResu
 
   return { ok: true, clientIp }
 }
+
+type AdminEndpointGuardResult = {
+  allowed: boolean
+  response: NextResponse | null
+  clientIp?: string
+}
+
+/**
+ * Backward-compatible async admin guard helper.
+ * Normalizes result shape for routes expecting `{ allowed, response }`.
+ */
+export async function adminEndpointGuard(
+  request: NextRequest | Request
+): Promise<AdminEndpointGuardResult> {
+  const guard = requireAdminEndpointAccess(request as NextRequest)
+  if (guard.ok) {
+    return { allowed: true, response: null, clientIp: guard.clientIp }
+  }
+
+  return { allowed: false, response: guard.response }
+}

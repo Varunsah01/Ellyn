@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import {
   Dialog,
@@ -15,15 +15,34 @@ import { usePersona } from "@/context/PersonaContext"
 import { showToast } from "@/lib/toast"
 import type { Persona } from "@/lib/persona-copy"
 
+type Props = {
+  onDismiss: () => void
+}
+
 const WELCOME_MESSAGES: Record<Persona, string> = {
   job_seeker: "Welcome! We'll help you reach the right people at your target companies.",
   smb_sales: "Welcome! We'll help you build your prospect pipeline and book more meetings.",
 }
 
-export function PersonaOnboardingModal() {
+export function PersonaOnboardingModal({ onDismiss }: Props) {
   const { setPersona } = usePersona()
   const [selected, setSelected] = useState<Persona | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setMounted(true), 300)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const handleSkip = () => {
+    try {
+      localStorage.setItem("ellyn_persona_onboarded", "1")
+    } catch {
+      // localStorage unavailable
+    }
+    onDismiss()
+  }
 
   const handleGetStarted = async () => {
     if (!selected) return
@@ -31,29 +50,33 @@ export function PersonaOnboardingModal() {
     try {
       await setPersona(selected)
       showToast.success(WELCOME_MESSAGES[selected])
-      // Mark modal as seen in localStorage so it does not reshow
       try {
         localStorage.setItem("ellyn_persona_onboarded", "1")
       } catch {
         // localStorage unavailable
       }
+      // Trigger dashboard tour for engaged users
+      try {
+        const { syncOnboardingState } = await import("@/lib/onboarding")
+        await syncOnboardingState({ tourPending: true })
+      } catch {
+        // non-critical
+      }
+      window.dispatchEvent(new CustomEvent("ellyn:start-tour"))
+      onDismiss()
     } catch {
-      showToast.error("Couldn't save your preference. Please try again.")
+      // Error toast is handled in PersonaContext.
     } finally {
       setSubmitting(false)
     }
   }
 
+  if (!mounted) return null
+
   return (
-    <Dialog
-      open
-      // Non-dismissible: no onOpenChange - user must make a choice
-    >
+    <Dialog open onOpenChange={(open) => { if (!open) handleSkip() }}>
       <DialogContent
-        className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto [&>button]:hidden"
-        // Remove the default X close button by overriding onPointerDownOutside and onEscapeKeyDown
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
+        className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto"
       >
         <DialogHeader className="mb-2 text-center">
           <DialogTitle
@@ -80,6 +103,14 @@ export function PersonaOnboardingModal() {
         >
           {submitting ? "Saving..." : "Get Started"}
         </Button>
+
+        <button
+          type="button"
+          onClick={handleSkip}
+          className="mt-2 w-full text-center text-sm text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          Skip for now
+        </button>
       </DialogContent>
     </Dialog>
   )

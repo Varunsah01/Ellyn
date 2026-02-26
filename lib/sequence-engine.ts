@@ -219,7 +219,7 @@ export const computeSequenceStats = ({
   const replied = events.filter((event) => event.event_type === "replied").length
   const bounced = events.filter((event) => event.event_type === "bounced").length
   const inProgress = enrollments.filter((e) =>
-    ["not_started", "in_progress"].includes(e.status)
+    ["active", "not_started", "in_progress"].includes(e.status)
   ).length
   const completed = enrollments.filter((e) => e.status === "completed").length
   const completionRate =
@@ -246,6 +246,8 @@ export const computeSequenceStats = ({
  */
 export const getSequenceStatusLabel = (status: string) => {
   switch (status) {
+    case "active":
+      return "In progress"
     case "not_started":
       return "Not started"
     case "in_progress":
@@ -258,6 +260,12 @@ export const getSequenceStatusLabel = (status: string) => {
       return "Bounced"
     case "paused":
       return "Paused"
+    case "unsubscribed":
+      return "Unsubscribed"
+    case "removed":
+      return "Removed"
+    case "archived":
+      return "Archived"
     default:
       return status
   }

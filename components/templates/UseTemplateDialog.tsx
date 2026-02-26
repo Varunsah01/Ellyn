@@ -125,9 +125,7 @@ export function UseTemplateDialog({
                 Fill Variables
               </p>
               {detectedVars.map((varName) => {
-                const predefined = PREDEFINED_VARIABLES.find(
-                  (v) => v.name === varName
-                )
+                const predefined = PREDEFINED_VARIABLES[varName]
                 return (
                   <div key={varName} className="space-y-1">
                     <Label className="text-xs">
