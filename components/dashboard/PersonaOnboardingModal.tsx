@@ -31,7 +31,7 @@ export function PersonaOnboardingModal() {
     try {
       await setPersona(selected)
       showToast.success(WELCOME_MESSAGES[selected])
-      // Mark modal as seen in localStorage so it doesn't reshow
+      // Mark modal as seen in localStorage so it does not reshow
       try {
         localStorage.setItem("ellyn_persona_onboarded", "1")
       } catch {
@@ -47,21 +47,14 @@ export function PersonaOnboardingModal() {
   return (
     <Dialog
       open
-      // Non-dismissible: no onOpenChange — user must make a choice
+      // Non-dismissible: no onOpenChange - user must make a choice
     >
       <DialogContent
-        className="max-w-lg"
+        className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto [&>button]:hidden"
         // Remove the default X close button by overriding onPointerDownOutside and onEscapeKeyDown
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
-        // Hide the built-in close button via CSS
-        style={{ position: "relative" }}
       >
-        {/* Hide the default DialogContent close button */}
-        <style>{`
-          [data-radix-dialog-close] { display: none !important; }
-        `}</style>
-
         <DialogHeader className="mb-2 text-center">
           <DialogTitle
             className="text-2xl"
@@ -85,7 +78,7 @@ export function PersonaOnboardingModal() {
             color: selected ? "#FFFFFF" : undefined,
           }}
         >
-          {submitting ? "Saving…" : "Get Started"}
+          {submitting ? "Saving..." : "Get Started"}
         </Button>
       </DialogContent>
     </Dialog>

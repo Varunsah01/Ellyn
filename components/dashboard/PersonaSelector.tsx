@@ -42,7 +42,7 @@ export function PersonaSelector({ value, onChange }: Props) {
               type="button"
               onClick={() => onChange(opt.value)}
               whileTap={{ scale: 0.97 }}
-              className="relative flex flex-col items-start gap-2 rounded-xl border-2 p-5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2"
+              className="relative flex flex-col items-center gap-2 rounded-xl border-2 p-5 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2"
               style={{
                 borderColor: selected ? "#7C3AED" : "#E5E7EB",
                 backgroundColor: selected ? "#EDE9FE" : "#FFFFFF",
