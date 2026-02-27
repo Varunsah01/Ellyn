@@ -154,6 +154,13 @@
   }
 
   function buildContactUpsertPayload(contactData, userId) {
+    const customFields =
+      contactData?.customFields &&
+      typeof contactData.customFields === 'object' &&
+      !Array.isArray(contactData.customFields)
+        ? contactData.customFields
+        : {};
+
     return {
       user_id: userId,
       first_name: toNullableString(contactData?.firstName) || 'Unknown',
@@ -171,7 +178,7 @@
       source: 'extension',
       status: 'new',
       tags: [],
-      custom_fields: {},
+      custom_fields: customFields,
     };
   }
 

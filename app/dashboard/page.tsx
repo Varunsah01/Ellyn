@@ -4,11 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { StatCard } from "@/components/dashboard/StatCard";
-import { ActivityFeed } from "@/components/dashboard/ActivityFeed";
+import { TodoListPanel } from "@/components/dashboard/TodoListPanel";
 import { QuickStats } from "@/components/dashboard/QuickStats";
 import { Button } from "@/components/ui/Button";
 import { AnimatedCard } from "@/components/ui/AnimatedCard";
-import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import {
   Users,
@@ -16,8 +15,6 @@ import {
   Zap,
   Plus,
   RefreshCw,
-  CheckCircle2,
-  Circle,
   Target,
   Search,
   FileText,
@@ -28,12 +25,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useRecentActivity } from "@/lib/hooks/useAnalytics";
 import { useTopSequences } from "@/lib/hooks/useSequences";
 import { useDashboardMetrics } from "@/lib/hooks/useDashboardMetrics";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeContacts } from "@/hooks/useRealtimeContacts";
-import { SmartQuickActions } from "@/components/ContextualActions";
 import { usePersona } from "@/context/PersonaContext";
 import { getPersonaCopy, type Persona } from "@/lib/persona-copy";
 
@@ -114,7 +109,6 @@ export default function DashboardPage() {
   }, []);
 
   const { metrics, loading: metricsLoading, refresh: refreshMetrics } = useDashboardMetrics(userId);
-  const { activities, loading: activityLoading, refresh: refreshActivity } = useRecentActivity(10);
   const {
     contacts: realtimeContacts,
     loading: contactsLoading,
@@ -126,7 +120,7 @@ export default function DashboardPage() {
   const currentHour = new Date().getHours();
   const greeting = currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
 
-  const isLoading = userLoading || metricsLoading || activityLoading || contactsLoading || seqLoading;
+  const isLoading = userLoading || metricsLoading || contactsLoading || seqLoading;
   const metricCardsLoading = userLoading || metricsLoading;
   const hasNoWeeklyProgress =
     metrics.newContactsThisWeek === 0 &&
@@ -154,26 +148,6 @@ export default function DashboardPage() {
     [realtimeContacts]
   );
 
-  const nextSteps = [
-    {
-      key: "contacts",
-      title: copy.nextStepContactsTitle,
-      description: copy.nextStepContactsDesc,
-      completed: metrics.totalContacts > 0,
-      href: "/dashboard/contacts",
-      cta: copy.nextStepContactsCTA,
-    },
-    {
-      key: "templates",
-      title: copy.nextStepTemplatesTitle,
-      description: copy.nextStepTemplatesDesc,
-      completed: metrics.emailTemplates > 0,
-      href: "/dashboard/templates",
-      cta: copy.nextStepTemplatesCTA,
-    },
-  ];
-
-  const completedSteps = nextSteps.filter((step) => step.completed).length;
   const SequenceQuickActionIcon: LucideIcon =
     copy.quickActionSequenceIcon === "rocket" ? Rocket : Mail;
 
@@ -217,7 +191,7 @@ export default function DashboardPage() {
 
   // Handle refresh all data
   const handleRefreshAll = async () => {
-    await Promise.all([refreshMetrics(), refreshActivity(), refreshContacts()]);
+    await Promise.all([refreshMetrics(), refreshContacts()]);
   };
 
   useEffect(() => {
@@ -246,12 +220,6 @@ export default function DashboardPage() {
           transition={{ duration: 0.2 }}
           className="space-y-6"
         >
-          {/* Smart Quick Actions - show contextual CTAs based on state */}
-          <SmartQuickActions
-            totalContacts={metrics.totalContacts}
-            totalSequences={metrics.emailTemplates}
-          />
-
           {/* Welcome Header */}
           <div className="flex items-center justify-between">
             <div>
@@ -330,57 +298,6 @@ export default function DashboardPage() {
               </div>
             </CardContent>
           </AnimatedCard>
-
-          <Card className="border-slate-200/80">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-base">Recommended Next Steps</CardTitle>
-                <Badge
-                  variant={
-                    completedSteps === nextSteps.length ? "secondary" : "outline"
-                  }
-                >
-                  {completedSteps}/{nextSteps.length} complete
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {nextSteps.map((step) => (
-                <div
-                  key={step.key}
-                  className="flex flex-col gap-3 rounded-lg border border-slate-200/70 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex items-start gap-3">
-                    {step.completed ? (
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
-                    ) : (
-                      <Circle className="mt-0.5 h-4 w-4 text-slate-400" />
-                    )}
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">
-                        {step.title}
-                      </p>
-                      <p className="text-xs text-slate-500">{step.description}</p>
-                    </div>
-                  </div>
-                  <Button
-                    variant={step.completed ? "outline" : "default"}
-                    size="sm"
-                    asChild
-                  >
-                    <Link href={step.href}>{step.cta}</Link>
-                  </Button>
-                </div>
-              ))}
-              {completedSteps === nextSteps.length ? (
-                <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Your workspace is set up. Keep your contact statuses updated to
-                  improve follow-up timing.
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
 
           <Card className="border-slate-200/80">
             <CardHeader className="pb-3">
@@ -510,13 +427,9 @@ export default function DashboardPage() {
 
           {/* Main Content */}
           <div className="grid gap-6 md:grid-cols-3">
-            {/* Activity Feed - 2/3 width */}
+            {/* To-Do - 2/3 width */}
             <div className="md:col-span-2">
-              <ActivityFeed
-                activities={activities}
-                hasMore={false}
-                loading={activityLoading}
-              />
+              <TodoListPanel />
             </div>
 
             {/* Quick Stats - 1/3 width */}

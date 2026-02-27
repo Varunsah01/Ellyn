@@ -36,6 +36,13 @@
   }
 
   function sanitizeContactData(contactData) {
+    const customFields =
+      contactData?.customFields &&
+      typeof contactData.customFields === 'object' &&
+      !Array.isArray(contactData.customFields)
+        ? contactData.customFields
+        : {};
+
     return {
       firstName: String(contactData?.firstName || '').trim(),
       lastName: String(contactData?.lastName || '').trim(),
@@ -50,6 +57,9 @@
       emailVerified: contactData?.emailVerified === true,
       emailSource: String(contactData?.emailSource || '').trim(),
       companyDomain: String(contactData?.companyDomain || '').trim(),
+      phone: String(contactData?.phone || contactData?.phoneNumber || '').trim(),
+      phoneNumber: String(contactData?.phoneNumber || contactData?.phone || '').trim(),
+      customFields,
     };
   }
 

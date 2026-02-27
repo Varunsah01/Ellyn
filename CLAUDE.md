@@ -161,10 +161,13 @@ hooks/
   useRealtimeContacts()  # Supabase real-time contact updates
 
 extension/               # Chrome Extension (Manifest V3)
-  sidepanel/             # Extension UI
-  scripts/               # Background scripts
+  sidepanel.html         # Sidepanel HTML shell (authoritative UI markup)
+  scripts/
+    sidepanel.js         # Sidepanel controller + event wiring
+  styles/
+    sidepanel.css        # Compiled utility CSS used by sidepanel markup
+  background.js          # Extension background service worker script
   utils/                 # Extension utilities
-  onboarding/            # Extension onboarding flow
 ```
 
 ---
@@ -616,6 +619,9 @@ Helper: `getDodoProductId(region)` in `lib/pricing-config.ts`
 
 - Manifest V3 Chrome Extension
 - Sidepanel UI for LinkedIn profile extraction
+- Authoritative extension frontend files:
+  - `extension/sidepanel.html`
+  - `extension/scripts/sidepanel.js`
 - Extracts profile data from LinkedIn pages (name, company, role, education, etc.)
 - Syncs contacts to web app via:
   - `POST /api/extension/sync-contact` (single)
@@ -633,6 +639,37 @@ Helper: `getDodoProductId(region)` in `lib/pricing-config.ts`
 ### Email Verification Badges
 
 If SMTP verification succeeds for either of the top 2 Gemini-ranked candidates, a **Verified** badge is shown next to the email in the extension sidepanel and dashboard. If verification fails for both candidates, the LLM's most probable email is displayed without a verified badge, labelled as "Most Probable (LLM Suggested)".
+
+### Extension Frontend Layout Contract (Minimal Sidebar)
+
+The authenticated sidepanel follows a minimal, low-input UI contract:
+
+1. Header row with brand + profile/settings icons
+2. Profile summary card (name, designation, company)
+3. Company about card (placeholder copy + bullets)
+4. 2x3 action grid
+5. Contact Details section (Access Email + Phone Number pills)
+6. To-Do card with `+ Add More`
+
+Primary action routing contract:
+
+| UI Action | Behavior |
+|----------|----------|
+| Save Contact | `saveCurrentResultToContacts()` in `extension/scripts/sidepanel.js` |
+| Add to List | Opens `/dashboard/contacts` |
+| Add to Sequence | Opens `/dashboard/sequences/new` |
+| Compose Email | `openDraftForCurrentResult()` (opens draft overlay) |
+| Log Activity | Opens `/dashboard/analytics` |
+| View Catalog | Opens `/dashboard/templates` |
+| Access Email | `findEmail()` lookup flow |
+| To-Do `+ Add More` | Opens `/dashboard/analytics` |
+
+Guardrails for extension frontend work:
+
+- Do not change backend APIs, DB schema, or sync route contracts for UI-only redesign tasks.
+- Keep visible user input minimal in the main sidepanel flow.
+- Preserve runtime message contracts (`FIND_EMAIL`, `CHECK_QUOTA`, profile extraction, auth token retrieval).
+- Avoid reintroducing legacy high-input sections (manual entry, queue, quota bars, old stage cards) into the default visible layout without explicit product sign-off.
 
 ---
 

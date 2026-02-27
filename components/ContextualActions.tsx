@@ -81,17 +81,6 @@ export function SmartQuickActions({
   const actions: QuickAction[] = [];
 
   // Dynamic actions based on current state
-  if (totalContacts === 0) {
-    const { UserPlus } = require("lucide-react");
-    actions.push({
-      icon: UserPlus,
-      title: "Add your first contact",
-      description: "Start building your network by adding contacts",
-      href: "/dashboard/contacts",
-      variant: "default",
-    });
-  }
-
   if (totalSequences === 0 && totalContacts > 0) {
     const { Zap } = require("lucide-react");
     actions.push({

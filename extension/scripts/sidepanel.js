@@ -10,8 +10,13 @@ const SAVED_CONTACTS_KEY = "saved_contact_results";
 const FEEDBACK_QUEUE_KEY = "feedback_queue";
 const SYNC_STATUS_KEY = "sync_status";
 const SYNC_QUEUE_KEY = "sync_queue";
+const TODO_CACHE_KEY = "ellyn_todo_items_cache";
+const TODO_MAX_ITEMS = 30;
+const TODO_VISIBLE_COMPLETED = 2;
 const PROFILE_SYNC_INTERVAL_MS = 2000;
 const PROFILE_CONTEXT_FRESH_MS = 15000;
+const ABOUT_BRIEF_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const ABOUT_BRIEF_MAX_CACHE_ENTRIES = 40;
 const CONTACT_SYNC_STATE = Object.freeze({
   SYNCED: "synced",
   QUEUED: "queued",
@@ -55,13 +60,24 @@ const emailFinderState = {
   lastProfileKey: "",
   profileListenersBound: false,
   pendingSyncInFlight: false,
+  aboutBriefCache: new Map(),
+  aboutBriefRequestId: 0,
+  activeAboutBriefKey: "",
+  todoItems: [],
+  todoSaveInFlight: false,
 };
 
 const elements = {
   statusText: null,
   authHeaderActions: null,
+  settingsButton: null,
+  profileButton: null,
   stageAuth: null,
   emailFinderSection: null,
+  contactDefaultView: null,
+  contactDetailView: null,
+  emailContactRow: null,
+  phoneContactRow: null,
   stage1: null,
   stage2: null,
   stage3: null,
@@ -69,7 +85,24 @@ const elements = {
   createAccountButton: null,
   logoutButton: null,
   findEmailBtn: null,
+  accessEmailBtnLabel: null,
+  foundEmailText: null,
+  phoneNumberBtn: null,
+  phoneNumberText: null,
+  copyPhoneBtn: null,
+  sendMailBtn: null,
+  addToListContactBtn: null,
   draftMailBtn: null,
+  addToListBtn: null,
+  addToSequenceBtn: null,
+  logActivityBtn: null,
+  viewCatalogBtn: null,
+  todoAddMoreBtn: null,
+  todoList: null,
+  todoEmptyState: null,
+  todoInputRow: null,
+  todoInput: null,
+  todoSaveBtn: null,
   loadingState: null,
   loadingStage: null,
   progressFill: null,
@@ -79,7 +112,7 @@ const elements = {
   retryBtn: null,
   confidenceBadge: null,
   confidenceText: null,
-resultEmail: null,
+  resultEmail: null,
   copyEmailBtn: null,
   saveToContactsBtn: null,
   alternativesDetails: null,
@@ -105,6 +138,10 @@ resultEmail: null,
   profileContextRole: null,
   profileContextCompany: null,
   profileContextUrl: null,
+  profileAvatarInitials: null,
+  aboutCardTitle: null,
+  aboutCardIntro: null,
+  aboutCardBullets: null,
   refreshProfileContextBtn: null,
   toastContainer: null,
   syncStatusRow: null,
@@ -267,8 +304,14 @@ async function openDashboardPath(pathname) {
 function cacheElements() {
   elements.statusText = document.getElementById("statusText");
   elements.authHeaderActions = document.getElementById("authHeaderActions");
+  elements.settingsButton = document.getElementById("settingsButton");
+  elements.profileButton = document.getElementById("profileButton");
   elements.stageAuth = document.getElementById("stageAuth");
   elements.emailFinderSection = document.getElementById("emailFinderSection");
+  elements.contactDefaultView = document.getElementById("contactDefaultView");
+  elements.contactDetailView = document.getElementById("contactDetailView");
+  elements.emailContactRow = document.getElementById("emailContactRow");
+  elements.phoneContactRow = document.getElementById("phoneContactRow");
   elements.stage1 = document.getElementById("stage1");
   elements.stage2 = document.getElementById("stage2");
   elements.stage3 = document.getElementById("stage3");
@@ -278,7 +321,24 @@ function cacheElements() {
   elements.logoutButton = document.getElementById("logoutButton");
 
   elements.findEmailBtn = document.getElementById("findEmailBtn");
+  elements.accessEmailBtnLabel = document.getElementById("accessEmailBtnLabel");
+  elements.foundEmailText = document.getElementById("foundEmailText");
+  elements.phoneNumberBtn = document.getElementById("phoneNumberBtn");
+  elements.phoneNumberText = document.getElementById("phoneNumberText");
+  elements.copyPhoneBtn = document.getElementById("copyPhoneBtn");
+  elements.sendMailBtn = document.getElementById("sendMailBtn");
+  elements.addToListContactBtn = document.getElementById("addToListContactBtn");
   elements.draftMailBtn = document.getElementById("draftMailBtn");
+  elements.addToListBtn = document.getElementById("addToListBtn");
+  elements.addToSequenceBtn = document.getElementById("addToSequenceBtn");
+  elements.logActivityBtn = document.getElementById("logActivityBtn");
+  elements.viewCatalogBtn = document.getElementById("viewCatalogBtn");
+  elements.todoAddMoreBtn = document.getElementById("todoAddMoreBtn");
+  elements.todoList = document.getElementById("todoList");
+  elements.todoEmptyState = document.getElementById("todoEmptyState");
+  elements.todoInputRow = document.getElementById("todoInputRow");
+  elements.todoInput = document.getElementById("todoInput");
+  elements.todoSaveBtn = document.getElementById("todoSaveBtn");
   elements.loadingState = document.getElementById("loadingState");
   elements.loadingStage = document.getElementById("loadingStage");
   elements.progressFill = document.getElementById("progressFill");
@@ -289,7 +349,7 @@ function cacheElements() {
 
   elements.confidenceBadge = document.getElementById("confidenceBadge");
   elements.confidenceText = document.getElementById("confidenceText");
-elements.resultEmail = document.getElementById("resultEmail");
+  elements.resultEmail = document.getElementById("resultEmail");
   elements.copyEmailBtn = document.getElementById("copyEmailBtn");
   elements.saveToContactsBtn = document.getElementById("saveToContactsBtn");
   elements.alternativesDetails = document.getElementById("alternativesDetails");
@@ -317,6 +377,10 @@ elements.resultEmail = document.getElementById("resultEmail");
   elements.profileContextRole = document.getElementById("profileContextRole");
   elements.profileContextCompany = document.getElementById("profileContextCompany");
   elements.profileContextUrl = document.getElementById("profileContextUrl");
+  elements.profileAvatarInitials = document.getElementById("profileAvatarInitials");
+  elements.aboutCardTitle = document.getElementById("aboutCardTitle");
+  elements.aboutCardIntro = document.getElementById("aboutCardIntro");
+  elements.aboutCardBullets = document.getElementById("aboutCardBullets");
   elements.refreshProfileContextBtn = document.getElementById("refreshProfileContextBtn");
 
   elements.toastContainer = document.getElementById("toastContainer");
@@ -379,14 +443,70 @@ function bindEvents() {
   elements.sessionExpiredSignInBtn?.addEventListener("click", () => openAuth("signin", elements.sessionExpiredSignInBtn));
   elements.signInButton?.addEventListener("click", () => openAuth("signin", elements.signInButton));
   elements.createAccountButton?.addEventListener("click", () => openAuth("signup", elements.createAccountButton));
+  elements.profileButton?.addEventListener("click", () => {
+    void openDashboardPath("/dashboard");
+  });
+  elements.settingsButton?.addEventListener("click", () => {
+    void openDashboardPath("/dashboard/settings");
+  });
   elements.logoutButton?.addEventListener("click", signOut);
-  elements.findEmailBtn?.addEventListener("click", findEmail);
+  elements.findEmailBtn?.addEventListener("click", () => {
+    openContactDetailView("email");
+    void findEmail();
+  });
+  elements.phoneNumberBtn?.addEventListener("click", () => {
+    void handlePhoneNumberAccess();
+  });
+  elements.copyPhoneBtn?.addEventListener("click", () => {
+    void copyCurrentPhoneNumber();
+  });
+  elements.sendMailBtn?.addEventListener("click", () => {
+    void openDraftForCurrentResult();
+  });
+  elements.addToListContactBtn?.addEventListener("click", saveCurrentResultToContacts);
   elements.draftMailBtn?.addEventListener("click", () => {
     void openDraftForCurrentResult();
   });
   elements.retryBtn?.addEventListener("click", findEmail);
   elements.copyEmailBtn?.addEventListener("click", () => copyCurrentEmail());
   elements.saveToContactsBtn?.addEventListener("click", saveCurrentResultToContacts);
+  elements.addToListBtn?.addEventListener("click", () => {
+    void openDashboardPath("/dashboard/contacts");
+  });
+  elements.addToSequenceBtn?.addEventListener("click", () => {
+    void openDashboardPath("/dashboard/sequences/new");
+  });
+  elements.logActivityBtn?.addEventListener("click", () => {
+    void openDashboardPath("/dashboard/analytics");
+  });
+  elements.viewCatalogBtn?.addEventListener("click", () => {
+    void openDashboardPath("/dashboard/templates");
+  });
+  elements.todoAddMoreBtn?.addEventListener("click", () => {
+    openTodoComposer();
+  });
+  elements.todoSaveBtn?.addEventListener("click", () => {
+    void handleTodoSave();
+  });
+  elements.todoInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void handleTodoSave();
+      return;
+    }
+    if (event.key === "Escape") {
+      closeTodoComposer();
+    }
+  });
+  elements.todoList?.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest("[data-todo-toggle]");
+    if (!(button instanceof HTMLElement)) return;
+    const todoId = String(button.dataset.todoId || "").trim();
+    if (!todoId) return;
+    void toggleTodoItemById(todoId);
+  });
   elements.upgradeButton?.addEventListener("click", () => {
     const url = emailFinderState.upgradeUrl || PRICING_URL;
     chrome.tabs.create({ url });
@@ -571,6 +691,11 @@ function bindRuntimeListeners() {
     if (changes[SAVED_CONTACTS_KEY] || changes[SYNC_QUEUE_KEY] || changes[SYNC_STATUS_KEY]) {
       void renderQueueCard();
     }
+    if (changes[TODO_CACHE_KEY]) {
+      const cached = normalizeTodoItems(changes[TODO_CACHE_KEY].newValue);
+      emailFinderState.todoItems = cached;
+      renderTodoList();
+    }
   });
 }
 
@@ -581,6 +706,8 @@ async function init() {
   bindRuntimeListeners();
   hideLegacyStages();
   resetProfileContext();
+  await loadTodosFromCache();
+  renderTodoList();
   await syncAuthStateFromStorage();
 }
 
@@ -663,8 +790,10 @@ async function syncAuthStateFromStorage() {
 
     // Best effort: once auth is valid, flush any contacts waiting for backend sync.
     void syncPendingContactsQuietly();
+    void syncTodosFromServer();
   } else {
     setStatus("Sign in to use the email finder.", "neutral");
+    closeTodoComposer();
   }
 
   void renderSyncStatus();
@@ -687,11 +816,14 @@ function renderAuthState() {
     // Tear down draft + stats views so they re-render fresh on next login
     _hideDraftView();
     _hideStatsView();
+    resetContactDetailView();
+    updateFoundEmailText("");
+    updatePhoneNumberText("");
   } else {
     hideSessionExpiredBanner();
   }
 
-  applyFindEmailAvailability();
+  setPrimaryFinderAction("find");
   renderStages();
   if (emailFinderState.isAuthenticated) {
     void renderQueueCard();
@@ -907,6 +1039,200 @@ function normalizeProfileResponseData(response, fallbackUrl = "") {
   };
 }
 
+function normalizeAboutCardField(value, maxLength = 240) {
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+
+  const lower = normalized.toLowerCase();
+  const blockedValues = new Set([
+    "unknown",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "not available",
+    "not found",
+    "-",
+    "--",
+  ]);
+  if (blockedValues.has(lower)) {
+    return "";
+  }
+
+  return normalized.slice(0, maxLength);
+}
+
+function normalizeAboutCardYear(value) {
+  const candidate = normalizeAboutCardField(value, 20);
+  if (!candidate) return "";
+
+  const match = candidate.match(/\b(18|19|20)\d{2}\b/);
+  return match ? match[0] : "";
+}
+
+function normalizeAboutBriefPayload(data) {
+  return {
+    introBrief: normalizeAboutCardField(data?.introBrief || data?.intro_brief, 420),
+    sector: normalizeAboutCardField(data?.sector, 140),
+    specialization: normalizeAboutCardField(data?.specialization, 180),
+    yearOfIncorporation: normalizeAboutCardYear(
+      data?.yearOfIncorporation || data?.year_of_incorporation
+    ),
+  };
+}
+
+function buildAboutBriefCacheKey(companyName, companyPageUrl = "") {
+  return `${normalizeInline(companyName).toLowerCase()}|${normalizeInline(companyPageUrl).toLowerCase()}`;
+}
+
+function getCachedAboutBrief(cacheKey) {
+  const entry = emailFinderState.aboutBriefCache.get(cacheKey);
+  if (!entry) return null;
+
+  const ageMs = Date.now() - Number(entry.cachedAt || 0);
+  if (ageMs > ABOUT_BRIEF_CACHE_TTL_MS) {
+    emailFinderState.aboutBriefCache.delete(cacheKey);
+    return null;
+  }
+
+  return entry.data || null;
+}
+
+function setCachedAboutBrief(cacheKey, data) {
+  if (!cacheKey) return;
+  emailFinderState.aboutBriefCache.set(cacheKey, {
+    cachedAt: Date.now(),
+    data,
+  });
+
+  if (emailFinderState.aboutBriefCache.size > ABOUT_BRIEF_MAX_CACHE_ENTRIES) {
+    const oldestKey = emailFinderState.aboutBriefCache.keys().next().value;
+    if (oldestKey) {
+      emailFinderState.aboutBriefCache.delete(oldestKey);
+    }
+  }
+}
+
+function renderAboutCard(companyName, payload = null, options = {}) {
+  const isLoading = options.isLoading === true;
+  const hasCompany = Boolean(companyName);
+
+  if (elements.aboutCardTitle) {
+    elements.aboutCardTitle.textContent = hasCompany
+      ? `About ${companyName}`
+      : "About Company Name";
+  }
+
+  if (elements.aboutCardIntro) {
+    if (!hasCompany) {
+      elements.aboutCardIntro.textContent =
+        "Details about the company will appear here when profile context is available.";
+    } else if (isLoading) {
+      elements.aboutCardIntro.textContent = "Loading company intro brief...";
+    } else if (payload?.introBrief) {
+      elements.aboutCardIntro.textContent = payload.introBrief;
+    } else {
+      elements.aboutCardIntro.textContent =
+        "A short company intro brief is not available yet.";
+    }
+  }
+
+  if (!elements.aboutCardBullets) return;
+
+  const bulletRows = [];
+  if (payload?.sector) {
+    bulletRows.push(`Sector: ${payload.sector}`);
+  }
+  if (payload?.specialization) {
+    bulletRows.push(`Specialization: ${payload.specialization}`);
+  }
+  if (payload?.yearOfIncorporation) {
+    bulletRows.push(`Year Of Incorporation: ${payload.yearOfIncorporation}`);
+  }
+
+  elements.aboutCardBullets.innerHTML = "";
+  if (bulletRows.length === 0) {
+    elements.aboutCardBullets.classList.add("hidden");
+    return;
+  }
+
+  elements.aboutCardBullets.classList.remove("hidden");
+  for (const row of bulletRows) {
+    const item = document.createElement("li");
+    item.textContent = row;
+    elements.aboutCardBullets.appendChild(item);
+  }
+}
+
+async function requestCompanyBrief(companyName, companyPageUrl = "") {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(
+        {
+          type: "GET_COMPANY_BRIEF_GEMINI",
+          companyName,
+          companyPageUrl,
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            resolve({
+              success: false,
+              error: chrome.runtime.lastError.message || "Background request failed",
+            });
+            return;
+          }
+
+          resolve(response || { success: false, error: "No response received" });
+        }
+      );
+    } catch (error) {
+      resolve({
+        success: false,
+        error: error?.message || "Failed to request company brief",
+      });
+    }
+  });
+}
+
+async function refreshAboutCardFromProfileContext(context) {
+  const companyName = normalizeInline(context?.company || "");
+  const companyPageUrl = normalizeInline(context?.companyPageUrl || "");
+  const cacheKey = buildAboutBriefCacheKey(companyName, companyPageUrl);
+
+  emailFinderState.activeAboutBriefKey = cacheKey;
+
+  if (!companyName) {
+    renderAboutCard("", null, { isLoading: false });
+    return;
+  }
+
+  const cached = getCachedAboutBrief(cacheKey);
+  if (cached) {
+    renderAboutCard(companyName, cached, { isLoading: false });
+    return;
+  }
+
+  renderAboutCard(companyName, null, { isLoading: true });
+
+  const requestId = (emailFinderState.aboutBriefRequestId || 0) + 1;
+  emailFinderState.aboutBriefRequestId = requestId;
+
+  const response = await requestCompanyBrief(companyName, companyPageUrl);
+  if (requestId !== emailFinderState.aboutBriefRequestId) return;
+  if (cacheKey !== emailFinderState.activeAboutBriefKey) return;
+
+  if (!response?.success) {
+    renderAboutCard(companyName, null, { isLoading: false });
+    return;
+  }
+
+  const normalized = normalizeAboutBriefPayload(response?.data || {});
+  setCachedAboutBrief(cacheKey, normalized);
+  renderAboutCard(companyName, normalized, { isLoading: false });
+}
+
 function renderProfileContext(context, statusTone = "neutral", statusText = "Open a LinkedIn profile to begin.") {
   const merged = {
     ...getDefaultProfileContext(),
@@ -921,11 +1247,11 @@ function renderProfileContext(context, statusTone = "neutral", statusText = "Ope
   }
 
   if (elements.profileContextName) {
-    elements.profileContextName.textContent = merged.fullName || "\u2014";
+    elements.profileContextName.textContent = merged.fullName || "Name";
   }
 
   if (elements.profileContextRole) {
-    let roleText = "\u2014";
+    let roleText = "Designation";
     if (merged.role) {
       if (typeof merged.role === "string") {
         roleText = merged.role;
@@ -937,7 +1263,7 @@ function renderProfileContext(context, statusTone = "neutral", statusText = "Ope
   }
 
   if (elements.profileContextCompany) {
-    let companyText = "\u2014";
+    let companyText = "Company Name";
     if (merged.company) {
       if (typeof merged.company === "string") {
         companyText = merged.company;
@@ -948,6 +1274,23 @@ function renderProfileContext(context, statusTone = "neutral", statusText = "Ope
     }
     elements.profileContextCompany.textContent = companyText;
   }
+
+  const displayName = String(merged.fullName || "").trim();
+  const displayRole = String(
+    typeof merged.role === "string" ? merged.role : merged?.role?.title || ""
+  ).trim();
+  const displayCompany = String(
+    typeof merged.company === "string" ? merged.company : merged?.company?.name || ""
+  ).trim();
+
+  if (elements.profileAvatarInitials) {
+    elements.profileAvatarInitials.textContent = deriveInitials(displayName || "Unknown");
+  }
+
+  void refreshAboutCardFromProfileContext({
+    company: displayCompany,
+    companyPageUrl: merged.companyPageUrl || "",
+  });
 
   if (elements.profileContextUrl) {
     const displayUrl = formatProfileUrlForDisplay(merged.profileUrl);
@@ -967,6 +1310,11 @@ function renderProfileContext(context, statusTone = "neutral", statusText = "Ope
     }
   }
 
+  if (!String(emailFinderState.currentResult?.email || "").trim()) {
+    updateFoundEmailText("");
+  }
+
+  setPrimaryFinderAction("find");
   applyFindEmailAvailability();
 }
 
@@ -1125,6 +1473,452 @@ function getProfileContextGateStatus() {
   return { ready: true, message: "" };
 }
 
+function openContactDetailView(mode = "email") {
+  elements.contactDefaultView?.classList.add("hidden");
+  elements.contactDetailView?.classList.remove("hidden");
+  const normalizedMode = String(mode || "email").toLowerCase();
+  const showEmail = normalizedMode === "email";
+  const showPhone = normalizedMode === "phone";
+  elements.emailContactRow?.classList.toggle("hidden", !showEmail);
+  elements.phoneContactRow?.classList.toggle("hidden", !showPhone);
+}
+
+function resetContactDetailView() {
+  elements.contactDetailView?.classList.add("hidden");
+  elements.contactDefaultView?.classList.remove("hidden");
+  elements.emailContactRow?.classList.remove("hidden");
+  elements.phoneContactRow?.classList.remove("hidden");
+}
+
+function normalizePhoneNumber(value) {
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+
+  const digits = normalized.replace(/\D/g, "");
+  if (digits.length < 7) return "";
+  return normalized;
+}
+
+function getCurrentPhoneNumber() {
+  const candidates = [
+    emailFinderState.currentResult?.phone,
+    emailFinderState.currentResult?.phoneNumber,
+    emailFinderState.currentResult?.mobile,
+    emailFinderState.currentResult?.mobileNumber,
+    emailFinderState.currentResult?.contactPhone,
+    emailFinderState.profileContext?.phone,
+    emailFinderState.profileContext?.phoneNumber,
+    emailFinderState.profileContext?.mobile,
+    emailFinderState.profileContext?.mobileNumber,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizePhoneNumber(candidate);
+    if (normalized) return normalized;
+  }
+
+  return "";
+}
+
+function updatePhoneNumberText(phone = "", fallback = "Phone Number") {
+  const normalized = normalizePhoneNumber(phone);
+  if (elements.phoneNumberText) {
+    elements.phoneNumberText.textContent = normalized || fallback;
+  }
+
+  if (elements.copyPhoneBtn) {
+    elements.copyPhoneBtn.disabled = !normalized;
+  }
+}
+
+function updateFoundEmailText(email = "", fallback = "Access Email") {
+  const normalized = String(email || "").trim();
+  if (elements.foundEmailText) {
+    elements.foundEmailText.textContent = normalized || fallback;
+  }
+
+  if (elements.copyEmailBtn) {
+    elements.copyEmailBtn.disabled = !Boolean(normalized);
+  }
+}
+
+function updateAccessEmailButtonState() {
+  if (elements.accessEmailBtnLabel) {
+    elements.accessEmailBtnLabel.textContent = emailFinderState.isLoading
+      ? "Finding..."
+      : "Access Email";
+  }
+
+  const hasFoundEmail = Boolean(String(emailFinderState.currentResult?.email || "").trim());
+  if (elements.foundEmailText && !hasFoundEmail) {
+    elements.foundEmailText.textContent = emailFinderState.isLoading
+      ? "Finding..."
+      : "Access Email";
+  }
+  elements.findEmailBtn?.classList.toggle("is-busy", emailFinderState.isLoading);
+}
+
+function normalizeTodoText(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+}
+
+function normalizeTodoTimestamp(value) {
+  const candidate = String(value || "").trim();
+  if (!candidate) return new Date().toISOString();
+
+  const parsed = new Date(candidate);
+  if (!Number.isFinite(parsed.getTime())) return new Date().toISOString();
+  return parsed.toISOString();
+}
+
+function toTodoMillis(value) {
+  const parsed = new Date(String(value || ""));
+  const millis = parsed.getTime();
+  return Number.isFinite(millis) ? millis : 0;
+}
+
+function normalizeTodoItems(rawItems) {
+  const source = Array.isArray(rawItems) ? rawItems : [];
+  const deduped = new Map();
+
+  source.forEach((rawItem) => {
+    if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) return;
+    const id = String(rawItem.id || "")
+      .trim()
+      .slice(0, 80);
+    const text = normalizeTodoText(rawItem.text);
+    if (!id || !text) return;
+
+    deduped.set(id, {
+      id,
+      text,
+      completed: Boolean(rawItem.completed),
+      created_at: normalizeTodoTimestamp(rawItem.created_at),
+      updated_at: normalizeTodoTimestamp(rawItem.updated_at),
+    });
+  });
+
+  const normalized = Array.from(deduped.values()).sort(
+    (a, b) => toTodoMillis(b.updated_at) - toTodoMillis(a.updated_at)
+  );
+  const active = normalized.filter((item) => !item.completed);
+  const completed = normalized.filter((item) => item.completed).slice(0, TODO_VISIBLE_COMPLETED);
+  return [...active, ...completed].slice(0, TODO_MAX_ITEMS);
+}
+
+function areTodoItemsEqual(a, b) {
+  const left = normalizeTodoItems(a);
+  const right = normalizeTodoItems(b);
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    const lhs = left[index];
+    const rhs = right[index];
+    if (!rhs) return false;
+    if (
+      lhs.id !== rhs.id ||
+      lhs.text !== rhs.text ||
+      lhs.completed !== rhs.completed ||
+      lhs.created_at !== rhs.created_at ||
+      lhs.updated_at !== rhs.updated_at
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function renderTodoList() {
+  if (!elements.todoList || !elements.todoEmptyState) return;
+
+  const items = normalizeTodoItems(emailFinderState.todoItems);
+  emailFinderState.todoItems = items;
+
+  if (items.length === 0) {
+    elements.todoList.innerHTML = "";
+    elements.todoEmptyState.classList.remove("hidden");
+  } else {
+    elements.todoEmptyState.classList.add("hidden");
+    elements.todoList.innerHTML = items
+      .map((item) => {
+        const isCompleted = item.completed === true;
+        const disabled = emailFinderState.todoSaveInFlight ? "disabled" : "";
+        return `
+          <li>
+            <button type="button" class="ellyn-todo-item ${isCompleted ? "is-completed" : ""}" data-todo-toggle="true" data-todo-id="${escapeHtml(item.id)}" ${disabled}>
+              <span class="ellyn-todo-check" aria-hidden="true">
+                <svg viewBox="0 0 12 12" fill="none">
+                  <path d="M2 6.25 4.8 9 10 3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <span class="ellyn-todo-text">${escapeHtml(item.text)}</span>
+            </button>
+          </li>
+        `;
+      })
+      .join("");
+  }
+
+  if (elements.todoSaveBtn) {
+    elements.todoSaveBtn.disabled = emailFinderState.todoSaveInFlight;
+  }
+
+  if (elements.todoAddMoreBtn) {
+    elements.todoAddMoreBtn.disabled = emailFinderState.todoSaveInFlight;
+  }
+}
+
+function openTodoComposer() {
+  elements.todoInputRow?.classList.remove("hidden");
+  if (elements.todoInput) {
+    elements.todoInput.focus();
+    elements.todoInput.select();
+  }
+}
+
+function closeTodoComposer(clearInput = false) {
+  elements.todoInputRow?.classList.add("hidden");
+  if (clearInput && elements.todoInput) {
+    elements.todoInput.value = "";
+  }
+}
+
+async function loadTodosFromCache() {
+  try {
+    const stored = await storageGet([TODO_CACHE_KEY]);
+    emailFinderState.todoItems = normalizeTodoItems(stored?.[TODO_CACHE_KEY]);
+  } catch (error) {
+    console.warn("[Sidepanel] Failed to load todo cache:", error);
+    emailFinderState.todoItems = [];
+  }
+}
+
+async function persistTodosToCache(items) {
+  const normalized = normalizeTodoItems(items);
+  emailFinderState.todoItems = normalized;
+  await storageSet({ [TODO_CACHE_KEY]: normalized });
+}
+
+function parseTodoApiError(payload, fallback) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return fallback;
+  const message = String(payload.error || "").trim();
+  return message || fallback;
+}
+
+async function fetchTodosFromApi() {
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error("Missing authentication token");
+  }
+
+  const { apiBaseUrl } = await resolveBaseUrls();
+  const response = await fetchWithTimeout(
+    `${apiBaseUrl}/api/todos`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    },
+    10000
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(parseTodoApiError(payload, "Failed to load to-do list"));
+  }
+
+  return normalizeTodoItems(payload?.items);
+}
+
+async function saveTodosToApi(items) {
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error("Missing authentication token");
+  }
+
+  const { apiBaseUrl } = await resolveBaseUrls();
+  const response = await fetchWithTimeout(
+    `${apiBaseUrl}/api/todos`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ items: normalizeTodoItems(items) }),
+    },
+    10000
+  );
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(parseTodoApiError(payload, "Failed to save to-do list"));
+  }
+
+  return normalizeTodoItems(payload?.items);
+}
+
+async function syncTodosFromServer() {
+  if (!emailFinderState.isAuthenticated) return;
+
+  try {
+    const remoteItems = await fetchTodosFromApi();
+    const localItems = normalizeTodoItems(emailFinderState.todoItems);
+    const mergedItems = normalizeTodoItems([...localItems, ...remoteItems]);
+
+    emailFinderState.todoItems = mergedItems;
+    await persistTodosToCache(mergedItems);
+    renderTodoList();
+
+    if (!areTodoItemsEqual(remoteItems, mergedItems)) {
+      const synced = await saveTodosToApi(mergedItems);
+      emailFinderState.todoItems = synced;
+      await persistTodosToCache(synced);
+      renderTodoList();
+    }
+  } catch (error) {
+    console.warn("[Sidepanel] Failed to sync todos from server:", error);
+  }
+}
+
+async function persistTodoItems(items) {
+  const normalized = normalizeTodoItems(items);
+  emailFinderState.todoItems = normalized;
+  renderTodoList();
+
+  try {
+    await persistTodosToCache(normalized);
+  } catch (error) {
+    console.warn("[Sidepanel] Failed to persist todo cache:", error);
+  }
+
+  if (!emailFinderState.isAuthenticated) return;
+
+  emailFinderState.todoSaveInFlight = true;
+  renderTodoList();
+
+  try {
+    const synced = await saveTodosToApi(normalized);
+    emailFinderState.todoItems = synced;
+    await persistTodosToCache(synced);
+  } catch (error) {
+    console.warn("[Sidepanel] Failed to save todos to server:", error);
+    showToast("To-do saved locally. We'll sync it soon.", "info");
+  } finally {
+    emailFinderState.todoSaveInFlight = false;
+    renderTodoList();
+  }
+}
+
+async function handleTodoSave() {
+  if (emailFinderState.todoSaveInFlight) return;
+  const text = normalizeTodoText(elements.todoInput?.value);
+  if (!text) {
+    closeTodoComposer();
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const nextItem = {
+    id: `todo_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+    text,
+    completed: false,
+    created_at: now,
+    updated_at: now,
+  };
+
+  if (elements.todoInput) {
+    elements.todoInput.value = "";
+  }
+  closeTodoComposer();
+  await persistTodoItems([nextItem, ...emailFinderState.todoItems]);
+}
+
+async function toggleTodoItemById(todoId) {
+  if (emailFinderState.todoSaveInFlight) return;
+
+  const normalizedId = String(todoId || "").trim();
+  if (!normalizedId) return;
+
+  const now = new Date().toISOString();
+  const nextItems = emailFinderState.todoItems.map((item) =>
+    item.id === normalizedId
+      ? {
+          ...item,
+          completed: !item.completed,
+          updated_at: now,
+        }
+      : item
+  );
+
+  await persistTodoItems(nextItems);
+}
+
+async function consumeLookupCredits(credits, label = "action") {
+  const requestedCredits = Math.max(1, Math.min(100, Number(credits) || 1));
+  try {
+    const response = await sendRuntimeMessage({
+      type: "CONSUME_LOOKUP_CREDITS",
+      amount: requestedCredits,
+    });
+
+    const allowed = response?.allowed !== false;
+    if (!allowed) {
+      const resetLabel = formatResetDate(response?.resetDate);
+      const message = resetLabel
+        ? `Not enough credits for ${label}. Resets ${resetLabel}.`
+        : `Not enough credits for ${label}.`;
+      showToast(message, "error");
+      if (response?.resetDate) {
+        setUpgradeState(false, "", PRICING_URL);
+      }
+      return false;
+    }
+
+    await updateQuotaStatus();
+    return true;
+  } catch (error) {
+    console.warn("[Sidepanel] Failed to consume credits:", error);
+    showToast("Could not verify credits. Try again.", "error");
+    return false;
+  }
+}
+
+async function handlePhoneNumberAccess() {
+  openContactDetailView("phone");
+  const creditsAllowed = await consumeLookupCredits(10, "phone number access");
+  if (!creditsAllowed) {
+    resetContactDetailView();
+    return;
+  }
+
+  const phone = getCurrentPhoneNumber();
+  if (phone) {
+    updatePhoneNumberText(phone, "Phone Number");
+    return;
+  }
+
+  updatePhoneNumberText("", "Phone not available");
+  showToast("Phone number not available for this profile.", "info");
+}
+
+async function copyCurrentPhoneNumber() {
+  const phone = getCurrentPhoneNumber();
+  if (!phone) {
+    showToast("No phone number to copy.", "error");
+    return;
+  }
+
+  await copyTextWithFeedback(phone, elements.copyPhoneBtn);
+}
+
 function applyFindEmailAvailability() {
   if (!elements.findEmailBtn) return;
 
@@ -1146,6 +1940,7 @@ function applyFindEmailAvailability() {
     ? "Sign in to use email finder."
     : "";
   elements.findEmailBtn.title = reason;
+  updateAccessEmailButtonState();
 }
 
 function clearLookupStateForProfileChange(reason = "profile-changed") {
@@ -1163,6 +1958,9 @@ function clearLookupStateForProfileChange(reason = "profile-changed") {
   if (elements.resultEmail) {
     elements.resultEmail.textContent = "";
   }
+  resetContactDetailView();
+  updateFoundEmailText("");
+  updatePhoneNumberText("");
 
   renderAlternatives([]);
   elements.feedbackSection?.classList.add("hidden");
@@ -1178,22 +1976,31 @@ function clearLookupStateForProfileChange(reason = "profile-changed") {
 }
 
 function setPrimaryFinderAction(mode = "find") {
-  const showFind = mode === "find";
-  const showDraft = mode === "draft";
-
-  if (elements.findEmailBtn) {
-    elements.findEmailBtn.classList.toggle("hidden", !showFind);
-    if (!showFind) {
-      elements.findEmailBtn.setAttribute("disabled", "true");
-    }
-  }
+  const hasFoundEmail = Boolean(String(emailFinderState.currentResult?.email || "").trim());
+  const disableSecondaryActions = emailFinderState.isLoading || !hasFoundEmail;
 
   if (elements.draftMailBtn) {
-    elements.draftMailBtn.classList.toggle("hidden", !showDraft);
-    elements.draftMailBtn.disabled = !showDraft;
+    elements.draftMailBtn.disabled = disableSecondaryActions;
   }
 
-  if (showFind) {
+  if (elements.sendMailBtn) {
+    elements.sendMailBtn.disabled = disableSecondaryActions;
+  }
+
+  if (elements.saveToContactsBtn) {
+    elements.saveToContactsBtn.disabled = disableSecondaryActions;
+  }
+
+  if (elements.addToListContactBtn) {
+    elements.addToListContactBtn.disabled = disableSecondaryActions;
+  }
+
+  updatePhoneNumberText(getCurrentPhoneNumber(), "Phone Number");
+
+  if (mode === "none" && elements.findEmailBtn) {
+    elements.findEmailBtn.setAttribute("disabled", "true");
+    updateAccessEmailButtonState();
+  } else {
     applyFindEmailAvailability();
   }
 }
@@ -1207,6 +2014,16 @@ async function openDraftForCurrentResult() {
   }
   appState.contact = null;
   await switchToDraftView();
+}
+
+function deriveInitials(fullName) {
+  const parts = String(fullName || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return "--";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
 }
 
 async function openDraftForQueueContact(contact) {
@@ -1388,6 +2205,7 @@ function startLoadingCycle() {
   emailFinderState.stageIndex = 0;
   elements.emailFinderSection?.classList.add("is-loading");
   elements.loadingState?.classList.remove("hidden");
+  updateFoundEmailText("", "Searching for email...");
   setPrimaryFinderAction("none");
   updateLoadingStage(PIPELINE_STAGES[0].label, PIPELINE_STAGES[0].progress);
 
@@ -1427,6 +2245,9 @@ function stopLoadingCycle() {
   elements.loadingState?.classList.add("hidden");
   elements.emailFinderSection?.classList.remove("is-loading");
   const hasFoundEmail = Boolean(String(emailFinderState.currentResult?.email || "").trim());
+  if (!hasFoundEmail) {
+    updateFoundEmailText("");
+  }
   setPrimaryFinderAction(hasFoundEmail ? "draft" : "find");
 }
 
@@ -1446,6 +2267,12 @@ function updateLoadingStage(label, progress) {
 function hideResultAndError() {
   elements.resultsCard?.classList.add("hidden");
   elements.errorState?.classList.add("hidden");
+  if (!emailFinderState.isLoading) {
+    updateFoundEmailText(
+      String(emailFinderState.currentResult?.email || "").trim(),
+      "Access Email"
+    );
+  }
   setPrimaryFinderAction("find");
 }
 
@@ -1474,6 +2301,7 @@ function displayResults(data) {
   if (elements.resultEmail) {
     elements.resultEmail.textContent = email || "No email returned";
   }
+  updateFoundEmailText(email, "Access Email");
 
   renderAlternatives(alternatives);
 
@@ -1568,6 +2396,7 @@ function displayNotFound(response) {
   elements.resultsCard?.classList.add("hidden");
   elements.errorState?.classList.remove("hidden");
   elements.errorState?.classList.add("not-found");
+  updateFoundEmailText("", "No email found for this contact.");
   setPrimaryFinderAction("find");
   setStatus("No email found for this contact.", "info");
 }
@@ -1594,6 +2423,7 @@ function showError(message, code, resetDate) {
 
   elements.resultsCard?.classList.add("hidden");
   elements.errorState?.classList.remove("hidden");
+  updateFoundEmailText("", "Email lookup failed. Try again.");
   setPrimaryFinderAction("find");
   setStatus(message || "Could not find email.", "error");
   if (code === "QUOTA_EXCEEDED") {
@@ -1943,6 +2773,15 @@ function buildContactSyncPayload(savedRow, profileContext) {
     "Unknown"
   );
   const role = pickFirstNonEmpty(ctx.role, savedRow.role);
+  const phoneNumber = normalizePhoneNumber(
+    pickFirstNonEmpty(
+      ctx.phone,
+      ctx.phoneNumber,
+      ctx.mobile,
+      savedRow.phone,
+      savedRow.phoneNumber
+    )
+  );
   const linkedinUrl = normalizeLinkedInUrlForApi(
     pickFirstNonEmpty(ctx.profileUrl, savedRow.profileUrl)
   );
@@ -1965,6 +2804,13 @@ function buildContactSyncPayload(savedRow, profileContext) {
       savedRow.companyDomain,
       getCompanyDomainFromEmail(email)
     ),
+    phone: phoneNumber || "",
+    phoneNumber: phoneNumber || "",
+    customFields: phoneNumber
+      ? {
+          phone: phoneNumber,
+        }
+      : {},
   };
 }
 
@@ -2094,6 +2940,7 @@ async function saveCurrentResultToContacts() {
   }
 
   const context = emailFinderState.profileContext || {};
+  const phoneNumber = getCurrentPhoneNumber();
   const splitName = splitHumanName(pickFirstNonEmpty(context.fullName));
   const nowIso = new Date().toISOString();
   const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -2115,6 +2962,8 @@ async function saveCurrentResultToContacts() {
     emailSource: pickFirstNonEmpty(result.source, "extension"),
     companyDomain: inferredDomain,
     emailVerified: false,
+    phone: phoneNumber || "",
+    phoneNumber: phoneNumber || "",
     syncState: emailFinderState.isAuthenticated
       ? CONTACT_SYNC_STATE.QUEUED
       : CONTACT_SYNC_STATE.AUTH_FAILED,

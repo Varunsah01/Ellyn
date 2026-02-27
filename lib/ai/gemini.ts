@@ -1,11 +1,14 @@
-const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+const GEMINI_API_BASE_URL =
+  'https://generativelanguage.googleapis.com/v1beta/models'
+
+export type GeminiModel = 'gemini-2.0-flash' | 'gemini-2.5-flash'
 
 export interface GeminiGenerateOptions {
   systemPrompt: string
   userPrompt: string
   maxOutputTokens?: number
   temperature?: number
+  model?: GeminiModel
 }
 
 type GeminiGenerateResponse = {
@@ -41,31 +44,35 @@ export async function geminiGenerate(
 
   const maxOutputTokens = opts.maxOutputTokens ?? 512
   const temperature = opts.temperature ?? 0.7
+  const model = opts.model ?? 'gemini-2.0-flash'
 
   const charCount = systemPrompt.length + userPrompt.length
   console.log('[Gemini] tokens ~approx', Math.ceil(charCount / 4))
 
-  const response = await fetch(`${GEMINI_API_URL}?key=${encodeURIComponent(apiKey)}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: systemPrompt }],
+  const response = await fetch(
+    `${GEMINI_API_BASE_URL}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: userPrompt }],
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: systemPrompt }],
         },
-      ],
-      generationConfig: {
-        maxOutputTokens,
-        temperature,
-      },
-    }),
-  })
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: userPrompt }],
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens,
+          temperature,
+        },
+      }),
+    }
+  )
 
   const raw = await response.text()
   if (!response.ok) {

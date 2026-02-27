@@ -6,497 +6,562 @@
     <title>Ellyn Side Panel</title>
     <link rel="stylesheet" href="sidepanel.css" />
     <style>
+      :root {
+        --shell-bg: #dfe3e8;
+        --card-bg: #f7f7f8;
+        --card-border: #d8dde5;
+        --about-bg: #c7d0e4;
+        --text-main: #0f172a;
+        --text-muted: #475569;
+        --brand-pink: #f65294;
+        --brand-pink-dark: #e13a82;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--shell-bg);
+        font-family: "DM Sans", "Inter", "Segoe UI", Arial, sans-serif;
+        color: var(--text-main);
+      }
+
       .hidden {
         display: none !important;
       }
 
+      .ellyn-main {
+        height: 100vh;
+        overflow-y: auto;
+        padding: 16px 14px 18px;
+      }
+
+      .ellyn-shell {
+        max-width: 420px;
+        margin: 0 auto;
+      }
+
+      .ellyn-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 42px;
+      }
+
+      .ellyn-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .ellyn-brand img {
+        display: block;
+        width: 126px;
+        height: auto;
+        object-fit: contain;
+      }
+
+      .ellyn-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .ellyn-upgrade-btn {
+        height: 24px;
+        padding: 0 8px;
+        border: 1px solid #c7d2fe;
+        border-radius: 999px;
+        background: #dbeafe;
+        color: #1e3a8a;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .ellyn-upgrade-btn:hover {
+        background: #bfdbfe;
+      }
+
+      .ellyn-icon-btn {
+        width: 34px;
+        height: 34px;
+        border: 1.25px solid #cfd6df;
+        border-radius: 999px;
+        background: #e2e5ea;
+        color: #0f172a;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .ellyn-icon-btn svg {
+        width: 17px;
+        height: 17px;
+      }
+
       .auth-shell {
-        background: radial-gradient(circle at top right, #dbeafe 0%, #f8fafc 45%, #f8fafc 100%);
+        margin-top: 16px;
+        background: #f3f4f6;
+        border: 1px solid var(--card-border);
+        border-radius: 24px;
+        padding: 18px;
+      }
+
+      .auth-card {
+        border: 1px solid var(--card-border);
+        border-radius: 18px;
+        background: #ffffff;
+        padding: 22px;
+      }
+
+      .auth-card h2 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .auth-card p {
+        margin: 8px 0 0;
+        font-size: 14px;
+        color: #64748b;
+      }
+
+      .auth-actions {
+        margin-top: 18px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .auth-btn {
+        height: 44px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .auth-btn.primary {
+        background: #2563eb;
+        color: #ffffff;
+      }
+
+      .auth-btn.secondary {
+        background: #ffffff;
+        border-color: #d5dbe4;
+        color: #1f2937;
+      }
+
+      .auth-terms {
+        margin-top: 10px;
+        font-size: 11px;
+        color: #64748b;
+        text-align: center;
       }
 
       #emailFinderSection {
-        opacity: 1;
-        transition: opacity 0.25s ease, transform 0.25s ease;
+        margin-top: 8px;
+        display: grid;
+        gap: 10px;
       }
 
-      #emailFinderSection.is-loading .finder-panel {
-        opacity: 0.95;
+      .ellyn-card {
+        border: 1px solid var(--card-border);
+        border-radius: 18px;
+        background: var(--card-bg);
+        padding: 12px;
       }
 
-      .sync-status-row {
-        display: flex;
+      .ellyn-profile {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 10px;
         align-items: center;
-        gap: 6px;
-        padding: 5px 10px;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        min-height: 28px;
-        max-height: 28px;
-        font-size: 11px;
-        color: #64748b;
-        overflow: hidden;
       }
 
-      .sync-dot {
-        flex-shrink: 0;
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: #94a3b8;
+      .ellyn-avatar {
+        width: 52px;
+        height: 52px;
+        border-radius: 999px;
+        background: #cfd2d7;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
+        font-weight: 700;
+        color: #6b7280;
       }
 
-      .sync-dot[data-status="success"] { background: #22c55e; }
-      .sync-dot[data-status="queued"]  { background: #eab308; }
-      .sync-dot[data-status="failed"]  { background: #eab308; }
-      .sync-dot[data-status="error"]   { background: #ef4444; }
-      .sync-dot[data-status="none"]    { background: #94a3b8; }
+      .ellyn-profile-name {
+        margin: 0;
+        font-size: 22px;
+        line-height: 0.98;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+      }
 
-      .sync-label { flex: 1; }
+      .ellyn-profile-role {
+        margin: 4px 0 0;
+        font-size: 12px;
+        line-height: 1.2;
+      }
 
-      .sync-action-btn {
-        font-size: 11px;
-        font-weight: 500;
-        color: #667eea;
-        background: none;
+      .ellyn-profile-company {
+        margin: 2px 0 0;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+
+      .ellyn-profile-status {
+        margin: 6px 0 0;
+        font-size: 9px;
+        color: #556274;
+      }
+
+      .ellyn-about {
+        background: var(--about-bg);
+      }
+
+      .ellyn-about h3 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .ellyn-about p {
+        margin: 6px 0 0;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .ellyn-about ul {
+        margin: 6px 0 0;
+        padding-left: 18px;
+        display: grid;
+        gap: 3px;
+        font-size: 12px;
+      }
+
+      .ellyn-actions-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px 6px;
+      }
+
+      .ellyn-action-btn {
         border: none;
-        padding: 0 2px;
+        background: transparent;
+        padding: 0;
+        display: grid;
+        justify-items: center;
+        gap: 5px;
         cursor: pointer;
-        white-space: nowrap;
-        text-decoration: underline;
+        color: var(--text-main);
+      }
+
+      .ellyn-action-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 999px;
+        background: #d1d3d6;
+        color: #4b5563;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
         line-height: 1;
       }
 
-      .sync-action-btn:hover { color: #764ba2; }
-
-      .finder-panel {
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        background: #ffffff;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-        padding: 14px;
+      .ellyn-action-icon svg {
+        width: 17px;
+        height: 17px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.9;
+        stroke-linecap: round;
+        stroke-linejoin: round;
       }
 
-      .profile-context-card {
+      .ellyn-action-btn.primary .ellyn-action-icon {
+        background: var(--brand-pink);
+        color: #ffffff;
+      }
+
+      .ellyn-action-label {
+        font-size: 10px;
+        font-weight: 500;
+        text-align: center;
+        line-height: 1.2;
+      }
+
+      .ellyn-action-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .ellyn-contact-section {
+        padding: 10px 4px 10px;
+      }
+
+      .ellyn-contact-title {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .ellyn-contact-default {
+        margin-top: 14px;
         display: grid;
-        gap: 10px;
+        gap: 16px;
       }
 
-      .profile-context-header {
+      .ellyn-pill-btn {
+        width: fit-content;
+        min-width: 148px;
+        border: none;
+        border-radius: 999px;
+        padding: 8px 16px;
+        background: var(--brand-pink);
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .ellyn-pill-btn:hover {
+        background: var(--brand-pink-dark);
+      }
+
+      .ellyn-pill-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .ellyn-pill-btn.is-busy {
+        position: relative;
+      }
+
+      .ellyn-contact-detail {
+        margin-top: 14px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .ellyn-contact-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .ellyn-contact-field {
+        border: none;
+        border-radius: 999px;
+        background: #f3f4f6;
+        color: #111827;
+        min-height: 34px;
+        padding: 0 6px 0 14px;
+        text-align: left;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
-      }
-
-      .profile-context-title {
-        font-size: 13px;
-        font-weight: 700;
-        color: #0f172a;
-      }
-
-      .profile-context-refresh {
-        height: 28px;
-        border-radius: 999px;
-        border: 1px solid #dbe2ee;
-        background: #ffffff;
-        padding: 0 10px;
-        font-size: 11px;
-        font-weight: 600;
-        color: #334155;
-        cursor: pointer;
-        transition: background-color 0.2s ease, border-color 0.2s ease;
-      }
-
-      .profile-context-refresh:hover {
-        background: #f8fafc;
-        border-color: #94a3b8;
-      }
-
-      .profile-context-status {
-        margin: 0;
-        border-radius: 8px;
-        padding: 7px 9px;
-        font-size: 12px;
-        font-weight: 600;
-      }
-
-      .profile-context-status[data-tone="neutral"] {
-        background: #f1f5f9;
-        color: #475569;
-      }
-
-      .profile-context-status[data-tone="success"] {
-        background: #dcfce7;
-        color: #166534;
-      }
-
-      .profile-context-status[data-tone="warning"] {
-        background: #fef3c7;
-        color: #92400e;
-      }
-
-      .profile-context-status[data-tone="error"] {
-        background: #fee2e2;
-        color: #b91c1c;
-      }
-
-      .profile-context-grid {
-        display: grid;
-        gap: 0;
-      }
-
-      .profile-context-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 12px;
-        padding: 8px 0;
-        border-bottom: 1px solid #e2e8f0;
-      }
-
-      .profile-context-row:last-child {
-        border-bottom: none;
-      }
-
-      .profile-context-label {
-        min-width: 80px;
-        flex-shrink: 0;
-        font-size: 11px;
-        font-weight: 500;
-        color: #475569;
-      }
-
-      .profile-context-value {
-        flex: 1;
-        text-align: right;
-        font-size: 12px;
-        font-weight: 600;
-        color: #0f172a;
-        white-space: normal;
-        overflow-wrap: anywhere;
-      }
-
-      .profile-context-url-value {
-        font-size: 12px;
-        color: #64748b;
-        word-break: break-all;
-        max-width: 280px;
-        display: inline-block;
-        vertical-align: top;
-      }
-
-      .profile-context-url-value:hover {
-        text-decoration: underline;
-      }
-
-      .finder-primary-btn {
         width: 100%;
+        font-size: 12px;
+        font-weight: 500;
+        overflow: hidden;
+      }
+
+      .ellyn-contact-value {
+        display: block;
+        width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .ellyn-contact-copy-btn {
+        flex: none;
+        width: 24px;
+        height: 24px;
+        border: none;
+        border-radius: 999px;
+        background: transparent;
+        color: #374151;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
-        padding: 12px 24px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: #ffffff;
+        cursor: pointer;
+      }
+
+      .ellyn-contact-copy-btn:hover {
+        background: #e7eaee;
+      }
+
+      .ellyn-contact-copy-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .ellyn-contact-copy-btn svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      .ellyn-contact-cta {
+        min-width: 96px;
         border: none;
-        border-radius: 10px;
-        font-size: 14px;
+        border-radius: 999px;
+        padding: 8px 14px;
+        background: var(--brand-pink);
+        color: #ffffff;
+        font-size: 12px;
         font-weight: 600;
         cursor: pointer;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
       }
 
-      .finder-primary-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(102, 126, 234, 0.35);
+      .ellyn-contact-cta:hover {
+        background: var(--brand-pink-dark);
       }
 
-      .finder-primary-btn:disabled {
+      .ellyn-contact-cta:disabled {
         opacity: 0.55;
         cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
       }
 
-      .spinner {
-        width: 36px;
-        height: 36px;
-        margin: 0 auto;
-        border: 4px solid #e2e8f0;
-        border-top-color: #667eea;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
+      .ellyn-todo h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
       }
 
-      @keyframes spin {
-        to {
-          transform: rotate(360deg);
-        }
+      .ellyn-todo-list {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        display: grid;
+        gap: 9px;
+        min-height: 66px;
       }
 
-      .progress-bar {
+      .ellyn-todo-item {
         width: 100%;
-        height: 8px;
-        background: #e2e8f0;
-        border-radius: 999px;
-        overflow: hidden;
-        margin-top: 10px;
-      }
-
-      .progress-fill {
-        height: 100%;
-        width: 0%;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        transition: width 0.35s ease;
-      }
-
-      .confidence-badge {
-        display: inline-flex;
+        border: none;
+        border-radius: 10px;
+        background: transparent;
+        padding: 0;
+        display: flex;
         align-items: center;
         gap: 8px;
-        padding: 7px 10px;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 600;
+        cursor: pointer;
+        text-align: left;
       }
 
-      .confidence-badge[data-level="high"] {
-        background: #d1fae5;
-        color: #065f46;
+      .ellyn-todo-item:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
       }
 
-      .confidence-badge[data-level="medium"] {
-        background: #fef3c7;
-        color: #78350f;
-      }
-
-      .confidence-badge[data-level="low"] {
-        background: #fee2e2;
-        color: #991b1b;
-      }
-
-      .confidence-badge.small {
-        padding: 4px 7px;
-        font-size: 11px;
-        font-weight: 600;
-        background: #eef2ff;
-        color: #4338ca;
-      }
-
-      .email-result {
-        margin: 14px 0;
-        padding: 12px;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-      }
-
-      .email-result code {
-        display: block;
-        color: #0f172a;
-        font-size: 16px;
-        font-weight: 700;
-        word-break: break-word;
-      }
-
-      .email-actions {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        margin-top: 12px;
-      }
-
-      .secondary-btn {
-        border: 1px solid #dbe2ee;
-        background: #ffffff;
-        border-radius: 8px;
-        height: 36px;
-        font-size: 12px;
-        font-weight: 600;
-        color: #334155;
+      .ellyn-todo-check {
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        border: 1.4px solid #64748b;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        transition: background-color 0.2s ease, border-color 0.2s ease;
+        flex: none;
+        color: transparent;
       }
 
-      .secondary-btn:hover {
-        background: #f8fafc;
-        border-color: #94a3b8;
+      .ellyn-todo-item.is-completed .ellyn-todo-check {
+        border-color: #ec4899;
+        background: #ec4899;
+        color: #ffffff;
       }
 
-      .metadata {
-        display: grid;
-        gap: 8px;
-        margin: 12px 0;
-        padding: 11px 12px;
-        background: #f1f5f9;
-        border-radius: 8px;
+      .ellyn-todo-check svg {
+        width: 10px;
+        height: 10px;
+      }
+
+      .ellyn-todo-text {
         font-size: 12px;
+        color: #111827;
+        line-height: 1.35;
       }
 
-      .meta-item {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
+      .ellyn-todo-item.is-completed .ellyn-todo-text {
+        color: #6b7280;
+        text-decoration: line-through;
       }
 
-      .meta-item .label {
+      .ellyn-todo-empty {
+        margin: 8px 0 0;
+        font-size: 11px;
         color: #64748b;
       }
 
-      .meta-item .value {
-        color: #0f172a;
-        font-weight: 600;
-        text-align: right;
-      }
-
-      .alternatives-list {
-        margin-top: 8px;
-        padding: 0;
-        list-style: none;
-      }
-
-      .alternatives-list li {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        padding: 7px 0;
-        border-top: 1px solid #e2e8f0;
-      }
-
-.alternatives-list li:first-child {
-        border-top: 0;
-      }
-
-      .feedback-section {
-        margin-top: 14px;
-      }
-
-      .feedback-prompt {
-        font-size: 12px;
-        color: #475569;
-        margin-bottom: 8px;
-      }
-
-      .feedback-buttons {
+      .ellyn-todo-input-row {
+        margin-top: 10px;
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) auto;
         gap: 8px;
       }
 
-      .feedback-btn {
-        height: 34px;
-        border: 1px solid #cbd5e1;
-        border-radius: 8px;
-        background: #ffffff;
-        font-size: 12px;
-        font-weight: 600;
-      }
-
-      .feedback-btn.yes:hover {
-        border-color: #10b981;
-        color: #047857;
-      }
-
-      .feedback-btn.no:hover {
-        border-color: #ef4444;
-        color: #b91c1c;
-      }
-
-      .error-state {
-        text-align: center;
-        padding: 12px;
-      }
-
-      .error-icon {
-        width: 34px;
-        height: 34px;
-        margin: 0 auto 8px;
-        color: #ef4444;
-      }
-
-      .error-state.not-found {
-        border-color: #e2e8f0;
-        background-color: #f8fafc;
-      }
-      .error-state.not-found .error-icon {
-        color: #94a3b8;
-      }
-
-      .quota-bar {
-        margin-top: 14px;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        padding: 10px 12px;
-        background: #ffffff;
-      }
-
-      .quota-label {
-        display: flex;
-        justify-content: space-between;
-        font-size: 12px;
-        color: #475569;
-        margin-bottom: 6px;
-      }
-
-      .quota-progress {
-        height: 7px;
-        border-radius: 999px;
-        background: #e2e8f0;
-        overflow: hidden;
-      }
-
-      .quota-fill {
-        height: 100%;
-        border-radius: 999px;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        transition: width 0.25s ease;
-      }
-
-      .quota-fill.warning {
-        background: linear-gradient(90deg, #f59e0b 0%, #f97316 100%);
-      }
-
-      .quota-fill.danger {
-        background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%);
-      }
-
-      .quota-warning {
-        margin-top: 8px;
-        font-size: 11px;
-        color: #b45309;
-      }
-
-      .upgrade-cta {
-        margin-top: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        padding: 8px 10px;
-        border: 1px solid #fecaca;
-        border-radius: 8px;
-        background: #fef2f2;
-      }
-
-      .upgrade-cta p {
-        font-size: 11px;
-        color: #991b1b;
-      }
-
-      .upgrade-cta button {
+      .ellyn-todo-input {
+        width: 100%;
         height: 30px;
+        border: 1px solid #cbd5e1;
         border-radius: 999px;
-        border: 1px solid #ef4444;
         padding: 0 12px;
+        font-size: 12px;
+        color: #0f172a;
         background: #ffffff;
-        color: #b91c1c;
+      }
+
+      .ellyn-todo-input:focus {
+        outline: none;
+        border-color: #ec4899;
+      }
+
+      .ellyn-todo-save-btn {
+        height: 30px;
+        border: none;
+        border-radius: 999px;
+        padding: 0 12px;
+        background: #ec4899;
+        color: #ffffff;
         font-size: 11px;
         font-weight: 700;
+        cursor: pointer;
+      }
+
+      .ellyn-todo-save-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .ellyn-todo-add {
+        margin-top: 8px;
+        border: none;
+        background: transparent;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .ellyn-todo-add span {
+        font-size: 16px;
+        vertical-align: middle;
+        margin-left: 8px;
+        font-weight: 500;
       }
 
       .toast-container {
@@ -523,7 +588,6 @@
         font-weight: 600;
         margin-top: 8px;
         box-shadow: 0 8px 18px rgba(15, 23, 42, 0.22);
-        animation: toastIn 0.22s ease;
       }
 
       .toast.success {
@@ -538,246 +602,6 @@
         background: #334155;
       }
 
-      @keyframes toastIn {
-        from {
-          opacity: 0;
-          transform: translateY(8px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-
-      /* â”€â”€ Queue empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .queue-empty-state {
-        padding: 24px 12px;
-        text-align: center;
-      }
-
-      .queue-empty-state [role="img"] {
-        font-size: 2rem;
-        line-height: 1;
-        margin-bottom: 10px;
-      }
-
-      .queue-empty-heading {
-        font-size: 13px;
-        font-weight: 600;
-        color: #0f172a;
-        margin: 0 0 4px;
-      }
-
-      .queue-empty-sub {
-        font-size: 12px;
-        color: #64748b;
-        line-height: 1.5;
-        margin: 0 0 16px;
-      }
-
-      .linkedin-cta-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        border-radius: 8px;
-        background: #0a66c2;
-        padding: 8px 16px;
-        font-size: 12px;
-        font-weight: 600;
-        color: #ffffff;
-        text-decoration: none;
-        transition: opacity 0.2s ease;
-      }
-
-      .linkedin-cta-btn:hover { opacity: 0.88; }
-
-      /* â”€â”€ Notes toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .notes-toggle-btn {
-        display: flex;
-        width: 100%;
-        align-items: center;
-        gap: 8px;
-        background: none;
-        border: none;
-        padding: 0;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 500;
-        color: #334155;
-        text-align: left;
-      }
-
-      .notes-toggle-btn:hover { color: #0f172a; }
-
-      .notes-chevron {
-        width: 16px;
-        height: 16px;
-        color: #94a3b8;
-        flex-shrink: 0;
-        transition: transform 0.2s ease;
-      }
-
-      /* â”€â”€ Session-expired banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .session-expired-banner {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 10px 12px;
-        background: #fef3c7;
-        border: 1px solid #f59e0b;
-        border-radius: 10px;
-        font-size: 12px;
-        color: #92400e;
-      }
-
-      .session-expired-banner p {
-        margin: 0;
-        flex: 1;
-        line-height: 1.4;
-      }
-
-      .session-expired-signin-btn {
-        flex-shrink: 0;
-        padding: 5px 12px;
-        background: #f59e0b;
-        color: #ffffff;
-        border: none;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: opacity 0.2s ease;
-      }
-
-      .session-expired-signin-btn:hover { opacity: 0.85; }
-
-      /* SUBTLE_CORRECTION_UI */
-
-      .correction-trigger-row {
-        display: flex;
-        justify-content: flex-end;
-        margin-top: 10px;
-      }
-
-      .correction-trigger-link {
-        background: none;
-        border: none;
-        padding: 0;
-        font-size: 11px;
-        color: #94a3b8;
-        cursor: pointer;
-        text-decoration: underline;
-        text-decoration-style: dotted;
-        text-underline-offset: 2px;
-        transition: color 0.15s ease;
-        line-height: 1.5;
-      }
-
-      .correction-trigger-link:hover {
-        color: #64748b;
-      }
-
-      .correction-panel {
-        margin-top: 10px;
-        padding: 12px;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        animation: correctionFadeIn 0.18s ease;
-      }
-
-      @keyframes correctionFadeIn {
-        from { opacity: 0; transform: translateY(-4px); }
-        to   { opacity: 1; transform: translateY(0); }
-      }
-
-      .correction-label {
-        font-size: 11px;
-        font-weight: 600;
-        color: #475569;
-        margin-bottom: 10px;
-      }
-
-      .correction-row {
-        margin-bottom: 8px;
-      }
-
-      .correction-row:last-child {
-        margin-bottom: 0;
-      }
-
-      .correction-select {
-        width: 100%;
-        height: 32px;
-        font-size: 12px;
-        padding: 0 8px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-        background: #ffffff;
-        color: #334155;
-        outline: none;
-        cursor: pointer;
-      }
-
-      .correction-select:focus {
-        border-color: #7c3aed;
-        box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
-      }
-
-      .correction-input {
-        width: 100%;
-        height: 32px;
-        font-size: 12px;
-        padding: 0 8px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-        background: #ffffff;
-        color: #334155;
-        outline: none;
-        box-sizing: border-box;
-      }
-
-      .correction-input:focus {
-        border-color: #7c3aed;
-        box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
-      }
-
-      .correction-input::placeholder {
-        color: #94a3b8;
-      }
-
-      .correction-action-row {
-        display: flex;
-        justify-content: flex-end;
-      }
-
-      .correction-confirm-btn {
-        height: 30px;
-        padding: 0 14px;
-        font-size: 12px;
-        font-weight: 600;
-        color: #ffffff;
-        background: #7c3aed;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: background 0.15s ease, opacity 0.15s ease;
-      }
-
-      .correction-confirm-btn:hover:not(:disabled) {
-        background: #6d28d9;
-      }
-
-      .correction-confirm-btn:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-      }
-
-      /* â”€â”€ Draft & Stats view containers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      /*
-       * Positioned as fixed overlays so they cover the main panel area.
-       */
       #draftViewContainer,
       #statsViewContainer {
         position: fixed;
@@ -786,739 +610,216 @@
         background: #f8fafc;
         z-index: 40;
       }
-
-      /* â”€â”€ Sent callout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .sent-callout {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-        padding: 10px 12px;
-        background: #eef2ff;
-        border: 1px solid #c7d2fe;
-        border-radius: 10px;
-        font-size: 12px;
-        color: #3730a3;
-        margin-top: 10px;
-      }
-
-      .sent-callout p { flex: 1; margin: 0; line-height: 1.4; }
-
-      .sent-callout-action {
-        flex-shrink: 0;
-        padding: 4px 10px;
-        background: #4f46e5;
-        color: #ffffff;
-        border: none;
-        border-radius: 6px;
-        font-size: 11px;
-        font-weight: 600;
-        cursor: pointer;
-        white-space: nowrap;
-        transition: opacity 0.2s ease;
-      }
-
-      .sent-callout-action:hover { opacity: 0.88; }
-
-      .sent-callout-dismiss {
-        flex-shrink: 0;
-        width: 20px;
-        height: 20px;
-        border: none;
-        background: none;
-        cursor: pointer;
-        color: #6366f1;
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 4px;
-        font-size: 13px;
-        line-height: 1;
-      }
-
-      .sent-callout-dismiss:hover { background: #e0e7ff; }
-
-      /* â”€â”€ Dashboard view link â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
-      .dash-view-link {
-        display: inline-block;
-        font-size: 12px;
-        font-weight: 500;
-        color: #667eea;
-        text-decoration: none;
-        transition: color 0.15s ease;
-      }
-
-      .dash-view-link:hover { color: #764ba2; text-decoration: underline; }
     </style>
   </head>
-  <body class="min-h-screen bg-slate-100 font-sans text-slate-900 antialiased">
-    <main class="h-screen overflow-y-auto p-4 pb-4 sm:p-5 sm:pb-5">
-      <div class="mx-auto max-w-xl">
-        <header class="mb-5 border-b border-slate-200 pb-4">
-          <div class="flex items-start justify-between">
-            <div class="flex items-center gap-3">
-              <img
-                src="assets/icons/Ellynlogo.png"
-                alt="Ellyn logo"
-                class="h-6 w-auto object-contain"
-              />
-            </div>
-            <div id="authHeaderActions" class="hidden flex items-center gap-2">
-              <button
-                id="settingsButton"
-                type="button"
-                aria-label="Settings"
-                class="ui-icon-btn inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-              >
-                <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
-                  <path
-                    d="M10.34 3.3a1 1 0 0 1 1.32 0l.9.75a1 1 0 0 0 .95.2l1.15-.33a1 1 0 0 1 1.22.7l.3 1.15a1 1 0 0 0 .73.73l1.15.3a1 1 0 0 1 .7 1.22l-.33 1.15a1 1 0 0 0 .2.95l.75.9a1 1 0 0 1 0 1.32l-.75.9a1 1 0 0 0-.2.95l.33 1.15a1 1 0 0 1-.7 1.22l-1.15.3a1 1 0 0 0-.73.73l-.3 1.15a1 1 0 0 1-1.22.7l-1.15-.33a1 1 0 0 0-.95.2l-.9.75a1 1 0 0 1-1.32 0l-.9-.75a1 1 0 0 0-.95-.2l-1.15.33a1 1 0 0 1-1.22-.7l-.3-1.15a1 1 0 0 0-.73-.73l-1.15-.3a1 1 0 0 1-.7-1.22l.33-1.15a1 1 0 0 0-.2-.95l-.75-.9a1 1 0 0 1 0-1.32l.75-.9a1 1 0 0 0 .2-.95l-.33-1.15a1 1 0 0 1 .7-1.22l1.15-.3a1 1 0 0 0 .73-.73l.3-1.15a1 1 0 0 1 1.22-.7l1.15.33a1 1 0 0 0 .95-.2l.9-.75Z"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                  />
-                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5" />
-                </svg>
-              </button>
-              <button
-                id="profileButton"
-                type="button"
-                aria-label="Profile"
-                class="ui-icon-btn inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-slate-50 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-              >
-                <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
-                  <circle cx="12" cy="8" r="3.25" stroke="currentColor" stroke-width="1.5" />
-                  <path
-                    d="M5 19c1-3.05 3.6-4.75 7-4.75s6 1.7 7 4.75"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                  />
-                </svg>
-              </button>
-              <button
-                id="logoutButton"
-                type="button"
-                class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-              >
-                Logout
-              </button>
-            </div>
+  <body>
+    <main class="ellyn-main">
+      <div class="ellyn-shell">
+        <header class="ellyn-header">
+          <div class="ellyn-brand">
+            <img src="assets/icons/Ellynlogo.png" alt="Ellyn" />
+          </div>
+          <div id="authHeaderActions" class="hidden ellyn-header-actions">
+            <button
+              id="upgradeButton"
+              type="button"
+              aria-label="Upgrade plan"
+              class="ellyn-upgrade-btn"
+            >
+              Upgrade
+            </button>
+            <button
+              id="profileButton"
+              type="button"
+              aria-label="Open dashboard"
+              class="ellyn-icon-btn"
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="8" r="3.25" stroke="currentColor" stroke-width="1.7" />
+                <path d="M5 19c1-3.05 3.6-4.75 7-4.75s6 1.7 7 4.75" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+              </svg>
+            </button>
+            <button
+              id="settingsButton"
+              type="button"
+              aria-label="Settings"
+              class="ellyn-icon-btn"
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M10.34 3.3a1 1 0 0 1 1.32 0l.9.75a1 1 0 0 0 .95.2l1.15-.33a1 1 0 0 1 1.22.7l.3 1.15a1 1 0 0 0 .73.73l1.15.3a1 1 0 0 1 .7 1.22l-.33 1.15a1 1 0 0 0 .2.95l.75.9a1 1 0 0 1 0 1.32l-.75.9a1 1 0 0 0-.2.95l.33 1.15a1 1 0 0 1-.7 1.22l-1.15.3a1 1 0 0 0-.73.73l-.3 1.15a1 1 0 0 1-1.22.7l-1.15-.33a1 1 0 0 0-.95.2l-.9.75a1 1 0 0 1-1.32 0l-.9-.75a1 1 0 0 0-.95-.2l-1.15.33a1 1 0 0 1-1.22-.7l-.3-1.15a1 1 0 0 0-.73-.73l-1.15-.3a1 1 0 0 1-.7-1.22l.33-1.15a1 1 0 0 0-.2-.95l-.75-.9a1 1 0 0 1 0-1.32l.75-.9a1 1 0 0 0 .2-.95l-.33-1.15a1 1 0 0 1 .7-1.22l1.15-.3a1 1 0 0 0 .73-.73l.3-1.15a1 1 0 0 1 1.22-.7l1.15.33a1 1 0 0 0 .95-.2l.9-.75Z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                />
+                <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.5" />
+              </svg>
+            </button>
+            <button id="logoutButton" type="button" class="hidden">Logout</button>
           </div>
         </header>
 
-        <p id="statusText" role="status" aria-live="polite" class="mb-4 min-h-5 px-1 text-xs text-slate-500"></p>
-
-        <section class="space-y-5 pb-6">
-        <div id="stageAuth" class="space-y-5" style="padding-top: 1.5rem;">
-          <article class="auth-shell mx-auto rounded-xl border border-slate-200 p-5 shadow-sm transition-all duration-200" style="max-width: 360px;">
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div class="text-center">
-                <h2 class="text-xl font-semibold tracking-tight text-slate-900">Welcome to Ellyn</h2>
-                <p class="mt-2 text-sm text-slate-500">Sign in to continue</p>
+        <section>
+          <div id="stageAuth" class="auth-shell">
+            <div class="auth-card">
+              <h2>Welcome to Ellyn</h2>
+              <p>Sign in to continue</p>
+              <div class="auth-actions">
+                <button id="signInButton" type="button" class="auth-btn primary">Sign In</button>
+                <button id="createAccountButton" type="button" class="auth-btn secondary">Create Account</button>
               </div>
-
-              <div class="mt-5 space-y-3">
-                <button
-                  id="signInButton"
-                  type="button"
-                  class="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                >
-                  Sign In
-                </button>
-                <button
-                  id="createAccountButton"
-                  type="button"
-                  class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-100 active:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                >
-                  Create Account
-                </button>
-              </div>
-
-              <p class="mt-4 text-center text-xs text-slate-500">By continuing, you agree to our Terms.</p>
+              <p class="auth-terms">By continuing, you agree to our Terms.</p>
             </div>
-          </article>
-        </div>
-
-        <div id="emailFinderSection" class="hidden space-y-4" aria-live="polite">
-          <!-- Session-expired banner (hidden by default) -->
-          <div id="sessionExpiredBanner" class="session-expired-banner hidden" role="alert">
-            <p>Your session has expired. Re-connect to sync data.</p>
-            <button id="sessionExpiredSignInBtn" type="button" class="session-expired-signin-btn">Sign in</button>
           </div>
 
-          <!-- Sync status indicator -->
-          <div id="syncStatusRow" class="sync-status-row hidden">
-            <span id="syncDot" class="sync-dot" data-status="none"></span>
-            <span id="syncLabel" class="sync-label">Not connected</span>
-            <button id="syncActionBtn" type="button" class="sync-action-btn hidden"></button>
-          </div>
+          <div id="emailFinderSection" class="hidden" aria-live="polite">
+            <article id="profileContextCard" class="ellyn-card ellyn-profile">
+              <div id="profileAvatarInitials" class="ellyn-avatar">--</div>
+              <div>
+                <p id="profileContextName" class="ellyn-profile-name">Name</p>
+                <p id="profileContextRole" class="ellyn-profile-role">Designation</p>
+                <p id="profileContextCompany" class="ellyn-profile-company">Company Name</p>
+                <p id="profileContextStatus" class="ellyn-profile-status">Open a LinkedIn profile to begin.</p>
+                <span id="profileContextUrl" class="hidden">--</span>
+              </div>
+            </article>
 
-          <article id="profileContextCard" class="finder-panel profile-context-card">
-            <div class="profile-context-header">
-              <h2 class="profile-context-title">Profile Information</h2>
-              <button id="refreshProfileContextBtn" type="button" class="profile-context-refresh">Refresh</button>
-            </div>
-            <p id="profileContextStatus" class="profile-context-status" data-tone="neutral">
-              Open a LinkedIn profile to begin.
-            </p>
-            <div class="profile-context-grid">
-              <div class="profile-context-row">
-                <span class="profile-context-label">Name</span>
-                <span id="profileContextName" class="profile-context-value">&mdash;</span>
-              </div>
-              <div class="profile-context-row">
-                <span class="profile-context-label">Designation</span>
-                <span id="profileContextRole" class="profile-context-value">&mdash;</span>
-              </div>
-              <div class="profile-context-row">
-                <span class="profile-context-label">Company</span>
-                <span id="profileContextCompany" class="profile-context-value">&mdash;</span>
-              </div>
-              <div class="profile-context-row">
-                <span class="profile-context-label">URL</span>
-                <span id="profileContextUrl" class="profile-context-value profile-context-url-value">&mdash;</span>
-              </div>
-            </div>
-          </article>
+            <article class="ellyn-card ellyn-about">
+              <h3 id="aboutCardTitle">About Company Name</h3>
+              <p id="aboutCardIntro">Details about the company will appear here when profile context is available.</p>
+              <ul id="aboutCardBullets" class="hidden">
+              </ul>
+            </article>
 
-          <article class="finder-panel">
-            <button id="findEmailBtn" type="button" class="finder-primary-btn">
-              <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
-                <path d="m3 8 9 6 9-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-                <rect x="3" y="6" width="18" height="12" rx="2.5" stroke="currentColor" stroke-width="1.5" />
-              </svg>
-              Find Email
-            </button>
-            <button id="draftMailBtn" type="button" class="finder-primary-btn hidden">
-              <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
-                <path d="M3 6.75A2.75 2.75 0 0 1 5.75 4h12.5A2.75 2.75 0 0 1 21 6.75v10.5A2.75 2.75 0 0 1 18.25 20H5.75A2.75 2.75 0 0 1 3 17.25V6.75Z" stroke="currentColor" stroke-width="1.5" />
-                <path d="m7 12 2.2 2.2L17 8.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-              Draft Mail
-            </button>
-
-            <div id="loadingState" class="hidden mt-4 text-center">
-              <div class="spinner"></div>
-              <p id="loadingStage" class="mt-3 text-sm text-slate-600" aria-live="polite">Extracting LinkedIn data...</p>
-              <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-                <div id="progressFill" class="progress-fill"></div>
-              </div>
-            </div>
-
-            <div id="resultsCard" class="hidden mt-4">
-              <div id="confidenceBadge" class="confidence-badge" data-level="high">
-                <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
-                  <path d="M5 12.5 9 16l10-10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                <span id="confidenceText">Email found</span>
-              </div>
-<div class="email-result">
-                <code id="resultEmail">john.doe@acme.com</code>
-                <div class="email-actions">
-                  <button id="copyEmailBtn" type="button" class="secondary-btn">
-                    <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
-                      <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.5" />
-                      <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5" />
+            <article class="ellyn-card">
+              <div class="ellyn-actions-grid">
+                <button id="saveToContactsBtn" type="button" class="ellyn-action-btn primary" disabled>
+                  <span class="ellyn-action-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 5v14" />
+                      <path d="M5 12h14" />
                     </svg>
-                    Copy
-                  </button>
-                  <button id="saveToContactsBtn" type="button" class="secondary-btn">
-                    <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
-                      <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                  </span>
+                  <span class="ellyn-action-label">Save Contact</span>
+                </button>
+                <button id="addToListBtn" type="button" class="ellyn-action-btn">
+                  <span class="ellyn-action-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M9 7h10" />
+                      <path d="M9 12h10" />
+                      <path d="M9 17h10" />
+                      <circle cx="5" cy="7" r="0.9" />
+                      <circle cx="5" cy="12" r="0.9" />
+                      <circle cx="5" cy="17" r="0.9" />
                     </svg>
-                    Save to Contacts
-                  </button>
-                </div>
+                  </span>
+                  <span class="ellyn-action-label">Add to List</span>
+                </button>
+                <button id="addToSequenceBtn" type="button" class="ellyn-action-btn">
+                  <span class="ellyn-action-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M5 12h13" />
+                      <path d="m13 7 5 5-5 5" />
+                    </svg>
+                  </span>
+                  <span class="ellyn-action-label">Add to Sequence</span>
+                </button>
+                <button id="draftMailBtn" type="button" class="ellyn-action-btn" disabled>
+                  <span class="ellyn-action-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="4" y="6" width="16" height="12" rx="1.8" />
+                      <path d="m5.5 8 6.5 5 6.5-5" />
+                    </svg>
+                  </span>
+                  <span class="ellyn-action-label">Compose Email</span>
+                </button>
+                <button id="logActivityBtn" type="button" class="ellyn-action-btn">
+                  <span class="ellyn-action-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="7" y="5" width="11" height="15" rx="1.8" />
+                      <path d="M9.5 9h6" />
+                      <path d="M9.5 12h6" />
+                      <path d="M9.5 15h4.5" />
+                      <path d="M9 3.8h7" />
+                    </svg>
+                  </span>
+                  <span class="ellyn-action-label">Log Activity</span>
+                </button>
+                <button id="viewCatalogBtn" type="button" class="ellyn-action-btn">
+                  <span class="ellyn-action-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="9" cy="10" r="2.2" />
+                      <circle cx="15.5" cy="10.5" r="1.8" />
+                      <path d="M4.8 18c.8-2.4 2.7-3.8 4.9-3.8s4.1 1.4 4.9 3.8" />
+                      <path d="M13.3 17.8c.5-1.6 1.8-2.6 3.4-2.6 1.5 0 2.8 1 3.3 2.6" />
+                    </svg>
+                  </span>
+                  <span class="ellyn-action-label">View Catalog</span>
+                </button>
+              </div>
+            </article>
+
+            <section class="ellyn-contact-section">
+              <h2 class="ellyn-contact-title">Contact Details</h2>
+              <div id="contactDefaultView" class="ellyn-contact-default">
+                <button id="findEmailBtn" type="button" class="ellyn-pill-btn">
+                  <span id="accessEmailBtnLabel">Access Email</span>
+                </button>
+                <button id="phoneNumberBtn" type="button" class="ellyn-pill-btn">
+                  Phone Number
+                </button>
               </div>
 
-              <details id="alternativesDetails">
-                <summary id="alternativesSummary" class="cursor-pointer text-xs font-medium text-slate-700">Show alternatives</summary>
-                <ul id="alternativesList" class="alternatives-list"></ul>
-              </details>
-
-              <!-- SUBTLE_CORRECTION_UI: replaces old Yes/No feedback buttons -->
-              <div id="feedbackSection" class="feedback-section">
-
-                <!-- Layer 1: always visible quiet link -->
-                <div class="correction-trigger-row">
-                  <button
-                    id="correctionTriggerBtn"
-                    type="button"
-                    class="correction-trigger-link"
-                    aria-expanded="false"
-                    aria-controls="correctionPanel"
-                  >
-                    Not the right email?
-                  </button>
-                </div>
-
-                <!-- Layer 2: expandable correction panel (hidden by default) -->
-                <div
-                  id="correctionPanel"
-                  class="correction-panel hidden"
-                  role="region"
-                  aria-label="Update email address"
-                >
-                  <p class="correction-label">Update the email for this contact</p>
-
-                  <!-- Alternatives dropdown (only shown if alternatives exist) -->
-                  <div id="correctionAlternativesRow" class="correction-row hidden">
-                    <select id="correctionAlternativesSelect" class="correction-select">
-                      <option value="">Choose from found alternatives...</option>
-                    </select>
-                  </div>
-
-                  <!-- Manual input row -->
-                  <div class="correction-row">
-                    <input
-                      id="correctionManualInput"
-                      type="email"
-                      class="correction-input"
-                      placeholder="Or enter email manually"
-                      autocomplete="off"
-                      spellcheck="false"
-                    />
-                  </div>
-
-                  <!-- Confirm button -->
-                  <div class="correction-row correction-action-row">
-                    <button
-                      id="correctionConfirmBtn"
-                      type="button"
-                      class="correction-confirm-btn"
-                      disabled
-                    >
-                      Use this email ->
+              <div id="contactDetailView" class="ellyn-contact-detail hidden">
+                <div id="emailContactRow" class="ellyn-contact-row">
+                  <div class="ellyn-contact-field">
+                    <span id="foundEmailText" class="ellyn-contact-value">Access Email</span>
+                    <button id="copyEmailBtn" type="button" class="ellyn-contact-copy-btn" aria-label="Copy email" disabled>
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.7" />
+                        <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.7" />
+                      </svg>
                     </button>
                   </div>
-                </div>
-
-              </div>
-              <!-- END SUBTLE_CORRECTION_UI -->
-            </div>
-
-            <div id="errorState" class="hidden mt-4 error-state rounded-xl border border-red-200 bg-red-50 p-4">
-              <svg class="error-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" />
-                <path d="M12 8v5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                <circle cx="12" cy="16.5" r="1" fill="currentColor" />
-              </svg>
-              <h3 id="errorTitle" class="text-sm font-semibold text-slate-800">Could not find email</h3>
-              <p id="errorMessage" class="mt-1 text-xs text-slate-500">Domain not found</p>
-              <div class="mt-3 flex items-center justify-center gap-3">
-                <button id="retryBtn" type="button" class="secondary-btn">Try Again</button>
-                <button id="enterManuallyBtn" type="button" class="text-xs font-medium text-blue-600 underline-offset-2 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 rounded">
-                  Enter manually
-                </button>
-              </div>
-            </div>
-          </article>
-
-        </div>
-
-        <div id="stage1" class="hidden space-y-5">
-          <article class="rounded-xl border border-slate-200 bg-slate-50 p-5 shadow-sm transition-all duration-200">
-            <p class="text-center text-sm leading-6 text-slate-600">
-              Visit a LinkedIn profile for one-click extraction or enter contact details manually below
-            </p>
-          </article>
-
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <div class="mb-2">
-              <button
-                id="manualEntryToggle"
-                type="button"
-                aria-expanded="false"
-                aria-controls="manualEntryBody"
-                class="flex w-full items-center justify-between text-left"
-              >
-                <span class="text-base font-medium text-slate-900">Manual Contact Entry</span>
-                <svg
-                  id="manualEntryChevron"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  class="h-4 w-4 text-slate-500 transition-transform duration-200"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="m6 9 6 6 6-6"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div id="manualEntryBody" class="mt-4 hidden">
-            <p class="mb-4 text-xs text-slate-500">All required fields are marked with an asterisk.</p>
-            <form id="contactForm" class="space-y-4" novalidate>
-              <div>
-                <label for="firstName" class="mb-2 block text-sm font-medium text-slate-700">
-                  First Name <span aria-hidden="true" class="text-rose-500">*</span>
-                </label>
-                <input
-                  id="firstName"
-                  name="firstName"
-                  type="text"
-                  required
-                  placeholder="Enter first name"
-                  class="ui-input h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <div>
-                <label for="lastName" class="mb-2 block text-sm font-medium text-slate-700">
-                  Last Name <span aria-hidden="true" class="text-rose-500">*</span>
-                </label>
-                <input
-                  id="lastName"
-                  name="lastName"
-                  type="text"
-                  required
-                  placeholder="Enter last name"
-                  class="ui-input h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <div>
-                <label for="company" class="mb-2 block text-sm font-medium text-slate-700">
-                  Company <span aria-hidden="true" class="text-rose-500">*</span>
-                </label>
-                <input
-                  id="company"
-                  name="company"
-                  type="text"
-                  required
-                  placeholder="Enter company name"
-                  class="ui-input h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <div>
-                <label for="role" class="mb-2 block text-sm font-medium text-slate-700">Role</label>
-                <input
-                  id="role"
-                  name="role"
-                  type="text"
-                  placeholder="Enter role"
-                  class="ui-input h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <div class="pt-1">
-                <button
-                  id="discoverEmailButton"
-                  type="submit"
-                  disabled
-                  class="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Discover Email
-                </button>
-              </div>
-            </form>
-            </div>
-          </article>
-
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <div class="flex items-center justify-between">
-              <h2 class="text-base font-medium text-slate-900">Contact Queue</h2>
-            </div>
-
-            <!-- Empty state â€” injected by renderQueueCard() via empty-states.js -->
-            <div id="queueEmptyState" class="hidden"></div>
-
-            <!-- Populated state â€” visible only when contacts exist -->
-            <div id="queuePopulatedView" class="hidden mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div class="flex items-center justify-between">
-                <p id="queueCountLabel" class="text-sm font-medium text-slate-700">Contacts in queue</p>
-                <div class="flex items-center gap-2">
-                  <button
-                    id="viewAllContactsButton"
-                    type="button"
-                    class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                  >
-                    View All Contacts
+                  <button id="sendMailBtn" type="button" class="ellyn-contact-cta" disabled>
+                    Send Mail
                   </button>
                 </div>
-              </div>
-              <div id="queueContactsList" class="mt-4 space-y-2">
-                <!-- Contact rows rendered dynamically -->
-              </div>
-            </div>
-          </article>
-
-          <article id="quotaBar" class="quota-bar hidden" aria-label="Quota">
-            <div class="quota-label">
-              <span>Credits Used</span>
-              <span id="quotaCount"></span>
-            </div>
-            <div class="quota-progress">
-              <div id="quotaFill" class="quota-fill" style="width: 0%"></div>
-            </div>
-            <p id="quotaWarning" class="quota-warning hidden"></p>
-            <div id="upgradeCta" class="upgrade-cta hidden">
-              <p id="upgradeText">Quota reached. Upgrade to continue.</p>
-              <button id="upgradeButton" type="button">Upgrade</button>
-            </div>
-          </article>
-        </div>
-
-        <div id="stage2" class="hidden space-y-5">
-          <div>
-            <button
-              id="backToStage1Btn"
-              type="button"
-              class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 rounded transition-colors duration-150"
-            >
-              <svg viewBox="0 0 24 24" fill="none" class="h-3.5 w-3.5" aria-hidden="true">
-                <path d="m15 19-7-7 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-              Back
-            </button>
-          </div>
-
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <div class="flex items-start justify-between">
-              <div>
-                <p class="text-xs font-medium uppercase tracking-wide text-slate-400">Profile Summary</p>
-                <p id="contactName" class="mt-2 text-xl font-semibold text-slate-900">John Doe</p>
-                <p id="contactRole" class="mt-1 text-sm text-slate-500">Senior Recruiter</p>
-                <p id="contactCompany" class="text-sm text-slate-500">Microsoft</p>
-              </div>
-              <span class="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500">Stage 2</span>
-            </div>
-
-            <div class="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2.5">
-              <p id="contactEmailText" class="flex-1 text-sm font-medium text-slate-700">john.doe@microsoft.com</p>
-              <button
-                id="copyEmailButton"
-                type="button"
-                aria-label="Copy email"
-                class="ui-icon-btn inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all duration-200 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-              >
-                <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
-                  <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5" />
-                </svg>
-              </button>
-            </div>
-          </article>
-
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-base font-medium text-slate-900">Draft Workspace</h2>
-              <p class="text-xs text-slate-500">Personalize before sending</p>
-            </div>
-            <div class="space-y-4">
-              <div>
-                <label class="mb-2 block text-sm font-medium text-slate-700">Email Type</label>
-                <div class="relative">
-                  <button
-                    id="templateToggle"
-                    type="button"
-                    aria-expanded="false"
-                    aria-haspopup="listbox"
-                    aria-controls="templateMenu"
-                    class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-slate-700 shadow-sm transition-all duration-200 hover:border-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                  >
-                    <span id="selectedTemplate">Referral Request</span>
-                    <svg id="templateChevron" viewBox="0 0 24 24" fill="none" class="float-right mt-0.5 h-4 w-4 text-slate-500 transition-transform">
-                      <path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
-                  </button>
-                  <div id="templateMenu" role="listbox" aria-label="Email template" class="absolute z-20 mt-2 hidden w-full rounded-xl border border-slate-200 bg-white p-1 shadow-md">
-                    <button type="button" role="option" data-template="Referral Request" class="template-option block w-full rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Referral Request</button>
-                    <button type="button" role="option" data-template="Informational Chat" class="template-option block w-full rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Informational Chat</button>
-                    <button type="button" role="option" data-template="Recruiter Outreach" class="template-option block w-full rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Recruiter Outreach</button>
-                    <button type="button" role="option" data-template="Follow-up" class="template-option block w-full rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Follow-up</button>
-                    <button type="button" role="option" data-template="Custom Blank" class="template-option block w-full rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">Custom Blank</button>
-                    <button type="button" role="option" data-template="AI Draft (Pro)" class="template-option block w-full rounded-lg px-3 py-2.5 text-left text-sm text-slate-700 transition-all duration-200 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">AI Draft (Pro)</button>
+                <div id="phoneContactRow" class="ellyn-contact-row">
+                  <div class="ellyn-contact-field">
+                    <span id="phoneNumberText" class="ellyn-contact-value">Phone Number</span>
+                    <button id="copyPhoneBtn" type="button" class="ellyn-contact-copy-btn" aria-label="Copy phone number" disabled>
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.7" />
+                        <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.7" />
+                      </svg>
+                    </button>
                   </div>
+                  <button id="addToListContactBtn" type="button" class="ellyn-contact-cta" disabled>
+                    Add to List
+                  </button>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <button
-              id="generateDraftButton"
-              type="button"
-              class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-100 active:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-            >
-              Generate Draft
-            </button>
-
-            <div>
-              <label for="subjectInput" class="mb-2 block text-sm font-medium text-slate-700">Subject</label>
-              <input
-                id="subjectInput"
-                type="text"
-                class="ui-input h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-
-            <div>
-              <label for="messageInput" class="mb-2 block text-sm font-medium text-slate-700">Message</label>
-              <textarea
-                id="messageInput"
-                rows="9"
-                class="ui-input w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-              ></textarea>
-            </div>
-
-            <button
-              id="markSentButton"
-              type="button"
-              class="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-            >
-              Open in Gmail
-            </button>
-
-            <!-- Sent callout â€” shown after "Open in Gmail" is clicked -->
-            <div id="sentCallout" class="sent-callout hidden" role="status">
-              <p>Track replies and analytics in your dashboard</p>
-              <button id="sentCalloutAction" type="button" class="sent-callout-action">Open Analytics</button>
-              <button id="sentCalloutDismiss" type="button" class="sent-callout-dismiss" aria-label="Dismiss">X</button>
-            </div>
-          </article>
-
-          <div class="text-right">
-            <a
-              id="viewAllInDashboard"
-              href="#"
-              class="dash-view-link"
-              title="View sent contacts in your dashboard"
-            >View all in dashboard -></a>
+            <article class="ellyn-card ellyn-todo">
+              <h3>To-Do</h3>
+              <ul id="todoList" class="ellyn-todo-list"></ul>
+              <p id="todoEmptyState" class="ellyn-todo-empty hidden">No to-do items yet.</p>
+              <div id="todoInputRow" class="ellyn-todo-input-row hidden">
+                <input id="todoInput" type="text" class="ellyn-todo-input" maxlength="180" placeholder="Add a to-do item" />
+                <button id="todoSaveBtn" type="button" class="ellyn-todo-save-btn">Save</button>
+              </div>
+              <button id="todoAddMoreBtn" type="button" class="ellyn-todo-add">+ <span>Add More</span></button>
+            </article>
           </div>
-        </div>
-
-        <div id="stage3" class="hidden space-y-5">
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <div class="flex items-start justify-between">
-              <div>
-                <p class="text-xs font-medium uppercase tracking-wide text-slate-400">Outreach Contact</p>
-                <p id="trackingName" class="mt-2 text-xl font-semibold text-slate-900">John Doe</p>
-                <p id="trackingRole" class="mt-1 text-sm text-slate-500">Senior Recruiter</p>
-                <p id="trackingCompany" class="text-sm text-slate-500">Microsoft</p>
-              </div>
-              <span class="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-500">Stage 3</span>
-            </div>
-
-            <div class="mt-4 flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2.5">
-              <p id="trackingEmail" class="flex-1 text-sm font-medium text-slate-700">john.doe@microsoft.com</p>
-              <button
-                id="trackingCopyButton"
-                type="button"
-                aria-label="Copy email"
-                class="ui-icon-btn inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition-all duration-200 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-              >
-                <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4" aria-hidden="true">
-                  <rect x="9" y="9" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.5" />
-                  <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2" stroke="currentColor" stroke-width="1.5" />
-                </svg>
-              </button>
-            </div>
-          </article>
-
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <h2 class="text-base font-medium text-slate-900">Outreach Status</h2>
-            <p class="mt-1 text-xs text-slate-500">Track progression through your follow-up pipeline.</p>
-
-            <div class="mt-4">
-              <div class="grid grid-cols-4 gap-2 text-center text-xs font-medium">
-                <span id="stepLabelDrafted">Drafted</span>
-                <span id="stepLabelSent">Sent</span>
-                <span id="stepLabelReplied">Replied</span>
-                <span id="stepLabelScheduled">Scheduled</span>
-              </div>
-              <div class="mt-2 grid grid-cols-7 items-center gap-2">
-                <span id="stepDotDrafted" class="h-3 w-3 rounded-full border border-slate-300 bg-white"></span>
-                <span id="stepConn1" class="h-px w-full bg-slate-300"></span>
-                <span id="stepDotSent" class="h-3 w-3 rounded-full border border-slate-300 bg-white"></span>
-                <span id="stepConn2" class="h-px w-full bg-slate-300"></span>
-                <span id="stepDotReplied" class="h-3 w-3 rounded-full border border-slate-300 bg-white"></span>
-                <span id="stepConn3" class="h-px w-full bg-slate-300"></span>
-                <span id="stepDotScheduled" class="h-3 w-3 rounded-full border border-slate-300 bg-white"></span>
-              </div>
-            </div>
-          </article>
-
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <h2 class="text-base font-medium text-slate-900">Next Action</h2>
-            <p class="mt-1 text-xs text-slate-500">Advance outreach status as communication progresses.</p>
-            <button
-              id="trackingActionButton"
-              type="button"
-              class="mt-4 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-            >
-              Mark as Replied
-            </button>
-          </article>
-
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <label for="followUpDate" class="mb-2 block text-sm font-medium text-slate-700">Follow-up Reminder</label>
-            <input
-              id="followUpDate"
-              type="date"
-              class="ui-input h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-            />
-          </article>
-
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <button
-              id="notesToggle"
-              type="button"
-              class="notes-toggle-btn"
-              aria-expanded="false"
-              aria-controls="notesBody"
-            >
-              <svg id="notesChevron" viewBox="0 0 24 24" fill="none" class="notes-chevron" aria-hidden="true">
-                <path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-              Add a note
-            </button>
-            <div id="notesBody" class="hidden mt-3">
-              <textarea
-                id="notesInput"
-                rows="4"
-                class="ui-input w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 transition-all duration-200 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                placeholder="Add context about the conversation..."
-              ></textarea>
-            </div>
-          </article>
-
-          <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-200">
-            <h2 class="text-base font-medium text-slate-900">Timeline</h2>
-            <ul id="historyList" class="mt-4 space-y-3 text-sm text-slate-600"></ul>
-          </article>
-
-          <button
-            id="backToDraftButton"
-            type="button"
-            class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all duration-200 hover:bg-slate-100 active:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-          >
-            Back to Draft
-          </button>
-        </div>
         </section>
       </div>
     </main>
 
-    <!--
-      Draft view container â€” rendered and managed by draft-view.js.
-      Hidden by default; shown when opening the draft workspace.
-    -->
     <div id="draftViewContainer" class="hidden" aria-label="Draft workspace" role="region"></div>
-
-    <!--
-      Stats / settings view â€” rendered and managed by draft-stats-panel.js.
-      Shown when the user clicks the gear icon inside the Draft Generator view.
-      Same fixed overlay as draftViewContainer.
-    -->
     <div id="statsViewContainer" class="hidden" aria-label="Draft analytics" role="region"></div>
-
     <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
-    <!-- â”€â”€ Draft view component stack â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
-    <!-- Load order matters: each file depends on the globals above it.   -->
+
     <script src="utils/draft-analytics.js"></script>
     <script src="utils/role-detector.js"></script>
     <script src="utils/saved-templates.js"></script>
@@ -1530,10 +831,7 @@
     <script src="components/gmail-action-button.js"></script>
     <script src="components/draft-stats-panel.js"></script>
     <script src="views/draft-view.js"></script>
-    <!-- â”€â”€ Sidepanel core â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ -->
     <script src="utils/empty-states.js"></script>
     <script src="scripts/sidepanel.js"></script>
   </body>
 </html>
-
-

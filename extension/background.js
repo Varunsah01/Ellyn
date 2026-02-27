@@ -587,6 +587,10 @@ void bootstrapAuthStateFromSupabase();
 
 function normalizeContactSyncInput(value) {
   if (!value || typeof value !== 'object') return null;
+  const customFields =
+    value.customFields && typeof value.customFields === 'object' && !Array.isArray(value.customFields)
+      ? value.customFields
+      : {};
   return {
     firstName: String(value.firstName || '').trim(),
     lastName: String(value.lastName || '').trim(),
@@ -601,6 +605,9 @@ function normalizeContactSyncInput(value) {
     emailVerified: value.emailVerified === true,
     emailSource: String(value.emailSource || '').trim(),
     companyDomain: String(value.companyDomain || '').trim(),
+    phone: String(value.phone || value.phoneNumber || '').trim(),
+    phoneNumber: String(value.phoneNumber || value.phone || '').trim(),
+    customFields,
   };
 }
 
@@ -1100,6 +1107,134 @@ async function handleGenerateAiDraftGeminiMessage(message, sendResponse) {
   }
 }
 
+function normalizeCompanyBriefField(value, maxLength = 240) {
+  const normalized = String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return '';
+
+  const lower = normalized.toLowerCase();
+  const blockedValues = new Set([
+    'unknown',
+    'n/a',
+    'na',
+    'none',
+    'null',
+    'not available',
+    'not found',
+    '-',
+    '--',
+  ]);
+  if (blockedValues.has(lower)) {
+    return '';
+  }
+
+  return normalized.slice(0, maxLength);
+}
+
+function normalizeCompanyBriefYear(value) {
+  const candidate = normalizeCompanyBriefField(value, 20);
+  if (!candidate) return '';
+
+  const match = candidate.match(/\b(18|19|20)\d{2}\b/);
+  return match ? match[0] : '';
+}
+
+function normalizeCompanyBriefPayload(payload) {
+  return {
+    introBrief: normalizeCompanyBriefField(payload?.intro_brief || payload?.introBrief, 420),
+    sector: normalizeCompanyBriefField(payload?.sector, 140),
+    specialization: normalizeCompanyBriefField(payload?.specialization, 180),
+    yearOfIncorporation: normalizeCompanyBriefYear(
+      payload?.year_of_incorporation || payload?.yearOfIncorporation
+    ),
+  };
+}
+
+async function handleGetCompanyBriefGeminiMessage(message, sendResponse) {
+  try {
+    const authToken = await getAuthToken();
+    if (!authToken) {
+      sendResponse?.({
+        success: false,
+        error: 'Authentication required',
+      });
+      return;
+    }
+
+    const companyName = pickFirstInlineValue(
+      160,
+      message?.companyName,
+      message?.data?.companyName
+    );
+    const companyPageUrl = pickFirstInlineValue(
+      400,
+      message?.companyPageUrl,
+      message?.data?.companyPageUrl
+    );
+
+    if (!companyName) {
+      sendResponse?.({
+        success: false,
+        error: 'companyName is required',
+      });
+      return;
+    }
+
+    const webappUrl = String(CONFIG.WEBAPP_URL || CONFIG.API_BASE_URL || '')
+      .trim()
+      .replace(/\/+$/, '');
+    if (!webappUrl) {
+      throw new Error('WEBAPP_URL is not configured');
+    }
+
+    const response = await fetch(`${webappUrl}/api/v1/ai/company-brief`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        company_name: companyName,
+        ...(companyPageUrl ? { company_page_url: companyPageUrl } : {}),
+      }),
+      credentials: 'include',
+      cache: 'no-store',
+      signal: createTimeoutSignal(20000),
+    });
+
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+
+    if (!response.ok) {
+      const errorMessage =
+        getApiErrorMessage(payload) ||
+        `Company brief request failed (${response.status})`;
+      sendResponse?.({
+        success: false,
+        error: errorMessage,
+      });
+      return;
+    }
+
+    const normalized = normalizeCompanyBriefPayload(payload?.data || payload || {});
+    sendResponse?.({
+      success: true,
+      data: normalized,
+    });
+  } catch (error) {
+    sendResponse?.({
+      success: false,
+      error: error?.message || 'Failed to generate company brief',
+    });
+  }
+}
+
 // ============================================================================
 // MESSAGE HANDLERS
 // ============================================================================
@@ -1204,6 +1339,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'GET_COMPANY_BRIEF_GEMINI') {
+    void handleGetCompanyBriefGeminiMessage(message, sendResponse);
+    return true;
+  }
+
   if (message.type === 'GET_AUTH_TOKEN') {
     getAuthToken()
       .then((token) => sendResponse(token))
@@ -1222,6 +1362,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({
           allowed: false,
           error: error?.message || 'Failed to fetch quota',
+        });
+      });
+    return true;
+  }
+
+  if (message.type === 'CONSUME_LOOKUP_CREDITS') {
+    const requestedAmount = Number(message?.amount);
+    const amount = Number.isFinite(requestedAmount)
+      ? Math.max(1, Math.min(100, Math.floor(requestedAmount)))
+      : 1;
+
+    canPerformLookup(amount)
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        console.error('[Extension] CONSUME_LOOKUP_CREDITS failed:', error);
+        sendResponse({
+          allowed: false,
+          remaining: null,
+          resetDate: null,
+          requestedCost: amount,
+          error: error?.message || 'Failed to consume credits',
         });
       });
     return true;
@@ -1364,16 +1525,22 @@ async function checkQuota() {
   };
 }
 
-async function canPerformLookup() {
+async function canPerformLookup(cost = 1) {
   if (!quotaClient) {
     return {
       allowed: true,
       remaining: null,
       resetDate: null,
       warning: 'Quota manager unavailable',
+      requestedCost: Number.isFinite(Number(cost))
+        ? Math.max(1, Math.min(100, Math.floor(Number(cost))))
+        : 1,
     };
   }
-  const quotaCheck = await quotaClient.canPerformLookup();
+  const requestedCost = Number.isFinite(Number(cost))
+    ? Math.max(1, Math.min(100, Math.floor(Number(cost))))
+    : 1;
+  const quotaCheck = await quotaClient.canPerformLookup(requestedCost);
   if (!CONFIG.DISABLE_CREDIT_LIMITS) {
     return quotaCheck;
   }
@@ -1381,6 +1548,7 @@ async function canPerformLookup() {
     ...quotaCheck,
     allowed: true,
     warning: quotaCheck?.warning || 'Credit limits disabled',
+    requestedCost,
   };
 }
 

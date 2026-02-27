@@ -15,9 +15,16 @@ class QuotaManager {
     this.statusCacheAt = 0;
   }
 
-  async canPerformLookup() {
+  async canPerformLookup(cost = 1) {
+    const requestedCost = Number.isFinite(Number(cost))
+      ? Math.max(1, Math.min(100, Math.floor(Number(cost))))
+      : 1;
+
     try {
-      const response = await this.request('/api/v1/quota/check', { method: 'POST' });
+      const response = await this.request('/api/v1/quota/check', {
+        method: 'POST',
+        body: { cost: requestedCost },
+      });
 
       if (response.status === 429) {
         const resetDate = this.getPayloadValue(response.payload, 'resetDate') || null;
@@ -26,6 +33,7 @@ class QuotaManager {
           allowed: false,
           remaining,
           resetDate,
+          requestedCost,
         };
       }
 
@@ -36,6 +44,7 @@ class QuotaManager {
             remaining: 0,
             resetDate: null,
             error: 'Unauthorized',
+            requestedCost,
           };
         }
 
@@ -48,6 +57,7 @@ class QuotaManager {
           remaining: null,
           resetDate: null,
           warning: 'Quota check unavailable',
+          requestedCost,
         };
       }
 
@@ -58,6 +68,7 @@ class QuotaManager {
         allowed: Boolean(this.getPayloadValue(response.payload, 'allowed')),
         remaining: this.toMaybeNumber(this.getPayloadValue(response.payload, 'remaining')),
         resetDate: this.getPayloadValue(response.payload, 'resetDate') || null,
+        requestedCost,
       };
     } catch (error) {
       this.log('canPerformLookup error, allowing as fallback', this.serializeError(error));
@@ -66,6 +77,7 @@ class QuotaManager {
         remaining: null,
         resetDate: null,
         warning: 'Quota service unreachable',
+        requestedCost,
       };
     }
   }
