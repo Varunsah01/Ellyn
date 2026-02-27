@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
@@ -593,15 +593,27 @@ export function SequenceTemplateGallery({
   onSelectTemplate,
   onBlankCanvas,
 }: SequenceTemplateGalleryProps) {
-  const { isJobSeeker } = usePersona();
+  const { isJobSeeker, persona } = usePersona();
   const [activeTab, setActiveTab] = useState<FilterTab>(
     isJobSeeker ? "job_search" : "sales"
   );
   const [search, setSearch] = useState("");
   const [previewTemplate, setPreviewTemplate] = useState<SequenceTemplate | null>(null);
 
+  useEffect(() => {
+    setActiveTab(isJobSeeker ? "job_search" : "sales");
+  }, [isJobSeeker, persona]);
+
+  const personaTemplates = useMemo(
+    () =>
+      BUILT_IN_TEMPLATES.filter((template) =>
+        isJobSeeker ? template.category === "job_search" : template.category === "sales"
+      ),
+    [isJobSeeker]
+  );
+
   const filtered = useMemo(() => {
-    return BUILT_IN_TEMPLATES.filter((t) => {
+    return personaTemplates.filter((t) => {
       const matchesTab = activeTab === "all" || t.category === activeTab;
       const query = search.trim().toLowerCase();
       const matchesSearch =
@@ -610,34 +622,44 @@ export function SequenceTemplateGallery({
         t.description.toLowerCase().includes(query);
       return matchesTab && matchesSearch;
     });
-  }, [activeTab, search]);
+  }, [activeTab, personaTemplates, search]);
 
   const handleUse = (template: SequenceTemplate) => {
     const steps = templateToSequenceSteps(template.steps);
     onSelectTemplate(template.name, steps);
   };
 
-  const TABS: { value: FilterTab; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "job_search", label: "Job Search" },
-    { value: "sales", label: "Sales" },
-  ];
+  const tabs: { value: FilterTab; label: string }[] = isJobSeeker
+    ? [
+        { value: "all", label: "All" },
+        { value: "job_search", label: "Job Search" },
+      ]
+    : [
+        { value: "all", label: "All" },
+        { value: "sales", label: "Sales" },
+      ];
+
+  const heading = isJobSeeker
+    ? "Start from a job search sequence"
+    : "Start from a sales sequence";
+
+  const subtitle = isJobSeeker
+    ? "Follow-up sequences for applications, networking & recruiter outreach"
+    : "Cold outreach campaigns, nurture sequences & deal follow-ups";
 
   return (
     <div className="space-y-6">
       {/* Page title area */}
       <div>
-        <h2 className="text-xl font-semibold">Start from a template</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          Pick a pre-built sequence or build your own from scratch.
-        </p>
+        <h2 className="text-xl font-semibold">{heading}</h2>
+        <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>
       </div>
 
       {/* Filter bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
         {/* Tabs */}
         <div className="flex gap-1 p-1 bg-muted rounded-lg">
-          {TABS.map((tab) => (
+          {tabs.map((tab) => (
             <button
               key={tab.value}
               type="button"

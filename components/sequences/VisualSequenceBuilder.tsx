@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import {
   GripVertical,
@@ -19,6 +19,7 @@ import { SequenceStep, StepType, ConditionType } from "@/lib/types/sequence";
 import { generateStepId } from "@/lib/utils/sequence-utils";
 import { Reorder, motion, AnimatePresence } from "framer-motion";
 import { StepConfigPanel } from "@/components/sequences/StepConfigPanel";
+import { usePersona } from "@/context/PersonaContext";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -106,14 +107,27 @@ export function VisualSequenceBuilder({
   templates = [],
   enrolledCount = 0,
 }: VisualSequenceBuilderProps) {
+  const { isSalesRep } = usePersona();
   const [editingStep, setEditingStep] = useState<SequenceStep | null>(null);
   const [editingIndex, setEditingIndex] = useState(0);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
 
+  const availableStepTypes = useMemo(
+    () =>
+      isSalesRep
+        ? STEP_TYPE_PALETTE
+        : STEP_TYPE_PALETTE.filter((type) => type !== "linkedin"),
+    [isSalesRep]
+  );
+
   const totalDays = steps.reduce((acc, s) => acc + s.delay_days, 0);
 
   const openAddStep = (type: StepType) => {
+    if (!isSalesRep && type === "linkedin") {
+      return;
+    }
+
     const order = steps.length + 1;
     const newStep: SequenceStep = {
       id: generateStepId(),
@@ -280,6 +294,7 @@ export function VisualSequenceBuilder({
               transition={{ duration: 0.14 }}
             >
               <StepTypePalette
+                stepTypes={availableStepTypes}
                 onSelect={openAddStep}
                 onClose={() => setShowPalette(false)}
               />
@@ -410,11 +425,12 @@ function StepNode({ step, index, onEdit, onDuplicate, onDelete }: StepNodeProps)
 }
 
 interface StepTypePaletteProps {
+  stepTypes: StepType[];
   onSelect: (type: StepType) => void;
   onClose: () => void;
 }
 
-function StepTypePalette({ onSelect, onClose }: StepTypePaletteProps) {
+function StepTypePalette({ stepTypes, onSelect, onClose }: StepTypePaletteProps) {
   return (
     <div className="border rounded-xl bg-card shadow-md p-3">
       <div className="flex items-center justify-between mb-3">
@@ -430,7 +446,7 @@ function StepTypePalette({ onSelect, onClose }: StepTypePaletteProps) {
         </button>
       </div>
       <div className="grid grid-cols-4 gap-2">
-        {STEP_TYPE_PALETTE.map((type) => {
+        {stepTypes.map((type) => {
           const { label, Icon, color, bg, border } = STEP_TYPE_CONFIG[type];
           return (
             <button

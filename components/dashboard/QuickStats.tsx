@@ -8,6 +8,8 @@ import { ArrowRight, TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import type { TopSequence } from "@/lib/hooks/useSequences";
+import { usePersona } from "@/context/PersonaContext";
+import { getPersonaCopy } from "@/lib/persona-copy";
 
 interface Contact {
   id: string;
@@ -43,6 +45,9 @@ export function QuickStats({
   onViewAllContacts,
   onViewAllSequences,
 }: QuickStatsProps) {
+  const { persona } = usePersona();
+  const copy = getPersonaCopy(persona);
+
   return (
     <div className="space-y-4">
       {/* Recent Contacts */}
@@ -50,7 +55,7 @@ export function QuickStats({
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-base">Recent Contacts</CardTitle>
+              <CardTitle className="text-base">Recent {copy.contacts}</CardTitle>
               {contactsLive ? (
                 <Badge
                   variant="outline"
@@ -84,15 +89,15 @@ export function QuickStats({
             </div>
           ) : recentContacts.length === 0 ? (
             <div className="py-4 text-center">
-              <p className="text-sm font-medium text-slate-900">No contacts yet</p>
+              <p className="text-sm font-medium text-slate-900">{copy.emptyContacts}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Contacts you save from LinkedIn will appear here
+                {copy.extensionCTA}
               </p>
               <Link
                 href="/dashboard/contacts"
                 className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
               >
-                Go to Contacts &rarr;
+                {copy.nextStepContactsCTA} &rarr;
               </Link>
             </div>
           ) : (
@@ -125,7 +130,7 @@ export function QuickStats({
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Top Sequences</CardTitle>
+            <CardTitle className="text-base">Top {copy.sequences}</CardTitle>
             {onViewAllSequences && (
               <Button variant="ghost" size="sm" onClick={onViewAllSequences} asChild>
                 <Link href="/dashboard/sequences">
@@ -152,7 +157,9 @@ export function QuickStats({
             </div>
           ) : topSequences.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-              <p className="text-sm font-medium text-slate-900">No templates yet</p>
+              <p className="text-sm font-medium text-slate-900">
+                {copy.statsTemplatesEmptyMessage}
+              </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 Create reusable email templates to speed up outreach
               </p>
@@ -160,7 +167,7 @@ export function QuickStats({
                 href="/dashboard/templates"
                 className="mt-2 inline-block text-xs font-medium text-primary hover:underline"
               >
-                Create a template &rarr;
+                {copy.nextStepTemplatesCTA} &rarr;
               </Link>
             </div>
           ) : (

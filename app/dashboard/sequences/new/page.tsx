@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button"
 import { ArrowLeft } from "lucide-react"
 import { SequenceStep } from "@/lib/types/sequence"
 import { showToast } from "@/lib/toast"
+import { usePersona } from "@/context/PersonaContext"
 
 type PageState =
   | { view: "gallery" }
@@ -17,7 +18,16 @@ type PageState =
 
 export default function NewSequencePage() {
   const router = useRouter()
+  const { isJobSeeker } = usePersona()
   const [state, setState] = useState<PageState>({ view: "gallery" })
+
+  const galleryTitle = isJobSeeker
+    ? "New Job Search Sequence"
+    : "New Sales Sequence"
+
+  const galleryDescription = isJobSeeker
+    ? "Choose a job search template or build from scratch."
+    : "Choose a sales template or build from scratch."
 
   const handleSelectTemplate = (name: string, steps: SequenceStep[]) => {
     setState({ view: "builder", initialName: name, initialSteps: steps })
@@ -68,8 +78,8 @@ export default function NewSequencePage() {
     <DashboardShell>
       <div className="max-w-5xl mx-auto space-y-6">
         <PageHeader
-          title="New Sequence"
-          description="Choose a template to get started quickly, or build from scratch."
+          title={galleryTitle}
+          description={galleryDescription}
         />
         <SequenceTemplateGallery
           onSelectTemplate={handleSelectTemplate}

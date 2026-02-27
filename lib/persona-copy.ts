@@ -23,6 +23,21 @@ export type PersonaCopy = {
   nextStepTemplatesDesc: string
   nextStepTemplatesCTA: string
   addContactCTA: string
+  statsContactsEmptyMessage: string
+  statsDiscoveredEmptyMessage: string
+  statsTemplatesEmptyMessage: string
+  statsEmailsNoDataLabel: string
+  statsEmailsEmptyMessage: string
+  quickActionsTitle: string
+  quickActionFindEmail: string
+  quickActionFindEmailDesc: string
+  quickActionBrowseTemplates: string
+  quickActionBrowseTemplatesDesc: string
+  quickActionStartSequence: string
+  quickActionStartSequenceDesc: string
+  quickActionTemplatesHref: string
+  quickActionSequenceIcon: 'mail' | 'rocket'
+  personaBannerText: string
   // Sidebar toggle label
   personaLabel: string
 }
@@ -50,7 +65,22 @@ export function getPersonaCopy(persona: Persona): PersonaCopy {
       nextStepTemplatesTitle: 'Create reusable templates',
       nextStepTemplatesDesc: 'Save outreach templates so sending is faster.',
       nextStepTemplatesCTA: 'Manage Templates',
-      addContactCTA: 'Add Contact',
+      addContactCTA: 'Save Lead',
+      statsContactsEmptyMessage: 'Save leads via the Chrome extension',
+      statsDiscoveredEmptyMessage: 'Discover leads via the extension',
+      statsTemplatesEmptyMessage: 'Create your first sales template',
+      statsEmailsNoDataLabel: 'No data yet',
+      statsEmailsEmptyMessage: 'No sales emails sent yet',
+      quickActionsTitle: 'Sales Quick Actions',
+      quickActionFindEmail: 'Find Lead Email',
+      quickActionFindEmailDesc: 'Find and save verified lead emails fast.',
+      quickActionBrowseTemplates: 'Browse Sales Templates',
+      quickActionBrowseTemplatesDesc: 'Use ready-made outreach and follow-up templates.',
+      quickActionStartSequence: 'Launch Sales Sequence',
+      quickActionStartSequenceDesc: 'Start a multi-step outbound sales campaign.',
+      quickActionTemplatesHref: '/dashboard/templates?category=sales_outreach',
+      quickActionSequenceIcon: 'rocket',
+      personaBannerText: 'Enterprise Mode — showing sales tools & templates',
       personaLabel: 'Enterprise',
     }
   }
@@ -77,6 +107,21 @@ export function getPersonaCopy(persona: Persona): PersonaCopy {
     nextStepTemplatesDesc: 'Save cold email templates for job search.',
     nextStepTemplatesCTA: 'Manage Templates',
     addContactCTA: 'Save Profile',
+    statsContactsEmptyMessage: 'Save profiles via the Chrome extension',
+    statsDiscoveredEmptyMessage: 'Discover companies and contacts via the extension',
+    statsTemplatesEmptyMessage: 'Create your first job search template',
+    statsEmailsNoDataLabel: 'No data yet',
+    statsEmailsEmptyMessage: 'No outreach sent yet',
+    quickActionsTitle: 'Job Search Quick Actions',
+    quickActionFindEmail: 'Find Hiring Manager Email',
+    quickActionFindEmailDesc: 'Research contacts and save recruiter emails quickly.',
+    quickActionBrowseTemplates: 'Browse Job Search Templates',
+    quickActionBrowseTemplatesDesc: 'Open job search, networking, and follow-up templates.',
+    quickActionStartSequence: 'Start Follow-Up Sequence',
+    quickActionStartSequenceDesc: 'Launch a multi-step job search follow-up sequence.',
+    quickActionTemplatesHref: '/dashboard/templates?category=job_search',
+    quickActionSequenceIcon: 'mail',
+    personaBannerText: 'Job Seeker Mode — showing job search tools & templates',
     personaLabel: 'Job Seeker',
   }
 }

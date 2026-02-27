@@ -48,14 +48,22 @@ function LeadHeat({ probability }: { probability: number }) {
 interface DealCardProps {
   deal: Deal
   isDragging?: boolean
+  mode?: "job_seeker" | "smb_sales"
   onClick: () => void
 }
 
-export function DealCard({ deal, isDragging, onClick }: DealCardProps) {
+export function DealCard({
+  deal,
+  isDragging,
+  mode = "smb_sales",
+  onClick,
+}: DealCardProps) {
   const contactName = deal.contacts
     ? `${deal.contacts.first_name} ${deal.contacts.last_name}`.trim()
     : null
 
+  const dateApplied = format(parseISO(deal.created_at), "MMM d, yyyy")
+  const lastActivity = format(parseISO(deal.updated_at), "MMM d, yyyy")
   const closeDate = deal.expected_close ? parseISO(deal.expected_close) : null
   const isOverdue =
     closeDate && isPast(closeDate) && deal.stage !== "won" && deal.stage !== "lost"
@@ -71,59 +79,77 @@ export function DealCard({ deal, isDragging, onClick }: DealCardProps) {
       )}
       onClick={onClick}
     >
-      {/* Header */}
       <div className="flex items-start justify-between gap-1 mb-1.5">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold leading-tight truncate">{deal.company}</p>
-          {contactName && (
-            <p className="text-xs text-muted-foreground truncate">{contactName}</p>
-          )}
         </div>
         <GripVertical className="h-4 w-4 text-muted-foreground/30 flex-shrink-0 mt-0.5 group-hover:text-muted-foreground/60 transition-colors" />
       </div>
 
-      {/* Title */}
-      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{deal.title}</p>
-
-      {/* Value row */}
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <span className="text-sm font-semibold text-foreground">
-          {formatCurrency(deal.value, deal.currency)}
-        </span>
-        <ProbabilityPill value={deal.probability} />
-      </div>
-
-      {/* Meta row */}
-      <div className="flex items-center justify-between">
-        <LeadHeat probability={deal.probability} />
-        {closeDate && (
-          <span
-            className={cn(
-              "flex items-center gap-1 text-[10px]",
-              isOverdue ? "text-red-500 font-medium" : "text-muted-foreground"
-            )}
-          >
-            <Calendar className="h-3 w-3 flex-shrink-0" />
-            {isOverdue ? "Overdue · " : ""}
-            {format(closeDate, "MMM d")}
-          </span>
-        )}
-      </div>
-
-      {/* Tags */}
-      {deal.tags && deal.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-2">
-          {deal.tags.slice(0, 2).map((tag) => (
-            <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-              {tag}
-            </Badge>
-          ))}
-          {deal.tags.length > 2 && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-              +{deal.tags.length - 2}
-            </Badge>
-          )}
+      {mode === "job_seeker" ? (
+        <div className="space-y-1.5">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Role:</span>{" "}
+            {deal.title || "—"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Date Applied:</span>{" "}
+            {dateApplied}
+          </p>
+          <p className="text-xs text-muted-foreground truncate">
+            <span className="font-medium text-foreground">Contact Name:</span>{" "}
+            {contactName || "—"}
+          </p>
         </div>
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground truncate">
+            <span className="font-medium text-foreground">Contact:</span>{" "}
+            {contactName || "—"}
+          </p>
+
+          <div className="flex items-center justify-between gap-2 mt-2">
+            <span className="text-sm font-semibold text-foreground">
+              {formatCurrency(deal.value, deal.currency)}
+            </span>
+            <ProbabilityPill value={deal.probability} />
+          </div>
+
+          <div className="flex items-center justify-between mt-1.5">
+            <LeadHeat probability={deal.probability} />
+            <span className="text-[10px] text-muted-foreground">
+              Last Activity: {lastActivity}
+            </span>
+          </div>
+
+          {closeDate && (
+            <span
+              className={cn(
+                "mt-1 inline-flex items-center gap-1 text-[10px]",
+                isOverdue ? "text-red-500 font-medium" : "text-muted-foreground"
+              )}
+            >
+              <Calendar className="h-3 w-3 flex-shrink-0" />
+              {isOverdue ? "Overdue - " : ""}
+              {format(closeDate, "MMM d")}
+            </span>
+          )}
+
+          {deal.tags && deal.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {deal.tags.slice(0, 2).map((tag) => (
+                <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                  {tag}
+                </Badge>
+              ))}
+              {deal.tags.length > 2 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                  +{deal.tags.length - 2}
+                </Badge>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

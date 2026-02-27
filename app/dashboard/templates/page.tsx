@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import type { LucideIcon } from "lucide-react"
 import {
   BookOpen,
@@ -42,19 +43,112 @@ import {
 import { Textarea } from "@/components/ui/Textarea"
 import { usePersona } from "@/context/PersonaContext"
 import { supabaseAuthedFetch } from "@/lib/auth/client-fetch"
+import { getPersonaCopy } from "@/lib/persona-copy"
 import { extractVariables } from "@/lib/template-variables"
 import { showToast } from "@/lib/toast"
 import { cn } from "@/lib/utils"
+import { AnimatePresence, motion } from "framer-motion"
 
-type TabKey = "all" | "job_seeker" | "smb_sales" | "mine"
+type TabKey =
+  | "all"
+  | "job_search"
+  | "networking"
+  | "follow_up"
+  | "sales_outreach"
+  | "enterprise"
+  | "mine"
 type AiUseCase = "job_seeker" | "smb_sales" | "general"
 
-const TABS: { key: TabKey; label: string; icon: LucideIcon }[] = [
+type TemplateDisplayCategory =
+  | "job_search"
+  | "networking"
+  | "follow_up"
+  | "sales_outreach"
+  | "enterprise"
+  | "other"
+
+const JOB_SEEKER_TABS: { key: TabKey; label: string; icon: LucideIcon }[] = [
   { key: "all", label: "All Templates", icon: BookOpen },
-  { key: "job_seeker", label: "Job Search", icon: Briefcase },
-  { key: "smb_sales", label: "Sales Outreach", icon: TrendingUp },
+  { key: "job_search", label: "Job Search", icon: Briefcase },
+  { key: "networking", label: "Networking", icon: User },
+  { key: "follow_up", label: "Follow-Up", icon: WandSparkles },
   { key: "mine", label: "My Templates", icon: User },
 ]
+
+const SMB_SALES_TABS: { key: TabKey; label: string; icon: LucideIcon }[] = [
+  { key: "all", label: "All Templates", icon: BookOpen },
+  { key: "sales_outreach", label: "Sales Outreach", icon: TrendingUp },
+  { key: "follow_up", label: "Follow-Up", icon: WandSparkles },
+  { key: "enterprise", label: "Enterprise", icon: TrendingUp },
+  { key: "mine", label: "My Templates", icon: User },
+]
+
+const FOLLOW_UP_HINTS = [
+  "follow_up",
+  "follow-up",
+  "follow up",
+  "followup",
+  "nudge",
+  "breakup",
+  "last attempt",
+  "re_engagement",
+  "re-engagement",
+  "closing the loop",
+]
+
+const NETWORKING_HINTS = [
+  "network",
+  "referral",
+  "informational",
+  "alumni",
+  "connection",
+  "intro",
+]
+
+function classifyTemplateCategory(template: TemplateItem): TemplateDisplayCategory {
+  const rawCategory = String(template.category || "").trim().toLowerCase()
+  const useCase = String(template.use_case || "").trim().toLowerCase()
+  const name = String(template.name || "").trim().toLowerCase()
+  const subject = String(template.subject || "").trim().toLowerCase()
+  const tags = (template.tags || [])
+    .map((tag) => String(tag || "").trim().toLowerCase())
+    .join(" ")
+  const text = [rawCategory, useCase, name, subject, tags].join(" ")
+
+  if (
+    rawCategory === "job_search" ||
+    rawCategory === "networking" ||
+    rawCategory === "follow_up" ||
+    rawCategory === "sales_outreach" ||
+    rawCategory === "enterprise"
+  ) {
+    return rawCategory
+  }
+
+  if (FOLLOW_UP_HINTS.some((hint) => text.includes(hint))) {
+    return "follow_up"
+  }
+
+  if (rawCategory === "job_seeker") {
+    if (NETWORKING_HINTS.some((hint) => text.includes(hint))) {
+      return "networking"
+    }
+    return "job_search"
+  }
+
+  if (rawCategory === "smb_sales") {
+    if (text.includes("enterprise")) {
+      return "enterprise"
+    }
+    return "sales_outreach"
+  }
+
+  if (rawCategory === "general" || rawCategory === "custom") {
+    return "follow_up"
+  }
+
+  return "other"
+}
 
 const TONE_OPTIONS = [
   "professional",
@@ -169,7 +263,9 @@ function readApiErrorMessage(payload: unknown): string {
 }
 
 export default function TemplatesPage() {
-  const { isJobSeeker, isSalesRep } = usePersona()
+  const router = useRouter()
+  const { persona, isJobSeeker, isSalesRep } = usePersona()
+  const personaCopy = useMemo(() => getPersonaCopy(persona), [persona])
   const { saveTemplate } = useSaveToExtension()
 
   const [userTemplates, setUserTemplates] = useState<TemplateItem[]>([])
@@ -200,26 +296,24 @@ export default function TemplatesPage() {
     null
   )
 
-  const hasSetDefaultTabRef = useRef(false)
+  const visibleTabs = useMemo(
+    () => (isJobSeeker ? JOB_SEEKER_TABS : SMB_SALES_TABS),
+    [isJobSeeker]
+  )
 
   useEffect(() => {
-    if (hasSetDefaultTabRef.current) return
-
-    if (isJobSeeker) {
-      setActiveTab("job_seeker")
-      hasSetDefaultTabRef.current = true
-      return
-    }
-
-    if (isSalesRep) {
-      setActiveTab("smb_sales")
-      hasSetDefaultTabRef.current = true
-    }
-  }, [isJobSeeker, isSalesRep])
+    const valid = visibleTabs.some((tab) => tab.key === activeTab)
+    if (valid) return
+    setActiveTab(isJobSeeker ? "job_search" : "sales_outreach")
+  }, [activeTab, isJobSeeker, visibleTabs])
 
   const inferredUseCase = useMemo<AiUseCase>(() => {
-    if (activeTab === "job_seeker") return "job_seeker"
-    if (activeTab === "smb_sales") return "smb_sales"
+    if (activeTab === "job_search" || activeTab === "networking") {
+      return "job_seeker"
+    }
+    if (activeTab === "sales_outreach" || activeTab === "enterprise") {
+      return "smb_sales"
+    }
     if (isJobSeeker) return "job_seeker"
     if (isSalesRep) return "smb_sales"
     return "general"
@@ -229,8 +323,8 @@ export default function TemplatesPage() {
     setLoading(true)
     try {
       const [userRes, systemRes] = await Promise.all([
-        supabaseAuthedFetch("/api/v1/templates"),
-        supabaseAuthedFetch("/api/templates/system"),
+        supabaseAuthedFetch("/api/v1/templates", { cache: "no-store" }),
+        supabaseAuthedFetch("/api/templates/system", { cache: "no-store" }),
       ])
 
       const [userPayload, systemPayload] = await Promise.all([
@@ -267,28 +361,57 @@ export default function TemplatesPage() {
     [systemTemplates, userTemplates]
   )
 
-  const counts = useMemo(
+  const userTemplateIds = useMemo(
+    () => new Set(userTemplates.map((template) => template.id)),
+    [userTemplates]
+  )
+
+  const isVisibleInAll = useCallback(
+    (template: TemplateItem) => {
+      if (userTemplateIds.has(template.id)) return true
+
+      const category = classifyTemplateCategory(template)
+      if (isJobSeeker) {
+        return category !== "sales_outreach" && category !== "enterprise"
+      }
+      return category !== "job_search" && category !== "networking"
+    },
+    [isJobSeeker, userTemplateIds]
+  )
+
+  const counts = useMemo<Record<TabKey, number>>(
     () => ({
-      all: allTemplates.length,
-      job_seeker: allTemplates.filter((template) => template.category === "job_seeker")
-        .length,
-      smb_sales: allTemplates.filter((template) => template.category === "smb_sales")
-        .length,
+      all: allTemplates.filter(isVisibleInAll).length,
+      job_search: allTemplates.filter(
+        (template) => classifyTemplateCategory(template) === "job_search"
+      ).length,
+      networking: allTemplates.filter(
+        (template) => classifyTemplateCategory(template) === "networking"
+      ).length,
+      follow_up: allTemplates.filter(
+        (template) => classifyTemplateCategory(template) === "follow_up"
+      ).length,
+      sales_outreach: allTemplates.filter(
+        (template) => classifyTemplateCategory(template) === "sales_outreach"
+      ).length,
+      enterprise: allTemplates.filter(
+        (template) => classifyTemplateCategory(template) === "enterprise"
+      ).length,
       mine: userTemplates.length,
     }),
-    [allTemplates, userTemplates]
+    [allTemplates, isVisibleInAll, userTemplates.length]
   )
 
   const filteredTemplates = useMemo(() => {
     let list: TemplateItem[]
     if (activeTab === "mine") {
       list = userTemplates
-    } else if (activeTab === "job_seeker") {
-      list = allTemplates.filter((template) => template.category === "job_seeker")
-    } else if (activeTab === "smb_sales") {
-      list = allTemplates.filter((template) => template.category === "smb_sales")
+    } else if (activeTab === "all") {
+      list = allTemplates.filter(isVisibleInAll)
     } else {
-      list = allTemplates
+      list = allTemplates.filter(
+        (template) => classifyTemplateCategory(template) === activeTab
+      )
     }
 
     const query = search.trim().toLowerCase()
@@ -301,16 +424,32 @@ export default function TemplatesPage() {
         template.body.toLowerCase().includes(query)
       )
     })
-  }, [activeTab, allTemplates, search, userTemplates])
+  }, [activeTab, allTemplates, isVisibleInAll, search, userTemplates])
+
+  const activeTabLabel = useMemo(
+    () => visibleTabs.find((tab) => tab.key === activeTab)?.label ?? "Templates",
+    [activeTab, visibleTabs]
+  )
+
+  const pageSubtitle =
+    personaCopy.personaLabel === "Job Seeker"
+      ? "Job search emails, cover letters & networking messages"
+      : "Cold outreach, sales sequences & follow-up emails"
+
+  const EmptyStateIcon = isJobSeeker ? Briefcase : TrendingUp
+  const emptyStateText = isJobSeeker
+    ? "No job search templates yet"
+    : "No sales templates yet"
+  const emptyStateCta = isJobSeeker
+    ? "Create your first job search template"
+    : "Create your first sales template"
 
   const handleNew = useCallback(() => {
-    setEditingTemplate(null)
-    setEditorOpen(true)
-  }, [])
+    router.push("/dashboard/templates/new")
+  }, [router])
 
   const handleOpenQuickDraft = () => {
-    setQuickDraftOpen(true)
-    setQuickDraftError(null)
+    router.push("/dashboard/templates/new?mode=blank")
   }
 
   const handleEdit = (template: TemplateItem) => {
@@ -605,47 +744,57 @@ export default function TemplatesPage() {
           </div>
 
           <nav className="space-y-0.5 pt-1">
-            {TABS.map((tab) => {
-              const Icon = tab.icon
-              const isActive = activeTab === tab.key
+            <AnimatePresence mode="popLayout" initial={false}>
+              {visibleTabs.map((tab) => {
+                const Icon = tab.icon
+                const isActive = activeTab === tab.key
 
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
-                    isActive
-                      ? "bg-violet-50 font-medium text-violet-700"
-                      : "text-muted-foreground hover:bg-muted"
-                  )}
-                >
-                  <Icon className="h-4 w-4 flex-shrink-0" />
-                  <span className="flex-1 text-left">{tab.label}</span>
-                  {tab.key === "mine" ? (
-                    <span
+                return (
+                  <motion.div
+                    key={`${persona}:${tab.key}`}
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <button
+                      onClick={() => setActiveTab(tab.key)}
                       className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
                         isActive
-                          ? "bg-violet-100 text-violet-700"
-                          : "bg-slate-100 text-slate-600"
+                          ? "bg-violet-50 font-medium text-violet-700"
+                          : "text-muted-foreground hover:bg-muted"
                       )}
                     >
-                      {counts.mine}
-                    </span>
-                  ) : (
-                    <span
-                      className={cn(
-                        "text-xs tabular-nums",
-                        isActive ? "text-violet-500" : "text-muted-foreground"
+                      <Icon className="h-4 w-4 flex-shrink-0" />
+                      <span className="flex-1 text-left">{tab.label}</span>
+                      {tab.key === "mine" ? (
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                            isActive
+                              ? "bg-violet-100 text-violet-700"
+                              : "bg-slate-100 text-slate-600"
+                          )}
+                        >
+                          {counts.mine}
+                        </span>
+                      ) : (
+                        <span
+                          className={cn(
+                            "text-xs tabular-nums",
+                            isActive ? "text-violet-500" : "text-muted-foreground"
+                          )}
+                        >
+                          {counts[tab.key]}
+                        </span>
                       )}
-                    >
-                      {counts[tab.key]}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+                    </button>
+                  </motion.div>
+                )
+              })}
+            </AnimatePresence>
           </nav>
         </aside>
 
@@ -659,10 +808,13 @@ export default function TemplatesPage() {
                 Templates
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
+                {pageSubtitle}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 {filteredTemplates.length} template
                 {filteredTemplates.length !== 1 ? "s" : ""}
                 {activeTab !== "all"
-                  ? ` in ${TABS.find((tab) => tab.key === activeTab)?.label}`
+                  ? ` in ${activeTabLabel}`
                   : ""}
               </p>
             </div>
@@ -699,11 +851,11 @@ export default function TemplatesPage() {
             </div>
           ) : filteredTemplates.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
-              <BookOpen className="mb-3 h-10 w-10 text-muted-foreground/40" />
+              <EmptyStateIcon className="mb-3 h-10 w-10 text-muted-foreground/40" />
               <p className="text-sm font-medium text-muted-foreground">
-                {search ? "No templates match your search" : "No templates yet"}
+                {search ? "No templates match your search" : emptyStateText}
               </p>
-              {!search && activeTab === "mine" && (
+              {!search && (
                 <Button
                   size="sm"
                   className="mt-4"
@@ -711,7 +863,7 @@ export default function TemplatesPage() {
                   onClick={handleNew}
                 >
                   <Plus className="mr-1.5 h-4 w-4" />
-                  Create your first template
+                  {emptyStateCta}
                 </Button>
               )}
             </div>

@@ -115,6 +115,7 @@ export default function SequencesPage() {
   const router = useRouter()
   const { persona } = usePersona()
   const copy = getPersonaCopy(persona)
+  const isJobSeeker = persona === "job_seeker"
 
   const [sequences, setSequences] = useState<Sequence[]>([])
   const [digest, setDigest] = useState<DigestItem[]>([])
@@ -310,6 +311,12 @@ export default function SequencesPage() {
     : sequences
 
   const activeCount = sequences.filter((s) => s.status === "active").length
+  const sequenceHeaderDescription = isJobSeeker
+    ? "Automate your job search follow-ups"
+    : "Automate your sales outreach"
+  const emptyStateDescription = isJobSeeker
+    ? "No sequences yet - create a follow-up sequence for your job search"
+    : "No sequences yet - create a sales outreach sequence"
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -317,7 +324,7 @@ export default function SequencesPage() {
     <DashboardShell breadcrumbs={[{ label: copy.sequences }]}>
       <PageHeader
         title={copy.sequences}
-        description="Automate follow-ups and track performance across contacts"
+        description={sequenceHeaderDescription}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -418,20 +425,15 @@ export default function SequencesPage() {
               <p className="text-sm font-medium">
                 {searchQuery
                   ? "No sequences match your search"
-                  : "No sequences yet"}
+                  : emptyStateDescription}
               </p>
               {!searchQuery && (
-                <>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Create your first sequence to automate follow-ups
-                  </p>
-                  <Button className="mt-4" size="sm" asChild>
-                    <Link href="/dashboard/sequences/new">
-                      <Plus className="mr-2 h-4 w-4" />
-                      New Sequence
-                    </Link>
-                  </Button>
-                </>
+                <Button className="mt-4" size="sm" asChild>
+                  <Link href="/dashboard/sequences/new">
+                    <Plus className="mr-2 h-4 w-4" />
+                    New Sequence
+                  </Link>
+                </Button>
               )}
             </div>
           ) : (

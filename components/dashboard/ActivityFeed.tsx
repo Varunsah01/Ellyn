@@ -7,6 +7,8 @@ import { UserPlus, Mail, MessageSquare, Zap, Inbox, ArrowRight, FileText } from 
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import Link from "next/link";
+import { usePersona } from "@/context/PersonaContext";
+import { getPersonaCopy } from "@/lib/persona-copy";
 
 type ActivityType =
   | "contact_added"
@@ -50,6 +52,9 @@ export function ActivityFeed({
   hasMore = false,
   loading = false,
 }: ActivityFeedProps) {
+  const { persona } = usePersona();
+  const copy = getPersonaCopy(persona);
+
   const getActivityIcon = (type: ActivityItem["type"]) => {
     switch (type) {
       case "contact_added":
@@ -108,10 +113,10 @@ export function ActivityFeed({
               <Inbox className="mx-auto mb-3 h-10 w-10 text-slate-400" />
               <p className="text-base font-medium text-slate-900">No activity yet</p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Your outreach activity will appear here as you send emails and update contacts.
+                Your outreach activity will appear here as you send emails and update {copy.contacts.toLowerCase()}.
               </p>
               <Button asChild className="mt-4">
-                <Link href="/dashboard/contacts">Add your first contact</Link>
+                <Link href="/dashboard/contacts">{copy.addContactCTA}</Link>
               </Button>
             </div>
           ) : (

@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
 import {
   DndContext,
   DragOverlay,
@@ -50,11 +49,11 @@ import { cn } from "@/lib/utils"
 import { showToast } from "@/lib/toast"
 import { supabaseAuthedFetch } from "@/lib/auth/client-fetch"
 import { usePersona } from "@/context/PersonaContext"
+import { getPersonaCopy } from "@/lib/persona-copy"
 import { DealCard } from "@/components/pipeline/DealCard"
 import { DealFormDialog, type DealFormData } from "@/components/pipeline/DealFormDialog"
 import { WonDialog, LostDialog } from "@/components/pipeline/WonLostDialog"
 import {
-  STAGE_ORDER,
   STAGE_CONFIG,
   formatCurrency,
   type Deal,
@@ -67,6 +66,68 @@ interface ContactOption {
   id: string
   name: string
   company: string | null
+}
+
+const JOB_SEEKER_STAGES = [
+  "Saved",
+  "Applied",
+  "Phone Screen",
+  "Interview",
+  "Offer",
+  "Rejected",
+] as const
+
+const SALES_STAGES = [
+  "Prospecting",
+  "Contacted",
+  "Qualified",
+  "Proposal",
+  "Negotiation",
+  "Won",
+  "Lost",
+] as const
+
+type JobSeekerStageName = (typeof JOB_SEEKER_STAGES)[number]
+type SalesStageName = (typeof SALES_STAGES)[number]
+type PipelineStageName = JobSeekerStageName | SalesStageName
+
+const JOB_SEEKER_STAGE_TO_DEAL_STAGE: Record<JobSeekerStageName, DealStage> = {
+  Saved: "prospecting",
+  Applied: "contacted",
+  "Phone Screen": "interested",
+  Interview: "meeting",
+  Offer: "won",
+  Rejected: "lost",
+}
+
+const SALES_STAGE_TO_DEAL_STAGE: Record<SalesStageName, DealStage> = {
+  Prospecting: "prospecting",
+  Contacted: "contacted",
+  Qualified: "interested",
+  Proposal: "proposal",
+  Negotiation: "meeting",
+  Won: "won",
+  Lost: "lost",
+}
+
+const DEAL_STAGE_TO_JOB_SEEKER_STAGE: Record<DealStage, JobSeekerStageName> = {
+  prospecting: "Saved",
+  contacted: "Applied",
+  interested: "Phone Screen",
+  meeting: "Interview",
+  proposal: "Interview",
+  won: "Offer",
+  lost: "Rejected",
+}
+
+const DEAL_STAGE_TO_SALES_STAGE: Record<DealStage, SalesStageName> = {
+  prospecting: "Prospecting",
+  contacted: "Contacted",
+  interested: "Qualified",
+  meeting: "Negotiation",
+  proposal: "Proposal",
+  won: "Won",
+  lost: "Lost",
 }
 
 function laneValue(deals: Deal[]): number {
@@ -207,15 +268,28 @@ function RevenuePanel({ deals }: { deals: Deal[] }) {
 // ─── KanbanLane ───────────────────────────────────────────────────────────────
 
 interface KanbanLaneProps {
-  stage: DealStage
+  stage: PipelineStageName
+  stageLabel: string
+  stageColor: string
+  stageTextColor: string
+  cardMode: "job_seeker" | "smb_sales"
   deals: Deal[]
   isOver: boolean
   onCardClick: (d: Deal) => void
   activeId: string | null
 }
 
-function KanbanLane({ stage, deals, isOver, onCardClick, activeId }: KanbanLaneProps) {
-  const cfg = STAGE_CONFIG[stage]
+function KanbanLane({
+  stage,
+  stageLabel,
+  stageColor,
+  stageTextColor,
+  cardMode,
+  deals,
+  isOver,
+  onCardClick,
+  activeId,
+}: KanbanLaneProps) {
   const { setNodeRef } = useDroppable({ id: stage })
   const total = laneValue(deals)
 
@@ -225,13 +299,13 @@ function KanbanLane({ stage, deals, isOver, onCardClick, activeId }: KanbanLaneP
         "flex-shrink-0 w-64 flex flex-col rounded-xl border bg-muted/30 transition-all",
         isOver && "ring-2 ring-dashed ring-primary border-primary/40 bg-primary/5"
       )}
-      style={{ borderTopWidth: 3, borderTopColor: cfg.color }}
+      style={{ borderTopWidth: 3, borderTopColor: stageColor }}
     >
       {/* Lane header */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b gap-2">
         <div className="flex items-center gap-1.5 min-w-0 flex-1">
-          <span className={cn("text-xs font-semibold truncate", cfg.textColor)}>
-            {cfg.label}
+          <span className={cn("text-xs font-semibold truncate", stageTextColor)}>
+            {stageLabel}
           </span>
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -262,6 +336,7 @@ function KanbanLane({ stage, deals, isOver, onCardClick, activeId }: KanbanLaneP
                 deal={deal}
                 onCardClick={onCardClick}
                 isDraggingActive={activeId === deal.id}
+                cardMode={cardMode}
               />
             ))}
           </AnimatePresence>
@@ -283,10 +358,12 @@ function SortableDealCard({
   deal,
   onCardClick,
   isDraggingActive,
+  cardMode,
 }: {
   deal: Deal
   onCardClick: (d: Deal) => void
   isDraggingActive: boolean
+  cardMode: "job_seeker" | "smb_sales"
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: deal.id })
@@ -312,6 +389,7 @@ function SortableDealCard({
       <DealCard
         deal={deal}
         isDragging={isDraggingActive}
+        mode={cardMode}
         onClick={() => onCardClick(deal)}
       />
     </motion.div>
@@ -336,16 +414,24 @@ function DealTable({
   deals,
   onEdit,
   onDelete,
+  isJobSeeker,
+  stageLabelByDealStage,
+  emptyStateMessage,
+  addButtonLabel,
 }: {
   deals: Deal[]
   onEdit: (d: Deal) => void
   onDelete: (d: Deal) => void
+  isJobSeeker: boolean
+  stageLabelByDealStage: Record<DealStage, string>
+  emptyStateMessage: string
+  addButtonLabel: string
 }) {
   const [sortField, setSortField] = useState<SortField>(null)
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
   const sorted = useMemo(() => {
-    if (!sortField) return [...deals]
+    if (isJobSeeker || !sortField) return [...deals]
     return [...deals].sort((a, b) => {
       if (sortField === "value") {
         const av = a.value ?? -1
@@ -359,7 +445,7 @@ function DealTable({
       }
       return 0
     })
-  }, [deals, sortField, sortDir])
+  }, [deals, isJobSeeker, sortField, sortDir])
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -374,36 +460,48 @@ function DealTable({
     <div className="rounded-xl border bg-card overflow-hidden">
       <Table>
         <TableHeader>
-          <TableRow>
-            <TableHead className="pl-4">Company</TableHead>
-            <TableHead>Title</TableHead>
-            <TableHead
-              className="cursor-pointer select-none"
-              onClick={() => toggleSort("value")}
-            >
-              <div className="flex items-center gap-1">
-                Value
-                <SortIcon field="value" active={sortField} dir={sortDir} />
-              </div>
-            </TableHead>
-            <TableHead>Stage</TableHead>
-            <TableHead>Probability</TableHead>
-            <TableHead
-              className="cursor-pointer select-none"
-              onClick={() => toggleSort("expected_close")}
-            >
-              <div className="flex items-center gap-1">
-                Close Date
-                <SortIcon field="expected_close" active={sortField} dir={sortDir} />
-              </div>
-            </TableHead>
-            <TableHead>Contact</TableHead>
-            <TableHead className="text-right pr-4">Actions</TableHead>
-          </TableRow>
+          {isJobSeeker ? (
+            <TableRow>
+              <TableHead className="pl-4">Company</TableHead>
+              <TableHead>Role</TableHead>
+              <TableHead>Date Applied</TableHead>
+              <TableHead>Contact Name</TableHead>
+              <TableHead>Stage</TableHead>
+              <TableHead className="text-right pr-4">Actions</TableHead>
+            </TableRow>
+          ) : (
+            <TableRow>
+              <TableHead className="pl-4">Company</TableHead>
+              <TableHead>Title</TableHead>
+              <TableHead
+                className="cursor-pointer select-none"
+                onClick={() => toggleSort("value")}
+              >
+                <div className="flex items-center gap-1">
+                  Value
+                  <SortIcon field="value" active={sortField} dir={sortDir} />
+                </div>
+              </TableHead>
+              <TableHead>Stage</TableHead>
+              <TableHead>Probability</TableHead>
+              <TableHead
+                className="cursor-pointer select-none"
+                onClick={() => toggleSort("expected_close")}
+              >
+                <div className="flex items-center gap-1">
+                  Close Date
+                  <SortIcon field="expected_close" active={sortField} dir={sortDir} />
+                </div>
+              </TableHead>
+              <TableHead>Contact</TableHead>
+              <TableHead className="text-right pr-4">Actions</TableHead>
+            </TableRow>
+          )}
         </TableHeader>
         <TableBody>
           {sorted.map((deal) => {
             const cfg = STAGE_CONFIG[deal.stage]
+            const stageLabel = stageLabelByDealStage[deal.stage]
             const contactName = deal.contacts
               ? `${deal.contacts.first_name} ${deal.contacts.last_name}`.trim()
               : null
@@ -417,54 +515,81 @@ function DealTable({
             return (
               <TableRow key={deal.id}>
                 <TableCell className="pl-4 font-medium">{deal.company}</TableCell>
-                <TableCell className="text-muted-foreground max-w-[160px] truncate">
-                  {deal.title}
-                </TableCell>
-                <TableCell className="font-semibold tabular-nums">
-                  {formatCurrency(deal.value, deal.currency)}
-                </TableCell>
-                <TableCell>
-                  <span
-                    className={cn(
-                      "text-xs font-medium px-2 py-0.5 rounded-full",
-                      cfg.bg,
-                      cfg.textColor
-                    )}
-                  >
-                    {cfg.label}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: `${deal.probability}%` }}
-                      />
-                    </div>
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {deal.probability}%
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {closeDate ? (
-                    <span
-                      className={cn(
-                        "text-xs",
-                        overdue ? "text-red-500 font-medium" : "text-muted-foreground"
+                {isJobSeeker ? (
+                  <>
+                    <TableCell className="text-muted-foreground max-w-[160px] truncate">
+                      {deal.title || "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {format(parseISO(deal.created_at), "MMM d, yyyy")}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {contactName ?? "—"}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={cn(
+                          "text-xs font-medium px-2 py-0.5 rounded-full",
+                          cfg.bg,
+                          cfg.textColor
+                        )}
+                      >
+                        {stageLabel}
+                      </span>
+                    </TableCell>
+                  </>
+                ) : (
+                  <>
+                    <TableCell className="text-muted-foreground max-w-[160px] truncate">
+                      {deal.title}
+                    </TableCell>
+                    <TableCell className="font-semibold tabular-nums">
+                      {formatCurrency(deal.value, deal.currency)}
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={cn(
+                          "text-xs font-medium px-2 py-0.5 rounded-full",
+                          cfg.bg,
+                          cfg.textColor
+                        )}
+                      >
+                        {stageLabel}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${deal.probability}%` }}
+                          />
+                        </div>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {deal.probability}%
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {closeDate ? (
+                        <span
+                          className={cn(
+                            "text-xs",
+                            overdue ? "text-red-500 font-medium" : "text-muted-foreground"
+                          )}
+                        >
+                          {overdue ? "⚠ " : ""}
+                          {format(closeDate, "MMM d, yyyy")}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/50">—</span>
                       )}
-                    >
-                      {overdue ? "⚠ " : ""}
-                      {format(closeDate, "MMM d, yyyy")}
-                    </span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground/50">—</span>
-                  )}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {contactName ?? "—"}
-                </TableCell>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {contactName ?? "—"}
+                    </TableCell>
+                  </>
+                )}
                 <TableCell className="text-right pr-4">
                   <div className="flex items-center justify-end gap-1">
                     <Button
@@ -490,8 +615,11 @@ function DealTable({
           })}
           {sorted.length === 0 && (
             <TableRow>
-              <TableCell colSpan={8} className="text-center text-muted-foreground py-12">
-                No deals yet. Click <strong>+ New Deal</strong> to get started.
+              <TableCell
+                colSpan={isJobSeeker ? 6 : 8}
+                className="text-center text-muted-foreground py-12"
+              >
+                {emptyStateMessage} Click <strong>+ {addButtonLabel}</strong> to get started.
               </TableCell>
             </TableRow>
           )}
@@ -545,8 +673,23 @@ function DeleteDealDialog({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function PipelinePage() {
-  const router = useRouter()
-  const { isSalesRep, isLoading: personaLoading } = usePersona()
+  const { isJobSeeker, persona, isLoading: personaLoading } = usePersona()
+  const copy = getPersonaCopy(persona)
+  const stages = isJobSeeker ? JOB_SEEKER_STAGES : SALES_STAGES
+  const addButtonLabel = isJobSeeker ? "Add Application" : "Add Deal"
+  const emptyStateMessage = isJobSeeker
+    ? "No applications tracked yet — save jobs from LinkedIn to start tracking"
+    : "No deals in pipeline yet — add leads to start tracking deals"
+  const cardMode: "job_seeker" | "smb_sales" = isJobSeeker
+    ? "job_seeker"
+    : "smb_sales"
+  const stageLabelByDealStage: Record<DealStage, string> = isJobSeeker
+    ? DEAL_STAGE_TO_JOB_SEEKER_STAGE
+    : DEAL_STAGE_TO_SALES_STAGE
+  const stageToDealStage = isJobSeeker
+    ? JOB_SEEKER_STAGE_TO_DEAL_STAGE
+    : SALES_STAGE_TO_DEAL_STAGE
+  const stageList = stages as readonly string[]
 
   const [deals, setDeals] = useState<Deal[]>([])
   const [contacts, setContacts] = useState<ContactOption[]>([])
@@ -576,11 +719,6 @@ export default function PipelinePage() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   )
-
-  // Redirect non-sales-reps
-  useEffect(() => {
-    if (!personaLoading && !isSalesRep) router.replace("/dashboard")
-  }, [personaLoading, isSalesRep, router])
 
   // ── Fetch ───────────────────────────────────────────────────────────────────
 
@@ -617,19 +755,24 @@ export default function PipelinePage() {
   }, [])
 
   useEffect(() => {
-    if (!personaLoading && isSalesRep) void fetchData()
-  }, [personaLoading, isSalesRep, fetchData])
+    if (!personaLoading) void fetchData()
+  }, [personaLoading, fetchData])
 
   // ── Computed ────────────────────────────────────────────────────────────────
 
   const dealsByStage = useMemo(() => {
-    const map: Record<DealStage, Deal[]> = {
-      prospecting: [], contacted: [], interested: [],
-      meeting: [], proposal: [], won: [], lost: [],
+    const map = Object.fromEntries(stages.map((stage) => [stage, [] as Deal[]])) as Record<
+      PipelineStageName,
+      Deal[]
+    >
+    for (const deal of deals) {
+      const mappedStage = isJobSeeker
+        ? DEAL_STAGE_TO_JOB_SEEKER_STAGE[deal.stage]
+        : DEAL_STAGE_TO_SALES_STAGE[deal.stage]
+      map[mappedStage].push(deal)
     }
-    for (const d of deals) map[d.stage].push(d)
     return map
-  }, [deals])
+  }, [deals, isJobSeeker, stages])
 
   const activeDeals = useMemo(
     () => deals.filter((d) => d.stage !== "won" && d.stage !== "lost"),
@@ -797,12 +940,12 @@ export default function PipelinePage() {
     const { over } = event
     if (!over) { setOverId(null); return }
     const overId_ = String(over.id)
-    const isStage = STAGE_ORDER.includes(overId_ as DealStage)
+    const isStage = stageList.includes(overId_)
     if (isStage) {
       setOverId(overId_)
     } else {
       const deal = deals.find((d) => d.id === overId_)
-      setOverId(deal?.stage ?? null)
+      setOverId(deal ? stageLabelByDealStage[deal.stage] : null)
     }
   }
 
@@ -815,34 +958,40 @@ export default function PipelinePage() {
 
     const dealId = String(active.id)
     const overId_ = String(over.id)
+    const overDeal = deals.find((d) => d.id === overId_)
 
-    const isStage = STAGE_ORDER.includes(overId_ as DealStage)
+    const isStage = stageList.includes(overId_)
     const targetStage = isStage
-      ? (overId_ as DealStage)
-      : (deals.find((d) => d.id === overId_)?.stage ?? null)
+      ? (overId_ as PipelineStageName)
+      : (overDeal ? stageLabelByDealStage[overDeal.stage] : null)
 
     const deal = deals.find((d) => d.id === dealId)
-    if (!deal || !targetStage || deal.stage === targetStage) return
+    const targetDealStage = targetStage
+      ? stageToDealStage[targetStage as keyof typeof stageToDealStage]
+      : null
+    if (!deal || !targetDealStage || deal.stage === targetDealStage) return
 
     // Optimistic move
-    setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, stage: targetStage } : d)))
+    setDeals((prev) =>
+      prev.map((d) => (d.id === dealId ? { ...d, stage: targetDealStage } : d))
+    )
 
-    if (targetStage === "won") {
+    if (targetDealStage === "won") {
       pendingWonRef.current = { dealId, prevStage: deal.stage }
-      setWonDialogDeal({ ...deal, stage: targetStage })
+      setWonDialogDeal({ ...deal, stage: targetDealStage })
       setWonDialogOpen(true)
       return
     }
 
-    if (targetStage === "lost") {
+    if (targetDealStage === "lost") {
       pendingLostRef.current = { dealId, prevStage: deal.stage }
-      setLostDialogDeal({ ...deal, stage: targetStage })
+      setLostDialogDeal({ ...deal, stage: targetDealStage })
       setLostDialogOpen(true)
       return
     }
 
     try {
-      await patchDealStage(dealId, targetStage)
+      await patchDealStage(dealId, targetDealStage)
     } catch {
       setDeals((prev) =>
         prev.map((d) =>
@@ -862,15 +1011,13 @@ export default function PipelinePage() {
       <div className="p-6">
         <div className="h-8 w-48 animate-pulse rounded bg-muted mb-4" />
         <div className="flex gap-4 overflow-x-auto pb-4">
-          {[1, 2, 3, 4, 5].map((i) => (
+          {Array.from({ length: Math.max(stages.length, 5) }, (_, idx) => idx + 1).map((i) => (
             <div key={i} className="flex-shrink-0 w-64 h-64 animate-pulse rounded-xl bg-muted" />
           ))}
         </div>
       </div>
     )
   }
-
-  if (!isSalesRep) return null
 
   const totalPipeline = laneValue(activeDeals)
 
@@ -884,13 +1031,24 @@ export default function PipelinePage() {
               className="text-2xl font-bold tracking-tight"
               style={{ fontFamily: "'Fraunces', serif", color: "#2D2B55" }}
             >
-              Deal Pipeline
+              {copy.pipeline}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Total Pipeline:{" "}
-              <span className="font-semibold text-foreground">
-                {formatCurrency(totalPipeline)}
-              </span>
+              {isJobSeeker ? (
+                <>
+                  Applications in progress:{" "}
+                  <span className="font-semibold text-foreground">
+                    {activeDeals.length}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Total Pipeline:{" "}
+                  <span className="font-semibold text-foreground">
+                    {formatCurrency(totalPipeline)}
+                  </span>
+                </>
+              )}
             </p>
           </div>
 
@@ -925,46 +1083,96 @@ export default function PipelinePage() {
               }}
             >
               <Plus className="mr-1.5 h-4 w-4" />
-              New Deal
+              {addButtonLabel}
             </Button>
           </div>
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard
-            icon={Target}
-            label="Active Deals"
-            value={String(activeDeals.length)}
-            color="#6366F1"
-          />
-          <StatCard
-            icon={Trophy}
-            label="Won This Month"
-            value={formatCurrency(wonThisMonth.reduce((s, d) => s + (d.value ?? 0), 0))}
-            sub={`${wonThisMonth.length} deal${wonThisMonth.length !== 1 ? "s" : ""}`}
-            color="#10B981"
-          />
-          <StatCard
-            icon={TrendingUp}
-            label="Win Rate"
-            value={`${winRate}%`}
-            sub={`${wonCount} / ${closed} closed`}
-            color="#F59E0B"
-          />
-          <StatCard
-            icon={DollarSign}
-            label="Avg Deal Size"
-            value={formatCurrency(isFinite(avgDealSize) ? Math.round(avgDealSize) : 0)}
-            sub="active deals"
-            color="#8B5CF6"
-          />
-        </div>
+        {isJobSeeker ? (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              icon={Target}
+              label="Active Applications"
+              value={String(activeDeals.length)}
+              color="#6366F1"
+            />
+            <StatCard
+              icon={Trophy}
+              label="Offers"
+              value={String(wonCount)}
+              sub={`${wonThisMonth.length} this month`}
+              color="#10B981"
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Interview Stage"
+              value={String(
+                deals.filter((d) => d.stage === "interested" || d.stage === "meeting" || d.stage === "proposal")
+                  .length
+              )}
+              color="#F59E0B"
+            />
+            <StatCard
+              icon={DollarSign}
+              label="Rejected"
+              value={String(deals.filter((d) => d.stage === "lost").length)}
+              color="#8B5CF6"
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              icon={Target}
+              label="Active Deals"
+              value={String(activeDeals.length)}
+              color="#6366F1"
+            />
+            <StatCard
+              icon={Trophy}
+              label="Won This Month"
+              value={formatCurrency(wonThisMonth.reduce((s, d) => s + (d.value ?? 0), 0))}
+              sub={`${wonThisMonth.length} deal${wonThisMonth.length !== 1 ? "s" : ""}`}
+              color="#10B981"
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Win Rate"
+              value={`${winRate}%`}
+              sub={`${wonCount} / ${closed} closed`}
+              color="#F59E0B"
+            />
+            <StatCard
+              icon={DollarSign}
+              label="Avg Deal Size"
+              value={formatCurrency(isFinite(avgDealSize) ? Math.round(avgDealSize) : 0)}
+              sub="active deals"
+              color="#8B5CF6"
+            />
+          </div>
+        )}
       </div>
 
       {/* Body */}
       <div className="flex-1 overflow-hidden">
-        {view === "kanban" ? (
+        {deals.length === 0 ? (
+          <div className="h-full flex items-center justify-center p-6">
+            <div className="max-w-lg w-full rounded-xl border border-dashed bg-card px-6 py-10 text-center">
+              <p className="text-sm text-muted-foreground">{emptyStateMessage}</p>
+              <Button
+                size="sm"
+                className="mt-4"
+                onClick={() => {
+                  setEditingDeal(null)
+                  setFormOpen(true)
+                }}
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                {addButtonLabel}
+              </Button>
+            </div>
+          </div>
+        ) : view === "kanban" ? (
           <div className="flex h-full gap-4 p-5 overflow-x-auto">
             <DndContext
               sensors={sensors}
@@ -972,54 +1180,79 @@ export default function PipelinePage() {
               onDragOver={handleDragOver}
               onDragEnd={(e) => void handleDragEnd(e)}
             >
-              <div className="flex gap-4 pb-4 h-full">
-                {STAGE_ORDER.map((stage) => (
-                  <KanbanLane
-                    key={stage}
-                    stage={stage}
-                    deals={dealsByStage[stage]}
-                    isOver={overId === stage}
-                    onCardClick={(d) => {
-                      setEditingDeal(d)
-                      setFormOpen(true)
-                    }}
-                    activeId={activeId}
-                  />
-                ))}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={persona}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex gap-4 pb-4 h-full"
+                >
+                  {stages.map((stage) => {
+                    const mappedDealStage = isJobSeeker
+                      ? JOB_SEEKER_STAGE_TO_DEAL_STAGE[stage as JobSeekerStageName]
+                      : SALES_STAGE_TO_DEAL_STAGE[stage as SalesStageName]
+                    const cfg = STAGE_CONFIG[mappedDealStage]
 
-                {/* Add deal button */}
-                <div className="flex-shrink-0 w-52 flex items-start pt-1">
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors w-full"
-                    onClick={() => {
-                      setEditingDeal(null)
-                      setFormOpen(true)
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add deal
-                  </button>
-                </div>
-              </div>
+                    return (
+                      <KanbanLane
+                        key={stage}
+                        stage={stage}
+                        stageLabel={stage}
+                        stageColor={cfg.color}
+                        stageTextColor={cfg.textColor}
+                        cardMode={cardMode}
+                        deals={dealsByStage[stage as PipelineStageName] ?? []}
+                        isOver={overId === stage}
+                        onCardClick={(d) => {
+                          setEditingDeal(d)
+                          setFormOpen(true)
+                        }}
+                        activeId={activeId}
+                      />
+                    )
+                  })}
+
+                  <div className="flex-shrink-0 w-52 flex items-start pt-1">
+                    <button
+                      type="button"
+                      className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-2.5 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground transition-colors w-full"
+                      onClick={() => {
+                        setEditingDeal(null)
+                        setFormOpen(true)
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                      {addButtonLabel}
+                    </button>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
 
               <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
                 {activeDeal && (
-                  <DealCard deal={activeDeal} isDragging onClick={() => {}} />
+                  <DealCard deal={activeDeal} mode={cardMode} isDragging onClick={() => {}} />
                 )}
               </DragOverlay>
             </DndContext>
 
             {/* Revenue panel — fixed right side */}
-            <div className="flex-shrink-0 self-start sticky top-0">
-              <RevenuePanel deals={deals} />
-            </div>
+            {!isJobSeeker && (
+              <div className="flex-shrink-0 self-start sticky top-0">
+                <RevenuePanel deals={deals} />
+              </div>
+            )}
           </div>
         ) : (
           <div className="p-5 flex gap-5 overflow-auto h-full">
             <div className="flex-1 min-w-0">
               <DealTable
                 deals={deals}
+                isJobSeeker={isJobSeeker}
+                stageLabelByDealStage={stageLabelByDealStage}
+                emptyStateMessage={emptyStateMessage}
+                addButtonLabel={addButtonLabel}
                 onEdit={(d) => {
                   setEditingDeal(d)
                   setFormOpen(true)
@@ -1030,9 +1263,11 @@ export default function PipelinePage() {
                 }}
               />
             </div>
-            <div className="flex-shrink-0 self-start sticky top-0">
-              <RevenuePanel deals={deals} />
-            </div>
+            {!isJobSeeker && (
+              <div className="flex-shrink-0 self-start sticky top-0">
+                <RevenuePanel deals={deals} />
+              </div>
+            )}
           </div>
         )}
       </div>

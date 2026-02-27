@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -15,9 +15,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/DropdownMenu";
-import { mainNavItems, secondaryNavItems, type NavItem } from "@/lib/constants/navigation";
-import { getPersonaCopy } from "@/lib/persona-copy";
-import { ChevronLeft, LifeBuoy, LogOut, Sparkles, LayoutDashboard, BarChart2, Briefcase, TrendingUp } from "lucide-react";
+import { secondaryNavItems, type NavItem } from "@/lib/constants/navigation";
+import { getPersonaCopy, type Persona } from "@/lib/persona-copy";
+import { ChevronLeft, LifeBuoy, LogOut, Sparkles, LayoutDashboard, BarChart2, Briefcase, TrendingUp, Users, Layers, FileText, Send } from "lucide-react";
 import { usePersona } from "@/context/PersonaContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useAnalytics";
@@ -29,6 +29,10 @@ interface SidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
+
+type SidebarNavItem = NavItem & {
+  personas?: Persona[];
+};
 
 function buildAvatarInitials(name: string): string {
   const normalized = String(name || "").trim();
@@ -57,8 +61,62 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const { stats } = useDashboardStats();
   const { stats: sequenceStats } = useSequenceStats();
   const { plan_type } = useSubscription();
-  const { persona, setPersona, isJobSeeker, isSalesRep } = usePersona();
+  const { persona, setPersona } = usePersona();
   const isPaidUser = plan_type === "pro";
+  const personaCopy = useMemo(() => getPersonaCopy(persona), [persona]);
+  const PersonaIcon = persona === "job_seeker" ? Briefcase : TrendingUp;
+  const navItems = useMemo<SidebarNavItem[]>(() => {
+    const items: SidebarNavItem[] = [
+      {
+        name: "Dashboard",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+      },
+      {
+        name: personaCopy.contacts,
+        href: "/dashboard/contacts",
+        icon: Users,
+      },
+      {
+        name: personaCopy.pipeline,
+        href: "/dashboard/tracker",
+        icon: BarChart2,
+        personas: ["job_seeker"],
+      },
+      {
+        name: personaCopy.pipeline,
+        href: "/dashboard/pipeline",
+        icon: BarChart2,
+        personas: ["smb_sales"],
+      },
+      {
+        name: personaCopy.sequences,
+        href: "/dashboard/sequences",
+        icon: Layers,
+        personas: ["job_seeker"],
+      },
+      {
+        name: personaCopy.sequences,
+        href: "/dashboard/sequences",
+        icon: Layers,
+        personas: ["smb_sales"],
+      },
+      {
+        name: "Templates",
+        href: "/dashboard/templates",
+        icon: FileText,
+      },
+      {
+        name: "Sent Emails",
+        href: "/dashboard/sent",
+        icon: Send,
+      },
+    ];
+
+    return items.filter(
+      (item) => !item.personas || item.personas.includes(persona)
+    );
+  }, [persona, personaCopy.contacts, personaCopy.pipeline, personaCopy.sequences]);
   const [userFullName, setUserFullName] = useState("Account");
   const [userEmail, setUserEmail] = useState("");
   const [avatarInitials, setAvatarInitials] = useState("?");
@@ -172,88 +230,79 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Navigation Items */}
         <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
-          {((): NavItem[] => {
-            const items = [...mainNavItems]
-            const contactsIdx = items.findIndex((i) => i.href === "/dashboard/contacts")
-            if (isJobSeeker) {
-              const trackerItem: NavItem = {
-                name: "Tracker",
-                href: "/dashboard/tracker",
-                icon: LayoutDashboard,
-              }
-              items.splice(contactsIdx + 1, 0, trackerItem)
-            }
-            if (isSalesRep) {
-              const pipelineItem: NavItem = {
-                name: "Pipeline",
-                href: "/dashboard/pipeline",
-                icon: BarChart2,
-              }
-              items.splice(contactsIdx + 1, 0, pipelineItem)
-            }
-            return items
-          })().map((item) => {
-            const isActive =
-              item.href === "/dashboard"
-                ? pathname === item.href
-                : pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const Icon = item.icon;
+          <AnimatePresence mode="popLayout" initial={false}>
+            {navItems.map((item) => {
+              const isActive =
+                item.href === "/dashboard"
+                  ? pathname === item.href
+                  : pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const Icon = item.icon;
 
-            // Map legacy stats to new structure
-            let count: number | undefined;
-            let extensionBadge = false;
-            if (item.href === "/dashboard/contacts") {
-              count = stats.totalContacts;
-              extensionBadge = newExtensionContacts > 0;
-            } else if (item.href === "/dashboard/templates") {
-              count = sequenceStats.totalTemplates;
-            }
+              // Map legacy stats to new structure
+              let count: number | undefined;
+              let extensionBadge = false;
+              if (item.href === "/dashboard/contacts") {
+                count = stats.totalContacts;
+                extensionBadge = newExtensionContacts > 0;
+              } else if (item.href === "/dashboard/templates") {
+                count = sequenceStats.totalTemplates;
+              }
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 group border-l-2",
-                  isActive
-                    ? "bg-[#FF6B6B]/10 text-[#FF6B6B] border-[#FF6B6B]"
-                    : "text-muted-foreground border-transparent hover:bg-secondary/60 hover:text-foreground hover:translate-x-0.5"
-                )}
-                title={collapsed ? item.name : undefined}
-              >
-                <Icon className={cn("h-5 w-5 flex-shrink-0 transition-colors", isActive ? "text-[#FF6B6B]" : "group-hover:text-foreground/70")} />
-                <AnimatePresence mode="wait">
-                  {!collapsed && (
-                    <motion.span
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: "auto" }}
-                      exit={{ opacity: 0, width: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="truncate"
-                    >
-                      {item.name}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-                {count !== undefined && count > 0 && !collapsed && (
-                  <Badge
-                    variant="secondary"
-                    className="ml-auto text-[10px] h-5 px-1.5 bg-background border"
+              const key = `${item.href}:${item.personas?.join("-") ?? "all"}`;
+
+              return (
+                <motion.div
+                  key={key}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -8 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 group border-l-2",
+                      isActive
+                        ? "bg-[#FF6B6B]/10 text-[#FF6B6B] border-[#FF6B6B]"
+                        : "text-muted-foreground border-transparent hover:bg-secondary/60 hover:text-foreground hover:translate-x-0.5"
+                    )}
+                    title={collapsed ? item.name : undefined}
                   >
-                    {count}
-                  </Badge>
-                )}
-                {extensionBadge && !collapsed && (
-                  <Badge
-                    className="ml-1 text-[10px] h-5 px-1.5 bg-[#0A66C2] text-white border-0"
-                    title={`${newExtensionContacts} new contact${newExtensionContacts !== 1 ? "s" : ""} from extension in last 24h`}
-                  >
-                    +{newExtensionContacts}
-                  </Badge>
-                )}
-              </Link>
-            );
-          })}
+                    <Icon className={cn("h-5 w-5 flex-shrink-0 transition-colors", isActive ? "text-[#FF6B6B]" : "group-hover:text-foreground/70")} />
+                    <AnimatePresence mode="wait">
+                      {!collapsed && (
+                        <motion.span
+                          initial={{ opacity: 0, width: 0 }}
+                          animate={{ opacity: 1, width: "auto" }}
+                          exit={{ opacity: 0, width: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="truncate"
+                        >
+                          {item.name}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                    {count !== undefined && count > 0 && !collapsed && (
+                      <Badge
+                        variant="secondary"
+                        className="ml-auto text-[10px] h-5 px-1.5 bg-background border"
+                      >
+                        {count}
+                      </Badge>
+                    )}
+                    {extensionBadge && !collapsed && (
+                      <Badge
+                        className="ml-1 text-[10px] h-5 px-1.5 bg-[#0A66C2] text-white border-0"
+                        title={`${newExtensionContacts} new contact${newExtensionContacts !== 1 ? "s" : ""} from extension in last 24h`}
+                      >
+                        +{newExtensionContacts}
+                      </Badge>
+                    )}
+                  </Link>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         </nav>
       </div>
 
@@ -271,24 +320,8 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           )}
           title={collapsed ? `Switch to ${persona === 'job_seeker' ? 'Enterprise' : 'Job Seeker'}` : undefined}
         >
-          <div className="relative flex h-8 w-14 flex-shrink-0 items-center rounded-full bg-muted p-0.5 transition-colors">
-            <motion.div
-              className="absolute h-7 w-7 rounded-full bg-[#FF6B6B] shadow-sm"
-              animate={{ x: persona === 'smb_sales' ? 24 : 0 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-            />
-            <span className={cn(
-              "relative z-10 flex h-7 w-7 items-center justify-center transition-colors",
-              persona === 'job_seeker' ? 'text-white' : 'text-muted-foreground'
-            )}>
-              <Briefcase className="h-3.5 w-3.5" />
-            </span>
-            <span className={cn(
-              "relative z-10 flex h-7 w-7 items-center justify-center transition-colors",
-              persona === 'smb_sales' ? 'text-white' : 'text-muted-foreground'
-            )}>
-              <TrendingUp className="h-3.5 w-3.5" />
-            </span>
+          <div className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-muted transition-colors">
+            <PersonaIcon className="h-4 w-4 text-foreground" />
           </div>
           <AnimatePresence mode="wait">
             {!collapsed && (
@@ -300,7 +333,7 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                 key={persona}
                 className="truncate text-xs text-muted-foreground"
               >
-                {getPersonaCopy(persona).personaLabel}
+                {personaCopy.personaLabel}
               </motion.span>
             )}
           </AnimatePresence>

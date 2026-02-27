@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
@@ -49,6 +49,7 @@ import {
   StepAttachment,
 } from "@/lib/types/sequence";
 import { createClient } from "@/lib/supabase/client";
+import { usePersona } from "@/context/PersonaContext";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -198,6 +199,7 @@ export function StepConfigPanel({
   onSave,
   templates = [],
 }: StepConfigPanelProps) {
+  const { isSalesRep } = usePersona();
   // ── Step identity ──────────────────────────────────────────────────────────
   const [stepType, setStepType] = useState<StepType>(initialStep.stepType ?? "email");
   const [stepName, setStepName] = useState(
@@ -237,6 +239,22 @@ export function StepConfigPanel({
   const [saving, setSaving] = useState(false);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  const availableStepTypeOptions = useMemo(
+    () =>
+      isSalesRep
+        ? STEP_TYPE_OPTIONS
+        : STEP_TYPE_OPTIONS.filter(({ type }) => type !== "linkedin"),
+    [isSalesRep]
+  );
+
+  const isLinkedInStep = stepType === "linkedin" && isSalesRep;
+
+  useEffect(() => {
+    if (!isSalesRep && stepType === "linkedin") {
+      setStepType("email");
+    }
+  }, [isSalesRep, stepType]);
 
   const insertAtCursor = useCallback(
     (variable: string) => {
@@ -382,7 +400,7 @@ export function StepConfigPanel({
       subject:
         stepType === "wait"
           ? `Wait ${delayDays} day${delayDays !== 1 ? "s" : ""}`
-          : stepType === "linkedin"
+          : stepType === "linkedin" && isSalesRep
           ? "LinkedIn Message"
           : subject,
       body:
@@ -398,12 +416,12 @@ export function StepConfigPanel({
     setSaving(false);
   };
 
-  const isComposable = stepType === "email" || stepType === "linkedin";
+  const isComposable = stepType === "email" || isLinkedInStep;
 
   const canSave =
     stepType === "wait" ||
     stepType === "task" ||
-    (stepType === "linkedin" && body.trim().length > 0) ||
+    (isLinkedInStep && body.trim().length > 0) ||
     (stepType === "email" && subject.trim().length > 0 && body.trim().length > 0);
 
   return (
@@ -436,7 +454,7 @@ export function StepConfigPanel({
                 Step Type
               </Label>
               <div className="flex gap-2">
-                {STEP_TYPE_OPTIONS.map(({ type, label, icon }) => (
+                {availableStepTypeOptions.map(({ type, label, icon }) => (
                   <button
                     key={type}
                     type="button"
@@ -634,7 +652,7 @@ export function StepConfigPanel({
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <Label className="text-xs text-muted-foreground">
-                    {stepType === "linkedin" ? "Message" : "Body"}
+                    {isLinkedInStep ? "Message" : "Body"}
                   </Label>
                   <div className="flex items-center gap-1.5">
                     <Popover>
@@ -712,14 +730,14 @@ export function StepConfigPanel({
                     value={body}
                     onChange={(e) => setBody(e.target.value)}
                     placeholder={
-                      stepType === "linkedin"
+                      isLinkedInStep
                         ? `Hi {{first_name}}, I came across your profile at {{company}}...`
                         : `Hi {{first_name}},\n\nI noticed you work at {{company}} as {{job_title}}...\n\nBest,\n{{first_name}}`
                     }
                     className="min-h-[180px] text-sm font-mono resize-none"
                   />
                 )}
-                {stepType === "linkedin" && (
+                {isLinkedInStep && (
                   <p className="text-xs text-muted-foreground mt-1">
                     LinkedIn connection request messages are limited to 300 characters.
                   </p>
