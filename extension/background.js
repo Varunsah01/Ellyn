@@ -58,6 +58,9 @@ const ALLOWED_ORIGINS = new Set([
 const CSRF_HEADER_NAME = 'X-CSRF-Token';
 const CSRF_REFRESH_PATH = '/api/v1';
 const CSRF_TOKEN_TTL_MS = 5 * 60 * 1000;
+const BACKEND_BASE_URL_CACHE_TTL_MS = 15 * 1000;
+const BASE_URL_OVERRIDE_KEY = 'ellyn_base_url_override';
+const LOCAL_DEV_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
 
 const SUPABASE_AUTH_BRIDGE_KEY = 'ellynSupabaseAuthBridge';
 const CONTACT_SYNC_BRIDGE_KEY = 'ellynContactSync';
@@ -82,6 +85,9 @@ const analyticsClient = globalThis?.analytics || null;
 let csrfTokenCache = '';
 let csrfTokenFetchedAt = 0;
 let csrfRefreshPromise = null;
+let csrfTokenBaseUrl = '';
+let backendBaseUrlCache = '';
+let backendBaseUrlCachedAt = 0;
 let smtpProbeHealthChecked = false;
 let smtpProbeHealthCheckPromise = null;
 
@@ -176,14 +182,21 @@ async function runSmtpProbeHealthCheck() {
     let result = { ok: false, smtpConfigured: false };
 
     try {
-      const response = await fetch(`${CONFIG.API_BASE_URL}/api/v1/zerobounce-verify`, {
+      const baseUrl = await getBackendBaseUrl();
+      const authToken = await getAuthToken();
+      const headers = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      };
+      if (authToken) {
+        headers.Authorization = `Bearer ${authToken}`;
+      }
+
+      const response = await fetch(`${baseUrl}/api/v1/zerobounce-verify`, {
         method: 'POST',
         credentials: 'include',
         cache: 'no-store',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
+        headers,
         body: JSON.stringify({ email: 'healthcheck@example.com' }),
         signal: createTimeoutSignal(5000),
       });
@@ -276,6 +289,57 @@ function normalizeOrigin(value) {
   } catch {
     return '';
   }
+}
+
+async function findLocalBackendOriginFromOpenTabs() {
+  if (!chrome?.tabs?.query) {
+    return '';
+  }
+
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const origin of LOCAL_DEV_ORIGINS) {
+      const originWithSlash = `${origin}/`;
+      const match = tabs.some((tab) => {
+        const tabUrl = String(tab?.url || '');
+        return tabUrl === origin || tabUrl.startsWith(originWithSlash);
+      });
+      if (match) {
+        return origin;
+      }
+    }
+  } catch {
+    // Ignore tab-query failures and fall back to defaults.
+  }
+
+  return '';
+}
+
+async function getBackendBaseUrl() {
+  const cacheAgeMs = Date.now() - backendBaseUrlCachedAt;
+  if (backendBaseUrlCache && cacheAgeMs < BACKEND_BASE_URL_CACHE_TTL_MS) {
+    return backendBaseUrlCache;
+  }
+
+  let overrideOrigin = '';
+  let sourceOrigin = '';
+  try {
+    const stored = await chrome.storage.local.get([BASE_URL_OVERRIDE_KEY, AUTH_SOURCE_ORIGIN_KEY]);
+    overrideOrigin = normalizeOrigin(stored?.[BASE_URL_OVERRIDE_KEY]);
+    sourceOrigin = normalizeOrigin(stored?.[AUTH_SOURCE_ORIGIN_KEY]);
+  } catch {
+    overrideOrigin = '';
+    sourceOrigin = '';
+  }
+
+  const localOrigin = await findLocalBackendOriginFromOpenTabs();
+  const fallback = normalizeOrigin(CONFIG.API_BASE_URL) || String(CONFIG.API_BASE_URL || '').trim();
+  backendBaseUrlCache = String(overrideOrigin || sourceOrigin || localOrigin || fallback || '')
+    .trim()
+    .replace(/\/+$/, '');
+  backendBaseUrlCachedAt = Date.now();
+
+  return backendBaseUrlCache;
 }
 
 function extractUserId(user) {
@@ -1037,56 +1101,18 @@ async function handleGenerateAiDraftGeminiMessage(message, sendResponse) {
     const contactPayload = buildGeminiContactPayload(message);
     const senderPayload = await buildGeminiSenderPayload();
 
-    const webappUrl = String(CONFIG.WEBAPP_URL || CONFIG.API_BASE_URL || '').trim().replace(/\/+$/, '');
-    if (!webappUrl) {
-      throw new Error('WEBAPP_URL is not configured');
-    }
-
-    const response = await fetch(`${webappUrl}/api/v1/ai/draft-email`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({
+    const payload = await callBackendPost(
+      '/api/v1/ai/draft-email',
+      {
         use_case: useCase,
         tone: 'professional',
         goal,
         contact: contactPayload,
         sender: senderPayload,
-      }),
-      credentials: 'include',
-      cache: 'no-store',
-      signal: createTimeoutSignal(35000),
-    });
-
-    let payload = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-
-    if (response.status === 402) {
-      sendResponse?.({
-        success: false,
-        quotaExceeded: true,
-        error: 'AI draft quota exceeded',
-      });
-      return;
-    }
-
-    if (!response.ok) {
-      const errorMessage =
-        getApiErrorMessage(payload) ||
-        `Gemini draft request failed (${response.status})`;
-      sendResponse?.({
-        success: false,
-        error: errorMessage,
-      });
-      return;
-    }
+      },
+      authToken,
+      35000
+    );
 
     const subject = String(payload?.subject || payload?.data?.subject || '').trim();
     const body = String(payload?.body || payload?.data?.body || '').trim();
@@ -1100,6 +1126,15 @@ async function handleGenerateAiDraftGeminiMessage(message, sendResponse) {
       body,
     });
   } catch (error) {
+    if (Number(error?.status) === 402) {
+      sendResponse?.({
+        success: false,
+        quotaExceeded: true,
+        error: 'AI draft quota exceeded',
+      });
+      return;
+    }
+
     sendResponse?.({
       success: false,
       error: error?.message || 'Gemini draft generation failed',
@@ -1181,46 +1216,15 @@ async function handleGetCompanyBriefGeminiMessage(message, sendResponse) {
       return;
     }
 
-    const webappUrl = String(CONFIG.WEBAPP_URL || CONFIG.API_BASE_URL || '')
-      .trim()
-      .replace(/\/+$/, '');
-    if (!webappUrl) {
-      throw new Error('WEBAPP_URL is not configured');
-    }
-
-    const response = await fetch(`${webappUrl}/api/v1/ai/company-brief`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify({
+    const payload = await callBackendPost(
+      '/api/v1/ai/company-brief',
+      {
         company_name: companyName,
         ...(companyPageUrl ? { company_page_url: companyPageUrl } : {}),
-      }),
-      credentials: 'include',
-      cache: 'no-store',
-      signal: createTimeoutSignal(20000),
-    });
-
-    let payload = null;
-    try {
-      payload = await response.json();
-    } catch {
-      payload = null;
-    }
-
-    if (!response.ok) {
-      const errorMessage =
-        getApiErrorMessage(payload) ||
-        `Company brief request failed (${response.status})`;
-      sendResponse?.({
-        success: false,
-        error: errorMessage,
-      });
-      return;
-    }
+      },
+      authToken,
+      20000
+    );
 
     const normalized = normalizeCompanyBriefPayload(payload?.data || payload || {});
     sendResponse?.({
@@ -3041,14 +3045,25 @@ function isCsrfInvalidPayload(payload) {
   return message.includes('csrf');
 }
 
-function updateCsrfTokenFromResponse(response) {
+function updateCsrfTokenFromResponse(response, baseUrl = '') {
   const token = response?.headers?.get?.(CSRF_HEADER_NAME) || response?.headers?.get?.('x-csrf-token') || '';
   if (!token) return;
   csrfTokenCache = token;
   csrfTokenFetchedAt = Date.now();
+  csrfTokenBaseUrl = String(baseUrl || '').trim();
 }
 
-async function refreshCsrfToken(force = false) {
+async function refreshCsrfToken(baseUrl, force = false) {
+  const normalizedBaseUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (!normalizedBaseUrl) return '';
+
+  if (csrfTokenBaseUrl && csrfTokenBaseUrl !== normalizedBaseUrl) {
+    csrfTokenCache = '';
+    csrfTokenFetchedAt = 0;
+    csrfRefreshPromise = null;
+    csrfTokenBaseUrl = normalizedBaseUrl;
+  }
+
   const cacheAgeMs = Date.now() - csrfTokenFetchedAt;
   if (!force && csrfTokenCache && cacheAgeMs < CSRF_TOKEN_TTL_MS) {
     return csrfTokenCache;
@@ -3060,13 +3075,13 @@ async function refreshCsrfToken(force = false) {
 
   csrfRefreshPromise = (async () => {
     try {
-      const response = await fetch(`${CONFIG.API_BASE_URL}${CSRF_REFRESH_PATH}`, {
+      const response = await fetch(`${normalizedBaseUrl}${CSRF_REFRESH_PATH}`, {
         method: 'GET',
         credentials: 'include',
         cache: 'no-store',
         signal: createTimeoutSignal(5000),
       });
-      updateCsrfTokenFromResponse(response);
+      updateCsrfTokenFromResponse(response, normalizedBaseUrl);
       return csrfTokenCache;
     } catch (error) {
       console.warn('[Extension] Failed to refresh CSRF token:', error?.message || String(error));
@@ -3089,7 +3104,11 @@ async function executeBackendPost(url, body, authToken, timeoutMs, forceCsrfRefr
     headers.Authorization = `Bearer ${authToken}`;
   }
 
-  const csrfToken = await refreshCsrfToken(forceCsrfRefresh);
+  const baseUrl = String(url || '')
+    .replace(/\/api\/.*/i, '')
+    .trim()
+    .replace(/\/+$/, '');
+  const csrfToken = await refreshCsrfToken(baseUrl, forceCsrfRefresh);
   if (csrfToken) {
     headers[CSRF_HEADER_NAME] = csrfToken;
   }
@@ -3102,17 +3121,61 @@ async function executeBackendPost(url, body, authToken, timeoutMs, forceCsrfRefr
     signal: createTimeoutSignal(timeoutMs),
     cache: 'no-store',
   });
-  updateCsrfTokenFromResponse(response);
+  updateCsrfTokenFromResponse(response, baseUrl);
 
   return { response, payload };
 }
 
 async function callBackendPost(path, body, authToken, timeoutMs) {
-  const url = `${CONFIG.API_BASE_URL}${path}`;
-  let { response, payload } = await executeBackendPost(url, body, authToken, timeoutMs, false);
+  const baseUrl = await getBackendBaseUrl();
+  if (!baseUrl) {
+    throw buildPipelineError('NETWORK_FAILURE', 'API base URL is not configured.', {
+      isRecoverable: true,
+    });
+  }
 
-  if (response.status === 403 && isCsrfInvalidPayload(payload)) {
-    ({ response, payload } = await executeBackendPost(url, body, authToken, timeoutMs, true));
+  const performRequest = async (requestUrl, token, forceCsrfRefresh = false) => {
+    let result = await executeBackendPost(requestUrl, body, token, timeoutMs, forceCsrfRefresh);
+    if (result.response.status === 403 && isCsrfInvalidPayload(result.payload)) {
+      result = await executeBackendPost(requestUrl, body, token, timeoutMs, true);
+    }
+    return result;
+  };
+
+  let tokenInUse = String(authToken || '').trim();
+  if (!tokenInUse) {
+    tokenInUse = await getAuthToken();
+  }
+  const primaryUrl = `${baseUrl}${path}`;
+  let { response, payload } = await performRequest(primaryUrl, tokenInUse, false);
+
+  if (response.status === 401) {
+    const refreshedToken = await getAuthToken();
+    if (refreshedToken && refreshedToken !== tokenInUse) {
+      tokenInUse = refreshedToken;
+      ({ response, payload } = await performRequest(primaryUrl, tokenInUse, false));
+    } else if (tokenInUse) {
+      // Token may be stale. Retry without bearer to allow cookie-auth fallback.
+      tokenInUse = '';
+      ({ response, payload } = await performRequest(primaryUrl, tokenInUse, false));
+    }
+  }
+
+  // If current origin is unauthorized, try local dev backends automatically.
+  if (response.status === 401 && !LOCAL_DEV_ORIGINS.includes(baseUrl)) {
+    for (const localBase of LOCAL_DEV_ORIGINS) {
+      try {
+        const localUrl = `${localBase}${path}`;
+        ({ response, payload } = await performRequest(localUrl, tokenInUse, false));
+        if (response.status !== 401) {
+          backendBaseUrlCache = localBase;
+          backendBaseUrlCachedAt = Date.now();
+          break;
+        }
+      } catch {
+        // Continue probing local fallback origins.
+      }
+    }
   }
 
   if (!response.ok) {
@@ -3123,8 +3186,14 @@ async function callBackendPost(path, body, authToken, timeoutMs) {
       normalizedApiCode === 'CSRF_INVALID'
         ? 'Session verification failed. Please retry or sign in again.'
         : apiErrorMessage || `Request failed: ${response.status} ${response.statusText}`;
+    const fallbackErrorCode =
+      response.status === 401
+        ? 'UNAUTHORIZED'
+        : response.status === 405
+        ? 'METHOD_NOT_ALLOWED'
+        : 'NETWORK_FAILURE';
     const error = buildPipelineError(
-      normalizedApiCode || (response.status === 405 ? 'METHOD_NOT_ALLOWED' : 'NETWORK_FAILURE'),
+      normalizedApiCode || fallbackErrorCode,
       normalizedMessage,
       {
         status: response.status,
@@ -4002,7 +4071,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     const input = await normalizePipelineInput(data || {}, senderTabId);
     normalizedInput = input;
 
-    const authToken = await getAuthToken();
+    let authToken = await getAuthToken();
     if (!authToken) {
       console.warn('[Extension] No auth token in storage. Will still attempt with cookie credentials.');
     }
@@ -4035,6 +4104,9 @@ async function handleFindEmail(data, sender, sendResponse) {
     let domain = '';
     let geminiConfirmed = true;
     let geminiReason = '';
+    let llmRankingPulled = false;
+    let llmRankingSource = 'fallback';
+    let mxSucceededAttempt = 'none';
 
     // STAGE 0: Cache lookup
     stage = 'cache_lookup';
@@ -4337,6 +4409,8 @@ async function handleFindEmail(data, sender, sendResponse) {
       );
 
       predictedPatterns = Array.isArray(prediction?.patterns) ? prediction.patterns : [];
+      llmRankingSource = String(prediction?.source || 'fallback').trim() || 'fallback';
+      llmRankingPulled = llmRankingSource === 'predict-email';
       const predictionCost = Number(prediction?.costUsd);
       const effectivePredictionCost = Number.isFinite(predictionCost)
         ? predictionCost
@@ -4409,6 +4483,9 @@ async function handleFindEmail(data, sender, sendResponse) {
         return true;
       });
     }
+    if (mxPassed.length > 0) {
+      mxSucceededAttempt = 'first';
+    }
 
     if (mxPassed.length === 0) {
       // Recovery: try alternative domain
@@ -4439,6 +4516,9 @@ async function handleFindEmail(data, sender, sendResponse) {
             return true;
           });
         }
+        if (mxPassed.length > 0) {
+          mxSucceededAttempt = 'second';
+        }
       }
 
       if (mxPassed.length === 0) {
@@ -4459,6 +4539,10 @@ async function handleFindEmail(data, sender, sendResponse) {
           message: 'No email ID found for this contact.',
           domain,
           totalCandidates: candidates.length,
+          warnings: domainWarnings,
+          llmRankingPulled,
+          llmRankingSource,
+          mxSucceededAttempt,
           type: 'EMAIL_NOT_FOUND',
         });
         return;
@@ -4499,8 +4583,51 @@ async function handleFindEmail(data, sender, sendResponse) {
         );
         zbCreditsUsed += 1;
       } catch (err) {
-        console.warn('[ELLYN Stage 5] ZeroBounce error for', candidate.email, err?.message);
-        zbResult = { deliverability: 'UNKNOWN', reason: 'request_failed' };
+        const authCode = String(err?.code || '').toUpperCase();
+        if (authCode === 'UNAUTHORIZED' || Number(err?.status) === 401) {
+          const refreshedAuthToken = await getAuthToken();
+          if (refreshedAuthToken && refreshedAuthToken !== authToken) {
+            authToken = refreshedAuthToken;
+            try {
+              zbResult = await callBackendPost(
+                '/api/v1/zerobounce-verify',
+                { email: candidate.email },
+                authToken,
+                15000
+              );
+              zbCreditsUsed += 1;
+            } catch (retryError) {
+              const retryCode = String(retryError?.code || '').toUpperCase();
+              if (retryCode === 'UNAUTHORIZED' || Number(retryError?.status) === 401) {
+                throw buildPipelineError(
+                  'UNAUTHORIZED',
+                  'Please sign in again to verify emails.',
+                  { status: 401, isRecoverable: false }
+                );
+              }
+              throw retryError;
+            }
+          } else {
+            throw buildPipelineError(
+              'UNAUTHORIZED',
+              'Please sign in again to verify emails.',
+              { status: 401, isRecoverable: false }
+            );
+          }
+        }
+        if (!zbResult) {
+          console.warn('[ELLYN Stage 5] ZeroBounce error for', candidate.email, err?.message);
+          zbResult = { deliverability: 'UNKNOWN', reason: 'request_failed' };
+        }
+      }
+
+      const zbReason = String(zbResult?.reason || '').trim().toLowerCase();
+      if (zbReason === 'not_configured') {
+        throw buildPipelineError(
+          'SMTP_NOT_CONFIGURED',
+          'Email verification provider is not configured (ZEROBOUNCE_API_KEY).',
+          { isRecoverable: false }
+        );
       }
 
       const deliverability = String(zbResult?.deliverability || 'UNKNOWN').toUpperCase();
@@ -4628,6 +4755,9 @@ async function handleFindEmail(data, sender, sendResponse) {
       warnings: domainWarnings,
       geminiConfirmed,
       geminiReason,
+      llmRankingPulled,
+      llmRankingSource,
+      mxSucceededAttempt,
       mxVerifiedCount,
       mxProvider,
       smtpVerifiedCount,

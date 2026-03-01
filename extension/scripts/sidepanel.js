@@ -87,6 +87,8 @@ const elements = {
   findEmailBtn: null,
   accessEmailBtnLabel: null,
   foundEmailText: null,
+  lookupTraceText: null,
+  lookupWarningsList: null,
   phoneNumberBtn: null,
   phoneNumberText: null,
   copyPhoneBtn: null,
@@ -323,6 +325,8 @@ function cacheElements() {
   elements.findEmailBtn = document.getElementById("findEmailBtn");
   elements.accessEmailBtnLabel = document.getElementById("accessEmailBtnLabel");
   elements.foundEmailText = document.getElementById("foundEmailText");
+  elements.lookupTraceText = document.getElementById("lookupTraceText");
+  elements.lookupWarningsList = document.getElementById("lookupWarningsList");
   elements.phoneNumberBtn = document.getElementById("phoneNumberBtn");
   elements.phoneNumberText = document.getElementById("phoneNumberText");
   elements.copyPhoneBtn = document.getElementById("copyPhoneBtn");
@@ -1488,6 +1492,8 @@ function resetContactDetailView() {
   elements.contactDefaultView?.classList.remove("hidden");
   elements.emailContactRow?.classList.remove("hidden");
   elements.phoneContactRow?.classList.remove("hidden");
+  setLookupTrace("");
+  setLookupWarnings([]);
 }
 
 function normalizePhoneNumber(value) {
@@ -1542,6 +1548,125 @@ function updateFoundEmailText(email = "", fallback = "Access Email") {
   if (elements.copyEmailBtn) {
     elements.copyEmailBtn.disabled = !Boolean(normalized);
   }
+}
+
+function setLookupTrace(message = "", tone = "neutral") {
+  if (!elements.lookupTraceText) return;
+  const normalized = String(message || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    elements.lookupTraceText.textContent = "";
+    elements.lookupTraceText.dataset.tone = "neutral";
+    elements.lookupTraceText.classList.add("hidden");
+    return;
+  }
+
+  elements.lookupTraceText.textContent = normalized;
+  elements.lookupTraceText.dataset.tone =
+    tone === "error" ? "error" : tone === "success" ? "success" : "neutral";
+  elements.lookupTraceText.classList.remove("hidden");
+}
+
+function setLookupWarnings(items = []) {
+  if (!elements.lookupWarningsList) return;
+  const normalized = (Array.isArray(items) ? items : [])
+    .map((item) => String(item || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, 4);
+
+  if (normalized.length === 0) {
+    elements.lookupWarningsList.innerHTML = "";
+    elements.lookupWarningsList.classList.add("hidden");
+    return;
+  }
+
+  elements.lookupWarningsList.innerHTML = normalized
+    .map((warning) => `<li>${escapeHtml(warning)}</li>`)
+    .join("");
+  elements.lookupWarningsList.classList.remove("hidden");
+}
+
+function formatPipelineStage(stage) {
+  const value = String(stage || "").trim().toLowerCase();
+  const labels = {
+    cache_lookup: "cache lookup",
+    student_routing: "student routing",
+    resolve_domain: "domain resolution",
+    legacy_generate_emails: "legacy email generation",
+    gemini_domain_confirmation: "Gemini domain confirmation",
+    predict_patterns: "pattern prediction",
+    generate_candidates: "candidate generation",
+    mx_verification: "MX verification",
+    verify_candidates: "email verification",
+    cache_result: "result caching",
+    return_result: "result delivery",
+    offline_fallback: "offline fallback",
+  };
+  return labels[value] || "pipeline";
+}
+
+function buildSuccessLookupTrace(data) {
+  const source = String(data?.source || "").trim().toLowerCase();
+  const hasDomain = Boolean(String(data?.domain || "").trim());
+  const hasMx = data?.mxChecked === true || Number(data?.mxVerifiedCount || 0) > 0;
+  const verificationRows = Array.isArray(data?.verificationResults) ? data.verificationResults : [];
+  const hasDeliverable = verificationRows.some(
+    (entry) => String(entry?.deliverability || "").toUpperCase() === "DELIVERABLE"
+  );
+  const llmPulled = data?.llmRankingPulled === true;
+  const llmSource = String(data?.llmRankingSource || "").trim().toLowerCase();
+  const mxAttempt = String(data?.mxSucceededAttempt || "").trim().toLowerCase();
+
+  const steps = [];
+  steps.push(`Domain: ${hasDomain ? "OK" : "Skipped"}`);
+  steps.push(`Patterns: ${source === "cache_verified" ? "Skipped (cache)" : "OK"}`);
+  steps.push(`LLM Ranking: ${llmPulled ? "Done" : llmSource === "predict-patterns" ? "Fallback route" : "Not pulled"}`);
+  steps.push(`SMTP: ${mxAttempt === "first" ? "1st try" : mxAttempt === "second" ? "2nd try" : hasMx ? "Passed" : "Failed"}`);
+
+  if (verificationRows.length > 0) {
+    steps.push(`Verify: ${hasDeliverable ? "OK" : "No deliverable"}`);
+  } else if (
+    source === "cache_verified" ||
+    source === "profile_scan" ||
+    source === "student_university"
+  ) {
+    steps.push("Verify: Skipped");
+  }
+
+  return steps.join(" | ");
+}
+
+function buildNotFoundLookupTrace(response) {
+  const reason = String(response?.reason || "unknown").trim().toLowerCase();
+  const domain = String(response?.domain || "").trim();
+  const candidateCount = Number(response?.totalCandidates || 0);
+  const llmPulled = response?.llmRankingPulled === true;
+  const llmSource = String(response?.llmRankingSource || "").trim().toLowerCase();
+  const mxAttempt = String(response?.mxSucceededAttempt || "").trim().toLowerCase();
+  const reasonLabel =
+    reason === "no_mx" ? "MX failed" : reason === "undeliverable" ? "verification failed" : "not found";
+
+  const bits = [
+    `Domain: ${domain ? "OK" : "Unknown"}`,
+    `LLM Ranking: ${llmPulled ? "Done" : llmSource === "predict-patterns" ? "Fallback route" : "Not pulled"}`,
+    `SMTP: ${mxAttempt === "first" ? "1st try" : mxAttempt === "second" ? "2nd try" : "Failed"}`,
+    `Result: ${reasonLabel}`,
+  ];
+  if (candidateCount > 0) {
+    bits.push(`Candidates checked: ${candidateCount}`);
+  }
+  return bits.join(" | ");
+}
+
+function buildErrorLookupTrace(code, stage) {
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  const stageLabel = formatPipelineStage(stage);
+  if (normalizedCode === "QUOTA_EXCEEDED") {
+    return "Request blocked: quota exceeded.";
+  }
+  if (normalizedCode === "UNAUTHORIZED") {
+    return "Request blocked: authentication required.";
+  }
+  return `Failed at ${stageLabel}.`;
 }
 
 function updateAccessEmailButtonState() {
@@ -2159,6 +2284,8 @@ async function findEmail() {
   try {
     hideResultAndError();
     startLoadingCycle();
+    setLookupTrace("Running: profile extraction -> domain lookup -> pattern prediction -> verification.", "neutral");
+    setLookupWarnings([]);
 
     const tab = await getLinkedInProfileTab();
     const contextPayload = getFreshCompleteProfileContextPayload(tab.id);
@@ -2185,6 +2312,7 @@ async function findEmail() {
       const error = new Error(response?.error || "Could not find email.");
       error.code = response?.code || "";
       error.resetDate = response?.resetDate || null;
+      error.stage = response?.stage || "";
       throw error;
     }
 
@@ -2195,7 +2323,8 @@ async function findEmail() {
     const message = error instanceof Error ? error.message : "Could not find email.";
     const code = error?.code || "";
     const resetDate = error?.resetDate || null;
-    showError(message, code, resetDate);
+    const stage = error?.stage || "";
+    showError(message, code, resetDate, stage);
     await updateQuotaStatus();
   }
 }
@@ -2312,6 +2441,8 @@ function displayResults(data) {
   setPrimaryFinderAction("draft");
 
   setStatus("Email found successfully.", "success");
+  setLookupTrace(buildSuccessLookupTrace(data), "success");
+  setLookupWarnings(Array.isArray(data?.warnings) ? data.warnings : []);
 
   // A new email was found — invalidate the draft view's contact key so it
   // re-renders with the correct email the next time the user switches to it.
@@ -2399,9 +2530,11 @@ function displayNotFound(response) {
   updateFoundEmailText("", "No email found for this contact.");
   setPrimaryFinderAction("find");
   setStatus("No email found for this contact.", "info");
+  setLookupTrace(buildNotFoundLookupTrace(response), "error");
+  setLookupWarnings(Array.isArray(response?.warnings) ? response.warnings : []);
 }
 
-function showError(message, code, resetDate) {
+function showError(message, code, resetDate, stage) {
   emailFinderState.currentError = message;
   emailFinderState.currentResult = null;
   emailFinderState.resultProfileKey = "";
@@ -2426,6 +2559,8 @@ function showError(message, code, resetDate) {
   updateFoundEmailText("", "Email lookup failed. Try again.");
   setPrimaryFinderAction("find");
   setStatus(message || "Could not find email.", "error");
+  setLookupTrace(buildErrorLookupTrace(code, stage), "error");
+  setLookupWarnings([]);
   if (code === "QUOTA_EXCEEDED") {
     setUpgradeState(false, "", PRICING_URL);
   }

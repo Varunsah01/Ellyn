@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-import { createClient as createServerClient } from '@/lib/supabase/server'
+import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 
 type Deliverability = 'DELIVERABLE' | 'UNDELIVERABLE' | 'CATCHALL' | 'UNKNOWN'
 
@@ -73,14 +73,16 @@ export async function POST(request: NextRequest) {
   let email = ''
 
   try {
-    const supabase = await createServerClient()
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    try {
+      await getAuthenticatedUserFromRequest(request)
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Unauthorized') {
+        if (process.env.NODE_ENV === 'production') {
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+      } else {
+        throw error
+      }
     }
 
     let body: unknown = null

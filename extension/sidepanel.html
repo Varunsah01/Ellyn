@@ -435,6 +435,33 @@
         cursor: not-allowed;
       }
 
+      .ellyn-contact-trace {
+        margin: -4px 2px 0;
+        font-size: 10px;
+        line-height: 1.35;
+        color: #5b6475;
+      }
+
+      .ellyn-contact-trace[data-tone="success"] {
+        color: #1f7a48;
+      }
+
+      .ellyn-contact-trace[data-tone="error"] {
+        color: #b42318;
+      }
+
+      .ellyn-contact-warnings {
+        margin: 4px 0 0 16px;
+        padding: 0;
+        font-size: 10px;
+        line-height: 1.35;
+        color: #7c2d12;
+      }
+
+      .ellyn-contact-warnings li {
+        margin: 0 0 2px;
+      }
+
       .ellyn-todo h3 {
         margin: 0;
         font-size: 14px;
@@ -798,6 +825,8 @@
                     Add to List
                   </button>
                 </div>
+                <p id="lookupTraceText" class="ellyn-contact-trace hidden" data-tone="neutral"></p>
+                <ul id="lookupWarningsList" class="ellyn-contact-warnings hidden"></ul>
               </div>
             </section>
 
