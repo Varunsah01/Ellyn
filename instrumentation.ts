@@ -16,4 +16,5 @@ export async function register() {
 /**
  * Captures framework-level request handling errors in App Router.
  */
-export const onRequestError = Sentry.captureRequestError
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const onRequestError = (Sentry as any).captureRequestError

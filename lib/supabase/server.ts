@@ -12,7 +12,8 @@ function instrumentSupabaseClientIfNeeded<T extends object>(
 ): T {
   if (!supabaseSentryInstrumentationApplied) {
     try {
-      Sentry.instrumentSupabaseClient(client)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(Sentry as any).instrumentSupabaseClient(client)
       supabaseSentryInstrumentationApplied = true
     } catch (error) {
       // Instrumentation is best-effort and should never break runtime auth/db flows.

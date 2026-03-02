@@ -100,7 +100,7 @@
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
     "eslint": "^8.57.1",
-    "eslint-config-next": "^16.1.6",
+    "eslint-config-next": "14.2.21",
     "eslint-plugin-check-file": "^2.8.0",
     "eslint-plugin-jest-dom": "^4.0.1",
     "eslint-plugin-testing-library": "^7.15.4",
