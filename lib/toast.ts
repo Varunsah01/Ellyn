@@ -1,98 +1,96 @@
-import toast from 'react-hot-toast';
+import toast from "react-hot-toast";
 
-/**
- * Enhanced toast notifications with icons and styling
- */
+export type ToastType = "success" | "error" | "info" | "warning";
 
-export const showToast = {
-  success: (message: string, options?: { duration?: number }) => {
+type ToastOptions = {
+  duration?: number;
+};
+
+type PromiseMessages<T> = {
+  loading: string;
+  success: string | ((data: T) => string);
+  error: string | ((error: unknown) => string);
+};
+
+type ShowToastFn = {
+  (message: string, type?: ToastType, options?: ToastOptions): string;
+  success: (message: string, options?: ToastOptions) => string;
+  error: (message: string, options?: ToastOptions) => string;
+  info: (message: string, options?: ToastOptions) => string;
+  warning: (message: string, options?: ToastOptions) => string;
+  loading: (message: string) => string;
+  promise: <T>(promise: Promise<T>, messages: PromiseMessages<T>) => Promise<T>;
+  dismiss: (toastId?: string) => void;
+};
+
+function baseStyle(borderColor: string) {
+  return {
+    background: "hsl(var(--background))",
+    color: "hsl(var(--foreground))",
+    border: `1px solid ${borderColor}`,
+  };
+}
+
+function emit(type: ToastType, message: string, options?: ToastOptions): string {
+  const duration = options?.duration ?? (type === "error" ? 5000 : 3500);
+
+  if (type === "success") {
     return toast.success(message, {
-      duration: options?.duration || 3000,
-      icon: '✓',
-      style: {
-        background: 'hsl(var(--background))',
-        color: 'hsl(var(--foreground))',
-        border: '1px solid hsl(142, 76%, 36%)',
-      },
+      duration,
+      style: baseStyle("hsl(142, 76%, 36%)"),
     });
-  },
+  }
 
-  error: (message: string, options?: { duration?: number; action?: () => void }) => {
+  if (type === "error") {
     return toast.error(message, {
-      duration: options?.duration || 5000,
-      icon: '✗',
-      style: {
-        background: 'hsl(var(--background))',
-        color: 'hsl(var(--foreground))',
-        border: '1px solid hsl(var(--destructive))',
-      },
+      duration,
+      style: baseStyle("hsl(var(--destructive))"),
     });
-  },
+  }
 
-  warning: (message: string, options?: { duration?: number }) => {
+  if (type === "warning") {
     return toast(message, {
-      duration: options?.duration || 4000,
-      icon: '⚠',
-      style: {
-        background: 'hsl(var(--background))',
-        color: 'hsl(var(--foreground))',
-        border: '1px solid hsl(45, 93%, 47%)',
-      },
+      duration,
+      style: baseStyle("hsl(45, 93%, 47%)"),
     });
-  },
+  }
 
-  info: (message: string, options?: { duration?: number }) => {
-    return toast(message, {
-      duration: options?.duration || 4000,
-      icon: 'ℹ',
-      style: {
-        background: 'hsl(var(--background))',
-        color: 'hsl(var(--foreground))',
-        border: '1px solid hsl(var(--primary))',
-      },
-    });
-  },
+  return toast(message, {
+    duration,
+    style: baseStyle("hsl(var(--primary))"),
+  });
+}
 
-  loading: (message: string) => {
-    return toast.loading(message, {
-      style: {
-        background: 'hsl(var(--background))',
-        color: 'hsl(var(--foreground))',
-        border: '1px solid hsl(var(--border))',
-      },
-    });
-  },
+export const showToast = ((message: string, type: ToastType = "info", options?: ToastOptions) =>
+  emit(type, message, options)) as ShowToastFn;
 
-  promise: <T,>(
-    promise: Promise<T>,
-    messages: {
-      loading: string;
-      success: string | ((data: T) => string);
-      error: string | ((error: unknown) => string);
+showToast.success = (message, options) => emit("success", message, options);
+showToast.error = (message, options) => emit("error", message, options);
+showToast.info = (message, options) => emit("info", message, options);
+showToast.warning = (message, options) => emit("warning", message, options);
+
+showToast.loading = (message: string) =>
+  toast.loading(message, {
+    style: baseStyle("hsl(var(--border))"),
+  });
+
+showToast.promise = <T>(promise: Promise<T>, messages: PromiseMessages<T>) =>
+  toast.promise(
+    promise,
+    {
+      loading: messages.loading,
+      success: messages.success,
+      error: messages.error,
+    },
+    {
+      style: baseStyle("hsl(var(--border))"),
     }
-  ) => {
-    return toast.promise(
-      promise,
-      {
-        loading: messages.loading,
-        success: messages.success,
-        error: messages.error,
-      },
-      {
-        style: {
-          background: 'hsl(var(--background))',
-          color: 'hsl(var(--foreground))',
-          border: '1px solid hsl(var(--border))',
-        },
-      }
-    );
-  },
+  );
 
-  dismiss: (toastId?: string) => {
-    if (toastId) {
-      toast.dismiss(toastId);
-    } else {
-      toast.dismiss();
-    }
-  },
+showToast.dismiss = (toastId?: string) => {
+  if (toastId) {
+    toast.dismiss(toastId);
+    return;
+  }
+  toast.dismiss();
 };

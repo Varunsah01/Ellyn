@@ -168,7 +168,7 @@ function quotaExceededResponse(feature: string, used: number, limit: number, pla
       used,
       limit,
       plan_type: planType,
-      upgrade_url: '/dashboard/settings?tab=billing',
+      upgrade_url: '/dashboard/upgrade',
     },
     { status: 402 }
   )

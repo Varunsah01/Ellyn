@@ -1,76 +1,244 @@
-import { createVersionedHandler } from '@/app/api/v1/_utils'
-import * as LegacyRoute from '@/app/api/contacts/[id]/route'
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
-const legacyConfig = LegacyRoute as Record<string, unknown>
+import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
+const CONTACT_STATUSES = ["discovered", "sent", "bounced", "replied"] as const;
+const ContactStatusSchema = z.enum(CONTACT_STATUSES);
 
-/**
- * Handle GET requests for `/api/v1/contacts/[id]`.
- * @returns {RouteHandler} Versioned route handler for GET /api/v1/contacts/[id].
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // GET /api/v1/contacts/[id]
- * fetch('/api/v1/contacts/[id]', { method: 'GET' })
- */
-export const GET = createVersionedHandler(legacyConfig.GET as any)
-/**
- * Handle POST requests for `/api/v1/contacts/[id]`.
- * @returns {RouteHandler} Versioned route handler for POST /api/v1/contacts/[id].
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // POST /api/v1/contacts/[id]
- * fetch('/api/v1/contacts/[id]', { method: 'POST' })
- */
-export const POST = createVersionedHandler(legacyConfig.POST as any)
-/**
- * Handle PUT requests for `/api/v1/contacts/[id]`.
- * @returns {RouteHandler} Versioned route handler for PUT /api/v1/contacts/[id].
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // PUT /api/v1/contacts/[id]
- * fetch('/api/v1/contacts/[id]', { method: 'PUT' })
- */
-export const PUT = createVersionedHandler(legacyConfig.PUT as any)
-/**
- * Handle PATCH requests for `/api/v1/contacts/[id]`.
- * @returns {RouteHandler} Versioned route handler for PATCH /api/v1/contacts/[id].
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // PATCH /api/v1/contacts/[id]
- * fetch('/api/v1/contacts/[id]', { method: 'PATCH' })
- */
-export const PATCH = createVersionedHandler(legacyConfig.PATCH as any)
-/**
- * Handle DELETE requests for `/api/v1/contacts/[id]`.
- * @returns {RouteHandler} Versioned route handler for DELETE /api/v1/contacts/[id].
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // DELETE /api/v1/contacts/[id]
- * fetch('/api/v1/contacts/[id]', { method: 'DELETE' })
- */
-export const DELETE = createVersionedHandler(legacyConfig.DELETE as any)
-/**
- * Handle OPTIONS requests for `/api/v1/contacts/[id]`.
- * @returns {RouteHandler} Versioned route handler for OPTIONS /api/v1/contacts/[id].
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // OPTIONS /api/v1/contacts/[id]
- * fetch('/api/v1/contacts/[id]', { method: 'OPTIONS' })
- */
-export const OPTIONS = createVersionedHandler(legacyConfig.OPTIONS as any)
-/**
- * Handle HEAD requests for `/api/v1/contacts/[id]`.
- * @returns {RouteHandler} Versioned route handler for HEAD /api/v1/contacts/[id].
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // HEAD /api/v1/contacts/[id]
- * fetch('/api/v1/contacts/[id]', { method: 'HEAD' })
- */
-export const HEAD = createVersionedHandler(legacyConfig.HEAD as any)
+const ContactPatchSchema = z
+  .object({
+    first_name: z.string().trim().min(1).max(120).optional(),
+    last_name: z.string().trim().min(1).max(120).optional(),
+    email: z
+      .preprocess(
+        (value) => {
+          if (value === null) return null;
+          if (value === undefined || value === "") return undefined;
+          if (typeof value !== "string") return value;
+          return value.trim().toLowerCase();
+        },
+        z.union([z.string().email().max(254), z.null()]).optional()
+      )
+      .optional(),
+    company_name: z
+      .preprocess(
+        (value) => {
+          if (value === null) return null;
+          if (value === undefined || value === "") return undefined;
+          if (typeof value !== "string") return value;
+          return value.trim();
+        },
+        z.union([z.string().max(160), z.null()]).optional()
+      )
+      .optional(),
+    role: z
+      .preprocess(
+        (value) => {
+          if (value === null) return null;
+          if (value === undefined || value === "") return undefined;
+          if (typeof value !== "string") return value;
+          return value.trim();
+        },
+        z.union([z.string().max(160), z.null()]).optional()
+      )
+      .optional(),
+    linkedin_url: z
+      .preprocess(
+        (value) => {
+          if (value === null) return null;
+          if (value === undefined || value === "") return undefined;
+          if (typeof value !== "string") return value;
+          return value.trim();
+        },
+        z.union([z.string().url().max(500), z.null()]).optional()
+      )
+      .optional(),
+    phone: z
+      .preprocess(
+        (value) => {
+          if (value === null) return null;
+          if (value === undefined || value === "") return undefined;
+          if (typeof value !== "string") return value;
+          return value.trim();
+        },
+        z.union([z.string().max(50), z.null()]).optional()
+      )
+      .optional(),
+    discovery_source: z
+      .preprocess(
+        (value) => {
+          if (value === null) return null;
+          if (value === undefined || value === "") return undefined;
+          if (typeof value !== "string") return value;
+          return value.trim();
+        },
+        z.union([z.string().max(100), z.null()]).optional()
+      )
+      .optional(),
+    status: ContactStatusSchema.optional(),
+    notes: z
+      .preprocess(
+        (value) => {
+          if (value === null) return null;
+          if (value === undefined || value === "") return undefined;
+          if (typeof value !== "string") return value;
+          return value.trim();
+        },
+        z.union([z.string().max(5000), z.null()]).optional()
+      )
+      .optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  });
+
+type ContactRow = {
+  id: string;
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  company_name: string | null;
+  role: string | null;
+  linkedin_url: string | null;
+  phone: string | null;
+  discovery_source: string | null;
+  status: string | null;
+  notes: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type RouteContext = {
+  params: {
+    id: string;
+  };
+};
+
+async function getOwnedContact(contactId: string, userId: string) {
+  const supabase = await createServiceRoleClient();
+  const query = await supabase
+    .from("contacts")
+    .select(
+      "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at"
+    )
+    .eq("id", contactId)
+    .eq("user_id", userId)
+    .maybeSingle<ContactRow>();
+
+  return { supabase, ...query };
+}
+
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  try {
+    const user = await getAuthenticatedUserFromRequest(request);
+    const { data, error } = await getOwnedContact(params.id, user.id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message || "Failed to fetch contact" }, { status: 500 });
+    }
+
+    if (!data) {
+      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ contact: data });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to fetch contact" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  try {
+    const user = await getAuthenticatedUserFromRequest(request);
+    const owned = await getOwnedContact(params.id, user.id);
+    if (owned.error) {
+      return NextResponse.json({ error: owned.error.message || "Failed to fetch contact" }, { status: 500 });
+    }
+    if (!owned.data) {
+      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    }
+
+    const parsed = ContactPatchSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: parsed.error.issues[0]?.message ?? "Invalid contact payload",
+          details: parsed.error.issues,
+        },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await owned.supabase
+      .from("contacts")
+      .update({
+        ...parsed.data,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", params.id)
+      .eq("user_id", user.id)
+      .select(
+        "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at"
+      )
+      .single<ContactRow>();
+
+    if (error) {
+      return NextResponse.json({ error: error.message || "Failed to update contact" }, { status: 500 });
+    }
+
+    return NextResponse.json({ contact: data });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to update contact" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  try {
+    const user = await getAuthenticatedUserFromRequest(request);
+    const owned = await getOwnedContact(params.id, user.id);
+    if (owned.error) {
+      return NextResponse.json({ error: owned.error.message || "Failed to fetch contact" }, { status: 500 });
+    }
+    if (!owned.data) {
+      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    }
+
+    const { error } = await owned.supabase
+      .from("contacts")
+      .delete()
+      .eq("id", params.id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message || "Failed to delete contact" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to delete contact" },
+      { status: 500 }
+    );
+  }
+}

@@ -1,15 +1,52 @@
-import { z } from 'zod'
+const REQUIRED_ENV_VARS = [
+  "NEXT_PUBLIC_SUPABASE_URL",
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  "SUPABASE_SERVICE_ROLE_KEY",
+] as const;
 
-const envSchema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL:       z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY:  z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY:      z.string().min(1),
-  NEXT_PUBLIC_APP_URL:            z.string().url().default('http://localhost:3000'),
-  ZEROBOUNCE_API_KEY:             z.string().min(1),
-  DODO_PAYMENTS_API_KEY:          z.string().min(1),
-  DODO_PAYMENTS_WEBHOOK_KEY:      z.string().min(1),
-  SECRET_ADMIN_TOKEN:             z.string().min(32),
-})
+const OPTIONAL_ENV_VARS = [
+  "NEXT_PUBLIC_APP_URL",
+  "NEXT_PUBLIC_CHROME_EXTENSION_ID",
+  "GOOGLE_AI_API_KEY",
+  "MISTRAL_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "ZEROBOUNCE_API_KEY",
+  "CLEARBIT_API_KEY",
+  "GOOGLE_CUSTOM_SEARCH_API_KEY",
+  "GOOGLE_SEARCH_ENGINE_ID",
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
+  "KV_REST_API_URL",
+  "KV_REST_API_TOKEN",
+  "KV_REST_API_READ_ONLY_TOKEN",
+  "DODO_PAYMENTS_API_KEY",
+  "DODO_PAYMENTS_WEBHOOK_KEY",
+  "DODO_PAYMENTS_ENVIRONMENT",
+  "DODO_STARTER_PRODUCT_ID_GLOBAL_MONTHLY",
+  "DODO_STARTER_PRODUCT_ID_GLOBAL_QUARTERLY",
+  "DODO_STARTER_PRODUCT_ID_GLOBAL_YEARLY",
+  "DODO_PRO_PRODUCT_ID_GLOBAL_MONTHLY",
+  "DODO_PRO_PRODUCT_ID_GLOBAL_QUARTERLY",
+  "DODO_PRO_PRODUCT_ID_GLOBAL_YEARLY",
+  "DODO_PRO_PRODUCT_ID_GLOBAL",
+  "NEXT_PUBLIC_SENTRY_DSN",
+  "SENTRY_DSN",
+  "SENTRY_ORG",
+  "SENTRY_PROJECT",
+  "SENTRY_AUTH_TOKEN",
+  "ENABLE_DEBUG_ENDPOINTS",
+  "SECRET_ADMIN_TOKEN",
+  "ADMIN_IP_WHITELIST",
+] as const;
 
-// Validate at module import time so misconfigured environments fail loudly.
-export const env = envSchema.parse(process.env)
+export function validateEnv(): void {
+  const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
+  }
+}
+
+export const env = {
+  required: REQUIRED_ENV_VARS,
+  optional: OPTIONAL_ENV_VARS,
+} as const;

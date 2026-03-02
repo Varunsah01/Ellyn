@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import * as Sentry from '@sentry/nextjs'
 import { instrumentSupabaseClientPerformance } from '@/lib/monitoring/performance'
@@ -85,19 +86,14 @@ export async function createClient() {
  * createServiceRoleClient()
  */
 export async function createServiceRoleClient() {
-  const supabaseUrl = requireEnv('NEXT_PUBLIC_SUPABASE_URL')
-  const supabaseServiceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY')
-
-  const client = createServerClient(supabaseUrl, supabaseServiceRoleKey, {
-    cookies: {
-      getAll() {
-        return []
+  return createSupabaseClient(
+    requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
       },
-      setAll() {
-        // Service-role operations are server-only and do not require cookie persistence.
-      },
-    },
-  })
-
-  return instrumentSupabaseClientIfNeeded(client, 'service-role')
+    }
+  )
 }

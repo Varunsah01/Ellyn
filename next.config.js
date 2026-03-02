@@ -5,7 +5,11 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
   images: {
+    domains: ["logo.clearbit.com", "api.brandfetch.io"],
     remotePatterns: [
       {
         protocol: 'https',

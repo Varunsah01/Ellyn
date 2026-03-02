@@ -82,7 +82,7 @@ function buildQuotaExceededResponse(feature: string, used: number, limit: number
       used,
       limit,
       plan_type: planType,
-      upgrade_url: '/dashboard/settings?tab=billing',
+      upgrade_url: '/dashboard/upgrade',
     },
     { status: 402 }
   )

@@ -1,145 +1,107 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
-import { checkAiRateLimit, getRateLimitIdentifier } from '@/lib/ai-rate-limit'
-import { getGeminiClient } from '@/lib/gemini'
-import { buildPrompt, getPromptConfig } from '@/lib/template-prompts'
-import { CustomizeToneSchema, formatZodError } from '@/lib/validation/schemas'
-import { captureApiException } from '@/lib/monitoring/sentry'
+import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
+import { generateEmailTemplate } from "@/lib/llm-client";
+import { incrementAIDraftGeneration, QuotaExceededError } from "@/lib/quota";
 
-interface CustomizeToneResponse {
-  success: boolean
-  customizedDraft?: string
-  tokensUsed?: {
-    input: number
-    output: number
-    total: number
-  }
-  cost: number
-  error?: string
-  details?: Array<{ path: string; message: string; code: string }>
+const TONES = ["professional", "casual", "friendly", "confident", "humble"] as const;
+
+const CustomizeToneSchema = z.object({
+  subject: z.string().trim().min(1).max(220),
+  body: z.string().trim().min(1).max(12000),
+  tone: z.enum(TONES),
+});
+
+function quotaExceededResponse(error: QuotaExceededError) {
+  return NextResponse.json(
+    {
+      error: "quota_exceeded",
+      feature: error.feature,
+      used: error.used,
+      limit: error.limit,
+      plan_type: error.plan_type,
+      upgrade_url: "/dashboard/upgrade",
+    },
+    { status: 402 }
+  );
 }
 
-/**
- * Handle POST requests for `/api/ai/customize-tone`.
- * @param {NextRequest} request - Request input.
- * @returns {Promise<NextResponse<CustomizeToneResponse>>} JSON response for the POST /api/ai/customize-tone request.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {ValidationError} If the request payload fails validation.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // POST /api/ai/customize-tone
- * fetch('/api/ai/customize-tone', { method: 'POST' })
- */
-export async function POST(request: NextRequest): Promise<NextResponse<CustomizeToneResponse>> {
-  const startedAt = Date.now()
+function buildPrompt(input: z.infer<typeof CustomizeToneSchema>): string {
+  return [
+    "You are an expert outreach copywriter.",
+    `Rewrite this email in a ${input.tone} tone.`,
+    "Do not change factual meaning.",
+    "Return ONLY JSON in this exact shape:",
+    '{"subject":"...", "body":"..."}',
+    `Current subject: ${input.subject}`,
+    "Current body:",
+    input.body,
+  ].join("\n");
+}
 
-  try {
-    const limiter = checkAiRateLimit(getRateLimitIdentifier(request))
-    if (!limiter.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Rate limit exceeded. Please retry later.',
-          cost: 0,
-        },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': String(Math.ceil(limiter.retryAfterMs / 1000)),
-          },
-        }
-      )
+function parseResponse(raw: string, fallbackSubject: string, fallbackBody: string) {
+  const cleaned = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try {
+      const parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as {
+        subject?: unknown;
+        body?: unknown;
+      };
+      const subject = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
+      const body = typeof parsed.body === "string" ? parsed.body.trim() : "";
+      if (subject && body) {
+        return { subject, body };
+      }
+    } catch {
+      // fall through
     }
+  }
 
-    const parsed = CustomizeToneSchema.safeParse(await request.json())
+  return { subject: fallbackSubject, body: cleaned || fallbackBody };
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getAuthenticatedUserFromRequest(request);
+
+    const parsed = CustomizeToneSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
         {
-          success: false,
-          error: 'Validation failed.',
-          details: formatZodError(parsed.error),
-          cost: 0,
+          error: parsed.error.issues[0]?.message ?? "Invalid request payload",
+          details: parsed.error.issues,
         },
         { status: 400 }
-      )
+      );
     }
-    const { draft, targetTone } = parsed.data
 
-    const promptConfig = getPromptConfig('changeTone')
-    const prompt = buildPrompt('changeTone', {
-      tone: targetTone,
-      draft,
-    })
+    try {
+      await incrementAIDraftGeneration(user.id);
+    } catch (error) {
+      if (error instanceof QuotaExceededError) {
+        return quotaExceededResponse(error);
+      }
+      throw error;
+    }
 
-    const gemini = getGeminiClient()
-    const output = await gemini.generateText({
-      prompt,
-      systemPrompt: promptConfig.systemPrompt,
-      temperature: promptConfig.temperature,
-      maxTokens: promptConfig.maxTokens,
-      action: 'customize-tone',
-    })
-
-    const customizedDraft = output.text
-      .replace(/```[a-z]*\n?/gi, '')
-      .replace(/```/g, '')
-      .trim()
-
-    console.log('[AI] customize-tone completed', {
-      tone: targetTone,
-      durationMs: Date.now() - startedAt,
-      tokens: output.tokensUsed,
-      costUsd: output.cost,
-    })
+    const raw = await generateEmailTemplate(buildPrompt(parsed.data));
+    const rewritten = parseResponse(raw, parsed.data.subject, parsed.data.body);
 
     return NextResponse.json({
-      success: true,
-      customizedDraft,
-      tokensUsed: output.tokensUsed,
-      cost: output.cost,
-    })
+      subject: rewritten.subject,
+      body: rewritten.body,
+    });
   } catch (error) {
-    console.error('[AI] customize-tone failed', {
-      error: toErrorMessage(error),
-      durationMs: Date.now() - startedAt,
-    })
-    captureApiException(error, { route: '/api/ai/customize-tone', method: 'POST' })
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     return NextResponse.json(
-      {
-        success: false,
-        error: toErrorMessage(error),
-        cost: 0,
-      },
+      { error: error instanceof Error ? error.message : "Failed to customize tone" },
       { status: 500 }
-    )
+    );
   }
-}
-
-/**
- * Handle GET requests for `/api/ai/customize-tone`.
- * @returns {unknown} JSON response for the GET /api/ai/customize-tone request.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // GET /api/ai/customize-tone
- * fetch('/api/ai/customize-tone')
- */
-export async function GET() {
-  return NextResponse.json(
-    {
-      success: false,
-      error: 'Method not allowed. Use POST.',
-      cost: 0,
-    },
-    { status: 405 }
-  )
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return 'Unknown error'
 }

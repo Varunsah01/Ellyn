@@ -7,6 +7,8 @@ import {
   normalizeDomain,
   validateDomainWithMX,
 } from '@/lib/domain-utils'
+import { getKnownDomain } from '@/lib/enhanced-email-patterns'
+import { callLLM } from '@/lib/llm-client'
 import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
 
 export type DomainSource =
@@ -39,6 +41,12 @@ export interface ResolveDomainParams {
   skipMXValidation?: boolean
 }
 
+export interface EnrichDomainResolutionResult {
+  domain: string
+  confidence: number
+  source: string
+}
+
 const DOMAIN_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const LINKEDIN_FETCH_TIMEOUT_MS = 5000
 const API_FETCH_TIMEOUT_MS = 3000
@@ -60,9 +68,113 @@ const SEARCH_DOMAIN_BLOCKLIST = [
 const domainCache = new Map<string, DomainResult>()
 
 /**
- * Main orchestrator for layered domain resolution.
+ * Main domain resolver.
+ * Overloads:
+ * - resolveDomain(companyName: string) => lightweight 6-layer cascade for enrich flow.
+ * - resolveDomain(params: ResolveDomainParams) => existing detailed resolver.
  */
-export async function resolveDomain(params: ResolveDomainParams): Promise<DomainResult> {
+export async function resolveDomain(companyName: string): Promise<EnrichDomainResolutionResult | null>
+export async function resolveDomain(params: ResolveDomainParams): Promise<DomainResult>
+export async function resolveDomain(
+  input: string | ResolveDomainParams
+): Promise<EnrichDomainResolutionResult | DomainResult | null> {
+  if (typeof input === 'string') {
+    return resolveDomainForEnrich(input)
+  }
+
+  return resolveDomainDetailed(input)
+}
+
+async function resolveDomainForEnrich(
+  companyName: string
+): Promise<EnrichDomainResolutionResult | null> {
+  const originalName = String(companyName || '').trim()
+  if (!originalName) return null
+
+  const normalizedName = normalizeCompanyName(originalName) || originalName.toLowerCase().trim()
+
+  // Layer 1: Known DB
+  try {
+    const known = await getKnownDomain(originalName)
+    const normalized = normalizeDomain(String(known || ''))
+    if (normalized && !isLikelyInvalidDomain(normalized)) {
+      return { domain: normalized, confidence: 95, source: 'known_db' }
+    }
+  } catch (error) {
+    console.warn('[Domain] known_db layer failed:', sanitizeError(error))
+  }
+
+  // Layer 2: Clearbit (skip when key missing)
+  if (process.env.CLEARBIT_API_KEY?.trim()) {
+    try {
+      const clearbit = await resolveDomainFromClearbit(originalName, normalizedName)
+      const normalized = normalizeDomain(String(clearbit?.domain || ''))
+      if (normalized && !isLikelyInvalidDomain(normalized)) {
+        return { domain: normalized, confidence: 90, source: 'clearbit' }
+      }
+    } catch (error) {
+      console.warn('[Domain] clearbit layer failed:', sanitizeError(error))
+    }
+  } else {
+    console.log('[Domain] clearbit layer skipped (missing CLEARBIT_API_KEY)')
+  }
+
+  // Layer 3: Brandfetch
+  try {
+    const brandfetch = await resolveDomainFromBrandfetch(normalizedName)
+    const normalized = normalizeDomain(String(brandfetch?.domain || ''))
+    if (normalized && !isLikelyInvalidDomain(normalized)) {
+      return { domain: normalized, confidence: 85, source: 'brandfetch' }
+    }
+  } catch (error) {
+    console.warn('[Domain] brandfetch layer failed:', sanitizeError(error))
+  }
+
+  // Layer 4: LLM (skip when key missing)
+  if (process.env.GOOGLE_AI_API_KEY?.trim()) {
+    try {
+      const llmPrompt = [
+        'Return only the company email domain as plain text.',
+        `Company: ${originalName}`,
+        'Output example: openai.com',
+      ].join('\n')
+      const llmOutput = (await callLLM(llmPrompt)).trim().toLowerCase()
+      const normalized = normalizeDomain(llmOutput.split(/\s+/)[0] ?? '')
+      if (normalized && !isLikelyInvalidDomain(normalized)) {
+        return { domain: normalized, confidence: 70, source: 'llm' }
+      }
+    } catch (error) {
+      console.warn('[Domain] llm layer failed:', sanitizeError(error))
+    }
+  } else {
+    console.log('[Domain] llm layer skipped (missing GOOGLE_AI_API_KEY)')
+  }
+
+  // Layer 5: Google Search
+  try {
+    const google = await resolveDomainFromGoogle(originalName)
+    const normalized = normalizeDomain(String(google?.domain || ''))
+    if (normalized && !isLikelyInvalidDomain(normalized)) {
+      return { domain: normalized, confidence: 75, source: 'google_search' }
+    }
+  } catch (error) {
+    console.warn('[Domain] google_search layer failed:', sanitizeError(error))
+  }
+
+  // Layer 6: Heuristic
+  try {
+    const heuristic = normalizeDomain(heuristicGuessDomain(normalizedName))
+    if (heuristic && !isLikelyInvalidDomain(heuristic)) {
+      return { domain: heuristic, confidence: 50, source: 'heuristic' }
+    }
+  } catch (error) {
+    console.warn('[Domain] heuristic layer failed:', sanitizeError(error))
+  }
+
+  return null
+}
+
+async function resolveDomainDetailed(params: ResolveDomainParams): Promise<DomainResult> {
   const originalName = String(params.companyName || '').trim()
   if (!originalName) {
     throw new Error('companyName is required')

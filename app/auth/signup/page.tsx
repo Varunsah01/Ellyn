@@ -1,393 +1,224 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Mail, Lock, User, ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Loader2 } from "lucide-react";
+
+import { createClient } from "@/lib/supabase/client";
+import { showToast } from "@/lib/toast";
 import { Button } from "@/components/ui/Button";
-import { CsrfHiddenInput } from "@/components/CsrfHiddenInput";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/Form";
 import { Input } from "@/components/ui/Input";
-import { Checkbox } from "@/components/ui/Checkbox";
-import { supabase } from "@/lib/supabase";
-import { AuthFormLayout, AuthPageLoading } from "@/components/auth/AuthFormLayout";
-import { useAuthForm } from "@/hooks/useAuthForm";
-import { validatePasswordStrength } from "@/lib/validation/password";
-import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
-import { apiFetch } from "@/lib/api-client";
 
-function SignupPageContent() {
-  const searchParams = useSearchParams();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [agreeToTerms, setAgreeToTerms] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+const signupSchema = z
+  .object({
+    full_name: z.string().min(1, "Full name is required"),
+    email: z.string().email("Enter a valid email address"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string().min(8, "Confirm your password"),
+  })
+  .refine((values) => values.password === values.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords must match",
+  });
 
-  const auth = useAuthForm({ searchParams });
-  const passwordStrength = useMemo(() => validatePasswordStrength(password), [password]);
-  const loginHref = auth.createAuthHref("login");
-  const isBusy = auth.isSubmitting || auth.isGoogleSubmitting;
+type SignupFormValues = z.infer<typeof signupSchema>;
 
-  const passwordMismatch = confirmPassword.length > 0 && confirmPassword !== password;
+export default function SignupPage() {
+  const router = useRouter();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    auth.clearMessages();
+  const form = useForm<SignupFormValues>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: {
+      full_name: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+    },
+  });
 
-    if (password !== confirmPassword) {
-      auth.setErrorMessage("Passwords do not match.");
-      return;
-    }
-
-    if (!agreeToTerms) {
-      auth.setErrorMessage("Please agree to the terms and conditions.");
-      return;
-    }
-
-    if (!passwordStrength.isValid) {
-      auth.setErrorMessage("Password does not meet strength requirements.");
-      return;
-    }
-
-    if (!auth.requireSupabaseConfig()) return;
-
-    auth.setIsSubmitting(true);
-
-    const trimmedEmail = email.trim();
-    const trimmedName = name.trim();
-    const emailRedirectTo = auth.createAuthRedirectUrl("login");
+  const onSubmit = async (values: SignupFormValues) => {
+    setIsSubmitting(true);
 
     try {
-      const response = await apiFetch("/auth/signup", {
+      const response = await fetch("/api/v1/auth/signup", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
-          name: trimmedName,
-          email: trimmedEmail,
-          password,
-          emailRedirectTo,
+          email: values.email.trim().toLowerCase(),
+          password: values.password,
+          full_name: values.full_name.trim(),
         }),
       });
 
-      const payload = await response.json();
+      const payload = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
 
       if (!response.ok) {
-        const signupError =
-          payload?.error || payload?.data?.error || "Failed to create account.";
-        auth.setErrorMessage(signupError);
+        showToast.error(payload.error ?? "Failed to create account");
         return;
       }
 
-      const returnedUser = payload?.user || payload?.data?.user;
-      const hasSession = Boolean(payload?.hasSession ?? payload?.data?.hasSession);
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: values.email.trim().toLowerCase(),
+        password: values.password,
+      });
 
-      if (returnedUser && hasSession) {
-        auth.setSuccessMessage("Account created successfully. Redirecting...");
-        await auth.handleAuthenticatedUser(returnedUser, trimmedEmail, trimmedName);
+      if (signInError) {
+        showToast.error(signInError.message);
         return;
       }
 
-      auth.setSuccessMessage(
-        payload?.message ||
-          payload?.data?.message ||
-          "Account created. Check your email to verify your address before signing in.",
-      );
+      router.push("/dashboard");
+      router.refresh();
     } catch (error) {
-      console.error("Signup error:", error);
-      auth.setErrorMessage("Failed to create account.");
+      showToast.error(error instanceof Error ? error.message : "Failed to create account");
     } finally {
-      auth.setIsSubmitting(false);
-    }
-  };
-
-  const handleGoogleSignup = async () => {
-    auth.clearMessages();
-
-    if (!agreeToTerms) {
-      auth.setErrorMessage(
-        "Please agree to the terms and conditions before continuing with Google.",
-      );
-      return;
-    }
-
-    if (!auth.requireSupabaseConfig()) return;
-
-    auth.setIsGoogleSubmitting(true);
-
-    const redirectTo = auth.createAuthRedirectUrl("login");
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-
-    if (error) {
-      auth.setIsGoogleSubmitting(false);
-      auth.setErrorMessage(error.message);
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <AuthFormLayout
-      title="Create your account"
-      subtitle="Start finding emails free, forever"
-      isSupabaseConfigured={auth.isSupabaseConfigured}
-      errorMessage={auth.errorMessage}
-      successMessage={auth.successMessage}
-      isBusy={isBusy}
-    >
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <CsrfHiddenInput />
-
-        {/* Full name */}
-        <div className="space-y-1.5">
-          <label
-            htmlFor="signup-name"
-            className="block text-sm font-medium text-[#6B6982] font-dm-sans"
-          >
-            Full name
-          </label>
-          <div className="relative">
-            <User
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B6982] pointer-events-none"
-              aria-hidden="true"
-            />
-            <Input
-              id="signup-name"
-              type="text"
-              placeholder="Alex Johnson"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="pl-10 h-11 border-[#E2E2E8] focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2 transition-all duration-200 font-dm-sans"
-              required
-              autoComplete="name"
-            />
-          </div>
-        </div>
-
-        {/* Email */}
-        <div className="space-y-1.5">
-          <label
-            htmlFor="signup-email"
-            className="block text-sm font-medium text-[#6B6982] font-dm-sans"
-          >
-            Email address
-          </label>
-          <div className="relative">
-            <Mail
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B6982] pointer-events-none"
-              aria-hidden="true"
-            />
-            <Input
-              id="signup-email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="pl-10 h-11 border-[#E2E2E8] focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2 transition-all duration-200 font-dm-sans"
-              required
-              autoComplete="email"
-            />
-          </div>
-        </div>
-
-        {/* Password */}
-        <div className="space-y-1.5">
-          <label
-            htmlFor="signup-password"
-            className="block text-sm font-medium text-[#6B6982] font-dm-sans"
-          >
-            Password
-          </label>
-          <div className="relative">
-            <Lock
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B6982] pointer-events-none"
-              aria-hidden="true"
-            />
-            <Input
-              id="signup-password"
-              type={showPassword ? "text" : "password"}
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="pl-10 pr-11 h-11 border-[#E2E2E8] focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2 transition-all duration-200 font-dm-sans"
-              required
-              minLength={8}
-              autoComplete="new-password"
-            />
-            <button
-              type="button"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6982] hover:text-[#2D2B55] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2 rounded"
-            >
-              {showPassword ? (
-                <EyeOff className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <Eye className="h-4 w-4" aria-hidden="true" />
-              )}
-            </button>
-          </div>
-          <PasswordStrengthIndicator result={passwordStrength} />
-        </div>
-
-        {/* Confirm password */}
-        <div className="space-y-1.5">
-          <label
-            htmlFor="signup-confirm-password"
-            className="block text-sm font-medium text-[#6B6982] font-dm-sans"
-          >
-            Confirm password
-          </label>
-          <div className="relative">
-            <Lock
-              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#6B6982] pointer-events-none"
-              aria-hidden="true"
-            />
-            <Input
-              id="signup-confirm-password"
-              type={showConfirmPassword ? "text" : "password"}
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="pl-10 pr-11 h-11 border-[#E2E2E8] focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2 transition-all duration-200 font-dm-sans"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              aria-describedby={passwordMismatch ? "confirm-password-error" : undefined}
-            />
-            <button
-              type="button"
-              aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-              onClick={() => setShowConfirmPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6982] hover:text-[#2D2B55] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2 rounded"
-            >
-              {showConfirmPassword ? (
-                <EyeOff className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <Eye className="h-4 w-4" aria-hidden="true" />
-              )}
-            </button>
-          </div>
-          {passwordMismatch && (
-            <p
-              id="confirm-password-error"
-              role="alert"
-              className="text-xs text-red-600 font-dm-sans mt-1"
-            >
-              Passwords don&apos;t match
+    <main className="min-h-screen bg-[#FAFAFA] px-4 py-10 text-[#2D2B55]">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-lg items-center">
+        <Card className="w-full border-[#E7E6EF] bg-white shadow-sm">
+          <CardHeader className="space-y-2">
+            <CardTitle className="font-fraunces text-3xl text-[#2D2B55]">
+              Create your account
+            </CardTitle>
+            <p className="font-dm-sans text-sm text-[#5E5B86]">
+              Start using ELLYN with your free account.
             </p>
-          )}
-        </div>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="full_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-dm-sans text-[#2D2B55]">Full Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          placeholder="Jane Doe"
+                          autoComplete="name"
+                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-        {/* Terms */}
-        <div className="flex items-start gap-3">
-          <Checkbox
-            id="terms"
-            checked={agreeToTerms}
-            onCheckedChange={(checked) => setAgreeToTerms(checked === true)}
-            className="mt-0.5 focus-visible:ring-2 focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2"
-          />
-          <label
-            htmlFor="terms"
-            className="text-sm text-[#6B6982] font-dm-sans leading-snug cursor-pointer"
-          >
-            I agree to the{" "}
-            <a
-              href="#"
-              className="text-[#FF6B6B] hover:text-[#E05263] font-medium transition-colors duration-200"
-            >
-              Terms of Service
-            </a>{" "}
-            and{" "}
-            <a
-              href="#"
-              className="text-[#FF6B6B] hover:text-[#E05263] font-medium transition-colors duration-200"
-            >
-              Privacy Policy
-            </a>
-          </label>
-        </div>
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-dm-sans text-[#2D2B55]">
+                        Email Address
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="email"
+                          placeholder="you@example.com"
+                          autoComplete="email"
+                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-        {/* Submit */}
-        <Button
-          type="submit"
-          disabled={isBusy || !passwordStrength.isValid || !agreeToTerms}
-          aria-label={auth.isSubmitting ? "Creating account..." : "Create Account"}
-          className="w-full h-12 rounded-lg bg-[#FF6B6B] hover:bg-[#E05263] text-white font-dm-sans font-medium text-base transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2"
-        >
-          {auth.isSubmitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-              Creating account...
-            </>
-          ) : (
-            <>
-              Create Account
-              <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-            </>
-          )}
-        </Button>
-      </form>
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-dm-sans text-[#2D2B55]">Password</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="password"
+                          placeholder="Minimum 8 characters"
+                          autoComplete="new-password"
+                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-      {/* Divider */}
-      <div className="relative my-6">
-        <div className="absolute inset-0 flex items-center">
-          <span className="w-full border-t border-[#E2E2E8]" />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-white px-3 text-[#6B6982] font-dm-sans tracking-wider">or</span>
-        </div>
+                <FormField
+                  control={form.control}
+                  name="confirmPassword"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="font-dm-sans text-[#2D2B55]">
+                        Confirm Password
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="password"
+                          placeholder="Re-enter password"
+                          autoComplete="new-password"
+                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="h-11 w-full bg-[#2D2B55] font-dm-sans text-white hover:bg-[#25234A]"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating account...
+                    </>
+                  ) : (
+                    "Create account"
+                  )}
+                </Button>
+              </form>
+            </Form>
+
+            <p className="mt-6 text-center font-dm-sans text-sm text-[#5E5B86]">
+              Already have an account?{" "}
+              <Link href="/auth/login" className="font-medium text-[#2D2B55] underline">
+                Log in
+              </Link>
+            </p>
+          </CardContent>
+        </Card>
       </div>
-
-      {/* Google */}
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full h-12 rounded-lg border-[#E2E2E8] hover:border-[#2D2B55] hover:bg-[#FAFAFA] font-dm-sans font-medium transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-[#2D2B55] focus-visible:ring-offset-2"
-        disabled={isBusy}
-        onClick={handleGoogleSignup}
-      >
-        <svg className="mr-2 h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-          <path
-            fill="#4285F4"
-            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-          />
-          <path
-            fill="#34A853"
-            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-          />
-          <path
-            fill="#FBBC05"
-            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-          />
-          <path
-            fill="#EA4335"
-            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-          />
-        </svg>
-        {auth.isGoogleSubmitting ? "Redirecting..." : "Continue with Google"}
-      </Button>
-
-      {/* Footer */}
-      <p className="text-center text-sm text-[#6B6982] font-dm-sans mt-6">
-        Already have an account?{" "}
-        <Link
-          href={loginHref}
-          className="text-[#FF6B6B] hover:text-[#E05263] font-medium transition-colors duration-200"
-        >
-          Sign in
-        </Link>
-      </p>
-    </AuthFormLayout>
-  );
-}
-
-export default function SignupPage() {
-  return (
-    <Suspense fallback={<AuthPageLoading text="Loading sign up..." />}>
-      <SignupPageContent />
-    </Suspense>
+    </main>
   );
 }

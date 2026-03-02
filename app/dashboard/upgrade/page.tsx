@@ -1,271 +1,294 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Check, Loader2, X } from "lucide-react";
 
-import { PricingToggle } from '@/components/landing/pricing/PricingToggle'
-import { PricingCard } from '@/components/landing/pricing/PricingCard'
-import { DashboardShell } from '@/components/dashboard/DashboardShell'
-import { Button } from '@/components/ui/Button'
-import { supabaseAuthedFetch } from '@/lib/auth/client-fetch'
-import { showToast } from '@/lib/toast'
-import {
-  type BillingCycle,
-  DEFAULT_PRICING_REGION,
-  FREE_PLAN_FEATURES,
-  STARTER_PLAN_FEATURES,
-  PRO_PLAN_FEATURES,
-  getFreeDisplayPrice,
-  getStarterDisplayPrice,
-  getProDisplayPrice,
-  getQuarterlySavingsLabel,
-  getYearlySavingsLabel,
-} from '@/lib/pricing-config'
-import { useSubscription } from '@/context/SubscriptionContext'
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PageHeader } from "@/components/dashboard/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { supabaseAuthedFetch } from "@/lib/auth/client-fetch";
+import { showToast } from "@/lib/toast";
+import { useSubscription } from "@/context/SubscriptionContext";
+
+type BillingCycle = "monthly" | "quarterly" | "yearly";
+type PlanType = "free" | "starter" | "pro";
+type PaidPlan = Extract<PlanType, "starter" | "pro">;
+
+type PlanDetails = {
+  id: PlanType;
+  name: string;
+  priceByCycle: Record<BillingCycle, string>;
+  emailLookups: string;
+  aiDrafts: string;
+  sequences: string;
+  extension: boolean;
+  prioritySupport: boolean;
+};
+
+const BILLING_OPTIONS: Array<{ value: BillingCycle; label: string }> = [
+  { value: "monthly", label: "Monthly" },
+  { value: "quarterly", label: "Quarterly" },
+  { value: "yearly", label: "Yearly" },
+];
+
+const PLANS: PlanDetails[] = [
+  {
+    id: "free",
+    name: "Free",
+    priceByCycle: {
+      monthly: "$0",
+      quarterly: "$0",
+      yearly: "$0",
+    },
+    emailLookups: "50",
+    aiDrafts: "0",
+    sequences: "1",
+    extension: true,
+    prioritySupport: false,
+  },
+  {
+    id: "starter",
+    name: "Starter",
+    priceByCycle: {
+      monthly: "$14.99/mo",
+      quarterly: "$39.99/qtr",
+      yearly: "$149/yr",
+    },
+    emailLookups: "500",
+    aiDrafts: "150",
+    sequences: "10",
+    extension: true,
+    prioritySupport: false,
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    priceByCycle: {
+      monthly: "$34.99/mo",
+      quarterly: "$89.99/qtr",
+      yearly: "$279/yr",
+    },
+    emailLookups: "1,500",
+    aiDrafts: "500",
+    sequences: "Unlimited",
+    extension: true,
+    prioritySupport: true,
+  },
+];
+
+function getPlanDisplayName(plan: string): string {
+  if (plan === "starter") return "Starter";
+  if (plan === "pro") return "Pro";
+  return "Free";
+}
+
+function getPlanAction(currentPlan: PlanType, targetPlan: PlanType) {
+  if (targetPlan === currentPlan) {
+    return {
+      label: "Your current plan",
+      disabled: true,
+      checkoutPlan: null as PaidPlan | null,
+    };
+  }
+
+  if (targetPlan === "free") {
+    return {
+      label: "Free plan",
+      disabled: true,
+      checkoutPlan: null as PaidPlan | null,
+    };
+  }
+
+  if (currentPlan === "pro" && targetPlan === "starter") {
+    return {
+      label: "Included in Pro",
+      disabled: true,
+      checkoutPlan: null as PaidPlan | null,
+    };
+  }
+
+  if (targetPlan === "starter") {
+    return {
+      label: "Upgrade to Starter",
+      disabled: false,
+      checkoutPlan: "starter" as PaidPlan,
+    };
+  }
+
+  return {
+    label: "Upgrade to Pro",
+    disabled: false,
+    checkoutPlan: "pro" as PaidPlan,
+  };
+}
 
 export default function UpgradePage() {
-  const searchParams = useSearchParams()
-  const { plan_type, isLoading } = useSubscription()
+  const searchParams = useSearchParams();
+  const { planType, isLoading, refresh } = useSubscription();
 
-  const [billingCycle, setBillingCycle] = useState<BillingCycle>('monthly')
-  const [isCheckingOutStarter, setIsCheckingOutStarter] = useState(false)
-  const [isCheckingOutPro, setIsCheckingOutPro] = useState(false)
-  const [canceledBanner, setCanceledBanner] = useState(false)
+  const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
+  const [loadingPlan, setLoadingPlan] = useState<PaidPlan | null>(null);
+  const [didShowUpgradeToast, setDidShowUpgradeToast] = useState(false);
+
+  const currentPlan: PlanType = useMemo(() => {
+    if (planType === "starter" || planType === "pro") {
+      return planType;
+    }
+    return "free";
+  }, [planType]);
+
+  const showUpgradeBanner = searchParams.get("upgraded") === "true";
 
   useEffect(() => {
-    if (searchParams.get('canceled') === 'true') {
-      setCanceledBanner(true)
+    if (searchParams.get("upgraded") === "true") {
+      void refresh();
     }
-  }, [searchParams])
+  }, [refresh, searchParams]);
 
-  const handleUpgrade = async (planType: 'starter' | 'pro') => {
-    if (planType === 'starter') {
-      setIsCheckingOutStarter(true)
-    } else {
-      setIsCheckingOutPro(true)
+  useEffect(() => {
+    if (searchParams.get("upgraded") !== "true" || didShowUpgradeToast || isLoading) {
+      return;
     }
+
+    showToast.success(`Welcome to ${getPlanDisplayName(currentPlan)}! Your quota has been updated.`);
+    setDidShowUpgradeToast(true);
+  }, [currentPlan, didShowUpgradeToast, isLoading, searchParams]);
+
+  const startCheckout = async (plan: PaidPlan) => {
+    setLoadingPlan(plan);
+
     try {
-      const res = await supabaseAuthedFetch('/api/v1/subscription/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ billingCycle, planType }),
-      })
+      const response = await supabaseAuthedFetch("/api/v1/subscription/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan, billingCycle }),
+      });
 
-      const data = await res.json()
-      if (!res.ok) {
-        showToast.error(data.error ?? 'Failed to start checkout.')
-        return
+      const data = (await response.json().catch(() => ({}))) as {
+        payment_link?: string;
+      };
+
+      if (!response.ok || !data.payment_link) {
+        showToast.error("Could not start checkout. Please try again.");
+        return;
       }
 
-      if (data.url) {
-        window.location.href = data.url
-      }
+      window.location.href = data.payment_link;
+    } catch {
+      showToast.error("Could not start checkout. Please try again.");
     } finally {
-      setIsCheckingOutStarter(false)
-      setIsCheckingOutPro(false)
+      setLoadingPlan(null);
     }
-  }
-
-  const handleManage = async () => {
-    const res = await supabaseAuthedFetch('/api/v1/subscription/portal', { method: 'POST' })
-    const data = await res.json()
-    if (data.url) {
-      window.location.href = data.url
-    } else {
-      showToast.error(data.error ?? 'Failed to open billing portal.')
-    }
-  }
-
-  const freePricing = getFreeDisplayPrice(DEFAULT_PRICING_REGION)
-  const starterPricing = getStarterDisplayPrice(DEFAULT_PRICING_REGION, billingCycle)
-  const proPricing = getProDisplayPrice(DEFAULT_PRICING_REGION, billingCycle)
-  const quarterlySavingsLabel = getQuarterlySavingsLabel(DEFAULT_PRICING_REGION)
-  const yearlySavingsLabel = getYearlySavingsLabel(DEFAULT_PRICING_REGION)
-
-  const starterBillingLabel = starterPricing.periodLabel
+  };
 
   return (
-    <DashboardShell>
-      <div className="mx-auto max-w-5xl space-y-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-fraunces font-bold">Upgrade Your Plan</h1>
-          <p className="mt-2 text-muted-foreground">
-            Choose the plan that works best for you.
-          </p>
+    <DashboardShell className="px-4 py-6 md:px-8">
+      <PageHeader
+        title="Upgrade Plan"
+        description="Choose a plan that fits your outreach volume and AI usage."
+      />
+
+      <div className="space-y-6">
+        {showUpgradeBanner ? (
+          <Card className="border-emerald-200 bg-emerald-50">
+            <CardContent className="pt-6 text-sm font-medium text-emerald-800">
+              {"\uD83C\uDF89 You've upgraded! Your new limits are now active."}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <div className="inline-flex rounded-lg border border-[#D8D6E8] bg-white p-1">
+          {BILLING_OPTIONS.map((option) => {
+            const active = billingCycle === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setBillingCycle(option.value)}
+                className={[
+                  "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                  active
+                    ? "bg-[#2D2B55] text-white"
+                    : "text-[#2D2B55] hover:bg-[#F2F1FA]",
+                ].join(" ")}
+              >
+                {option.label}
+              </button>
+            );
+          })}
         </div>
 
-        {canceledBanner && (
-          <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
-            Checkout was canceled. No changes were made.{' '}
-            <button
-              type="button"
-              className="ml-2 underline"
-              onClick={() => setCanceledBanner(false)}
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
+        <div className="grid gap-4 lg:grid-cols-3">
+          {PLANS.map((plan) => {
+            const action = getPlanAction(currentPlan, plan.id);
+            const isCurrent = plan.id === currentPlan;
+            const isLoadingThisPlan = loadingPlan === action.checkoutPlan;
 
-        {!isLoading && plan_type === 'pro' ? (
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-6 text-center space-y-4">
-            <p className="text-lg font-semibold">You&apos;re already on Pro!</p>
-            <p className="text-muted-foreground text-sm">
-              Manage your subscription, update payment info, or view billing history.
-            </p>
-            <Button onClick={handleManage}>Manage Subscription</Button>
-            <div className="mt-2">
-              <Link href="/dashboard/settings/billing" className="text-sm text-primary underline">
-                View billing details
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <>
-            <PricingToggle
-              billingCycle={billingCycle}
-              onBillingCycleChange={(cycle: BillingCycle) => setBillingCycle(cycle)}
-              quarterlySavingsLabel={quarterlySavingsLabel}
-              yearlySavingsLabel={yearlySavingsLabel}
-            />
+            return (
+              <Card key={plan.id} className="border-[#D8D6E8]">
+                <CardHeader className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <CardTitle className="font-fraunces text-2xl text-[#2D2B55]">{plan.name}</CardTitle>
+                    {isCurrent ? (
+                      <span className="rounded-full bg-[#2D2B55] px-2.5 py-1 text-xs font-semibold text-white">
+                        Your current plan
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-2xl font-semibold text-[#2D2B55]">{plan.priceByCycle[billingCycle]}</p>
+                </CardHeader>
 
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-              <PricingCard
-                planName="Free"
-                planSubtitle="Get started at no cost"
-                priceLabel={freePricing.amountLabel}
-                billingLabel={freePricing.periodLabel}
-                features={[...FREE_PLAN_FEATURES]}
-                ctaLabel="Current Plan"
-                ctaHref="/dashboard"
-                isPopular={false}
-                badgeLabel={null}
-                supportText={null}
-                underPriceText={null}
-                savingsBadge={null}
-                priceKey="free"
-              />
+                <CardContent className="space-y-4">
+                  <ul className="space-y-2 text-sm text-[#2D2B55]">
+                    <li className="flex items-start justify-between gap-3">
+                      <span>Email Lookups/mo</span>
+                      <span className="font-medium">{plan.emailLookups}</span>
+                    </li>
+                    <li className="flex items-start justify-between gap-3">
+                      <span>AI Drafts/mo</span>
+                      <span className="font-medium">{plan.aiDrafts}</span>
+                    </li>
+                    <li className="flex items-start justify-between gap-3">
+                      <span>Sequences</span>
+                      <span className="font-medium">{plan.sequences}</span>
+                    </li>
+                    <li className="flex items-start justify-between gap-3">
+                      <span>Chrome Extension</span>
+                      <span aria-label={plan.extension ? "included" : "not included"}>
+                        {plan.extension ? <Check className="h-4 w-4 text-emerald-600" /> : <X className="h-4 w-4 text-red-500" />}
+                      </span>
+                    </li>
+                    <li className="flex items-start justify-between gap-3">
+                      <span>Priority Support</span>
+                      <span aria-label={plan.prioritySupport ? "included" : "not included"}>
+                        {plan.prioritySupport ? <Check className="h-4 w-4 text-emerald-600" /> : <X className="h-4 w-4 text-red-500" />}
+                      </span>
+                    </li>
+                  </ul>
 
-              <PricingCard
-                planName="Starter"
-                planSubtitle="For growing your outreach"
-                priceLabel={starterPricing.amountLabel}
-                billingLabel={starterBillingLabel}
-                features={[...STARTER_PLAN_FEATURES]}
-                ctaLabel={
-                  plan_type === 'starter'
-                    ? 'Current Plan'
-                    : isCheckingOutStarter
-                      ? 'Redirecting...'
-                      : 'Get Starter'
-                }
-                ctaHref="#"
-                ctaOnClick={plan_type === 'starter' ? undefined : () => handleUpgrade('starter')}
-                ctaDisabled={plan_type === 'starter' || isCheckingOutStarter}
-                isPopular={false}
-                badgeLabel="Best Value"
-                supportText={null}
-                underPriceText={null}
-                savingsBadge={starterPricing.savingsLabel || null}
-                priceKey={`global-${billingCycle}-starter`}
-              />
-
-              <PricingCard
-                planName="Pro"
-                planSubtitle="For power users & teams"
-                priceLabel={proPricing.amountLabel}
-                billingLabel={proPricing.periodLabel}
-                features={[...PRO_PLAN_FEATURES]}
-                ctaLabel={isCheckingOutPro ? 'Redirecting...' : 'Upgrade to Pro'}
-                ctaHref="#"
-                ctaOnClick={() => handleUpgrade('pro')}
-                ctaDisabled={isCheckingOutPro}
-                isPopular
-                badgeLabel="Most Popular"
-                supportText={null}
-                underPriceText="*Fair usage applies"
-                savingsBadge={proPricing.savingsLabel || null}
-                priceKey={`global-${billingCycle}-pro`}
-              />
-            </div>
-
-            {/* CTA buttons */}
-            {plan_type !== 'starter' && (
-              <div className="flex flex-wrap justify-center gap-4">
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => handleUpgrade('starter')}
-                  disabled={isCheckingOutStarter}
-                  className="min-w-[200px]"
-                >
-                  {isCheckingOutStarter
-                    ? 'Redirecting...'
-                    : `Get Starter — ${starterPricing.amountLabel}${starterBillingLabel}`}
-                </Button>
-                <Button
-                  size="lg"
-                  onClick={() => handleUpgrade('pro')}
-                  disabled={isCheckingOutPro}
-                  className="min-w-[200px]"
-                >
-                  {isCheckingOutPro
-                    ? 'Redirecting...'
-                    : `Upgrade to Pro — ${proPricing.amountLabel}${proPricing.periodLabel}`}
-                </Button>
-              </div>
-            )}
-
-            {plan_type === 'starter' && (
-              <div className="flex justify-center">
-                <Button
-                  size="lg"
-                  onClick={() => handleUpgrade('pro')}
-                  disabled={isCheckingOutPro}
-                  className="min-w-[200px]"
-                >
-                  {isCheckingOutPro
-                    ? 'Redirecting...'
-                    : `Upgrade to Pro — ${proPricing.amountLabel}${proPricing.periodLabel}`}
-                </Button>
-              </div>
-            )}
-
-            {/* Feature comparison table */}
-            <div className="overflow-hidden rounded-xl border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Feature</th>
-                    <th className="px-4 py-3 text-center font-medium text-muted-foreground">Free</th>
-                    <th className="px-4 py-3 text-center font-medium text-muted-foreground">Starter</th>
-                    <th className="px-4 py-3 text-center font-medium text-primary">Pro</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {[
-                    ['Email credits / month', '50', '500', '1,500'],
-                    ['AI drafting', '—', 'AI Starter Access', 'Included'],
-                    ['Outreach tracking', 'Basic', 'Full dashboard', 'Full dashboard'],
-                    ['Contact storage', 'Limited', 'Advanced', 'Unlimited'],
-                    ['Data export', 'No', 'Yes', 'Yes'],
-                    ['Priority sync', 'No', 'Yes', 'Yes'],
-                    ['Early access to features', 'No', 'No', 'Yes'],
-                  ].map(([feature, free, starter, pro]) => (
-                    <tr key={feature} className="hover:bg-muted/30">
-                      <td className="px-4 py-3 text-foreground">{feature}</td>
-                      <td className="px-4 py-3 text-center text-muted-foreground">{free}</td>
-                      <td className="px-4 py-3 text-center text-muted-foreground">{starter}</td>
-                      <td className="px-4 py-3 text-center font-medium text-primary">{pro}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (action.checkoutPlan) {
+                        void startCheckout(action.checkoutPlan);
+                      }
+                    }}
+                    disabled={action.disabled || isLoadingThisPlan || isLoading}
+                    className="w-full"
+                    variant={plan.id === "pro" ? "default" : "outline"}
+                  >
+                    {isLoadingThisPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {action.label}
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       </div>
     </DashboardShell>
-  )
+  );
 }

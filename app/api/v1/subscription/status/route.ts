@@ -1,58 +1,65 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from "next/server";
 
-import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
-import { captureApiException } from '@/lib/monitoring/sentry'
-import { createServiceRoleClient } from '@/lib/supabase/server'
-import { PLAN_LIMITS } from '@/lib/quota'
+import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
+import { createServiceRoleClient } from "@/lib/supabase/server";
+
+type ProfileRow = {
+  plan_type: "free" | "starter" | "pro" | null;
+  subscription_status: string | null;
+};
+
+type QuotaRow = {
+  email_lookups_used: number | null;
+  email_lookups_limit: number | null;
+  ai_draft_generations_used: number | null;
+  ai_draft_generations_limit: number | null;
+  reset_date: string | null;
+};
 
 export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUserFromRequest(request)
-    const supabase = await createServiceRoleClient()
+    const user = await getAuthenticatedUserFromRequest(request);
+    const supabase = await createServiceRoleClient();
 
     const { data: profile, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('plan_type, subscription_status')
-      .eq('id', user.id)
-      .single()
+      .from("user_profiles")
+      .select("plan_type, subscription_status")
+      .eq("id", user.id)
+      .maybeSingle<ProfileRow>();
 
     if (profileError) {
-      console.error('[subscription/status] profile error:', profileError)
-      return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 })
+      return NextResponse.json({ error: profileError.message || "Failed to fetch profile" }, { status: 500 });
     }
 
-    const planType: string = profile?.plan_type ?? 'free'
-    const subscriptionStatus: string = profile?.subscription_status ?? 'inactive'
+    const { data: quota, error: quotaError } = await supabase
+      .from("user_quotas")
+      .select(
+        "email_lookups_used, email_lookups_limit, ai_draft_generations_used, ai_draft_generations_limit, reset_date"
+      )
+      .eq("user_id", user.id)
+      .maybeSingle<QuotaRow>();
 
-    const { data: quotaData } = await supabase
-      .from('user_quotas')
-      .select('email_lookups_used, email_lookups_limit, ai_draft_generations_used, reset_date')
-      .eq('user_id', user.id)
-      .single()
-
-    const emailUsed = Number(quotaData?.email_lookups_used ?? 0)
-    const emailLimit = Number(quotaData?.email_lookups_limit ?? 50)
-    const aiDraftUsed = Number(quotaData?.ai_draft_generations_used ?? 0)
-    const planLimits = PLAN_LIMITS[planType as keyof typeof PLAN_LIMITS] ?? PLAN_LIMITS.free
-    const aiDraftLimit = planLimits.ai_draft
+    if (quotaError) {
+      return NextResponse.json({ error: quotaError.message || "Failed to fetch quota" }, { status: 500 });
+    }
 
     return NextResponse.json({
-      plan_type: planType,
-      subscription_status: subscriptionStatus,
-      current_period_end: null,
-      quota: {
-        email: { used: emailUsed, limit: emailLimit },
-        ai_draft: { used: aiDraftUsed, limit: aiDraftLimit },
-        reset_date: quotaData?.reset_date ?? null,
-      },
-    })
+      plan_type: profile?.plan_type ?? "free",
+      subscription_status: profile?.subscription_status ?? "active",
+      email_lookups_used: quota?.email_lookups_used ?? 0,
+      email_lookups_limit: quota?.email_lookups_limit ?? 50,
+      ai_draft_generations_used: quota?.ai_draft_generations_used ?? 0,
+      ai_draft_generations_limit: quota?.ai_draft_generations_limit ?? 0,
+      reset_date: quota?.reset_date ?? null,
+    });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    if (message === 'Unauthorized') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    console.error('[subscription/status] Error:', error)
-    captureApiException(error, { route: '/api/v1/subscription/status', method: 'GET' })
-    return NextResponse.json({ error: 'Failed to get subscription status' }, { status: 500 })
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to fetch subscription status" },
+      { status: 500 }
+    );
   }
 }

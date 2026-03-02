@@ -15,7 +15,7 @@ import {
   Mail,
   Clock,
   ClipboardList,
-  MessageSquare,
+  GitBranch,
   Search,
   ArrowRight,
   ChevronRight,
@@ -389,7 +389,7 @@ function templateToSequenceSteps(steps: TemplateStep[]): SequenceStep[] {
     order: s.order,
     delay_days: s.delay_days,
     stepType: s.stepType,
-    conditionType: "always" as const,
+    conditionType: undefined,
     step_name: s.step_name,
     subject: s.subject,
     body: s.body,
@@ -405,15 +405,15 @@ function templateToSequenceSteps(steps: TemplateStep[]): SequenceStep[] {
 const STEP_TYPE_ICONS: Record<StepType, React.ReactNode> = {
   email: <Mail className="h-3 w-3" />,
   wait: <Clock className="h-3 w-3" />,
+  condition: <GitBranch className="h-3 w-3" />,
   task: <ClipboardList className="h-3 w-3" />,
-  linkedin: <MessageSquare className="h-3 w-3" />,
 };
 
 const STEP_TYPE_COLORS: Record<StepType, string> = {
   email: "bg-blue-100 text-blue-600",
   wait: "bg-amber-100 text-amber-600",
+  condition: "bg-violet-100 text-violet-600",
   task: "bg-purple-100 text-purple-600",
-  linkedin: "bg-sky-100 text-sky-600",
 };
 
 const CATEGORY_BADGE: Record<TemplateCategory, { label: string; className: string }> = {

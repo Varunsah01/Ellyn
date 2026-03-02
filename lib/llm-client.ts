@@ -11,6 +11,8 @@
  */
 
 import { getGeminiClient } from '@/lib/gemini'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { Mistral } from '@mistralai/mistralai'
 
 export type LLMProvider = 'gemini' | 'mistral' | 'deepseek'
 
@@ -217,4 +219,116 @@ export async function callLLMWithFallback(request: LLMRequest): Promise<LLMRespo
   }
 
   throw new Error(`All LLM tiers failed for action "${request.action}": ${errors.join(' | ')}`)
+}
+
+const GEMINI_FLASH_MODEL = 'gemini-2.0-flash-exp'
+const MISTRAL_FALLBACK_MODEL = 'ministral-3b-latest'
+
+const FALLBACK_TEMPLATE_TEXT = JSON.stringify(
+  {
+    subject: 'Quick introduction',
+    body: 'Hi there,\n\nI wanted to reach out and introduce myself.\n\nBest regards,',
+  },
+  null,
+  2
+)
+
+/**
+ * Generate email template text from a prompt.
+ * Primary: Gemini Flash 2.0 via @google/generative-ai.
+ * Fallback: returns a sensible default template payload.
+ */
+export async function generateEmailTemplate(prompt: string): Promise<string> {
+  const apiKey = process.env.GOOGLE_AI_API_KEY?.trim()
+  if (!apiKey) {
+    return FALLBACK_TEMPLATE_TEXT
+  }
+
+  try {
+    const client = new GoogleGenerativeAI(apiKey)
+    const model = client.getGenerativeModel({ model: GEMINI_FLASH_MODEL })
+    const response = await model.generateContent(prompt)
+    const text = response.response.text()?.trim()
+    if (text) {
+      return text
+    }
+    return FALLBACK_TEMPLATE_TEXT
+  } catch (error) {
+    console.warn('[LLMClient] Gemini generateEmailTemplate failed, using fallback', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return FALLBACK_TEMPLATE_TEXT
+  }
+}
+
+function extractMistralText(response: unknown): string {
+  const choices = (response as { choices?: Array<{ message?: { content?: unknown } }> })?.choices
+  const firstChoice = Array.isArray(choices) ? choices[0] : undefined
+  const content = firstChoice?.message?.content
+
+  if (typeof content === 'string') {
+    return content.trim()
+  }
+
+  if (Array.isArray(content)) {
+    const text = content
+      .map((entry) => {
+        if (typeof entry === 'string') return entry
+        if (entry && typeof entry === 'object' && 'text' in entry) {
+          const textValue = (entry as { text?: unknown }).text
+          return typeof textValue === 'string' ? textValue : ''
+        }
+        return ''
+      })
+      .join('\n')
+      .trim()
+
+    return text
+  }
+
+  return ''
+}
+
+/**
+ * Minimal LLM helper used by the enrich pipeline.
+ * 1) Gemini Flash 2.0
+ * 2) Mistral fallback
+ * 3) Empty string when both are unavailable/fail
+ */
+export async function callLLM(prompt: string): Promise<string> {
+  const normalizedPrompt = String(prompt || '').trim()
+  if (!normalizedPrompt) return ''
+
+  const geminiKey = process.env.GOOGLE_AI_API_KEY?.trim()
+  if (geminiKey) {
+    try {
+      const geminiClient = new GoogleGenerativeAI(geminiKey)
+      const model = geminiClient.getGenerativeModel({ model: GEMINI_FLASH_MODEL })
+      const response = await model.generateContent(normalizedPrompt)
+      const text = response.response.text()?.trim() ?? ''
+      if (text) return text
+    } catch (error) {
+      console.warn('[LLMClient] callLLM Gemini failed:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  const mistralKey = process.env.MISTRAL_API_KEY?.trim()
+  if (mistralKey) {
+    try {
+      const mistralClient = new Mistral({ apiKey: mistralKey })
+      const response = await mistralClient.chat.complete({
+        model: MISTRAL_FALLBACK_MODEL,
+        messages: [{ role: 'user', content: normalizedPrompt }],
+        temperature: 0,
+        maxTokens: 300,
+      })
+
+      const text = extractMistralText(response)
+      if (text) return text
+    } catch (error) {
+      console.warn('[LLMClient] callLLM Mistral failed:', error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  return ''
 }

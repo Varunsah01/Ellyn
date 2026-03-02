@@ -1,16 +1,13 @@
 export type SequenceStatus = "draft" | "active" | "paused" | "completed" | "archived";
 
-export type StepType = "email" | "wait" | "task" | "linkedin";
-
-export type ConditionType = "always" | "no_reply" | "opened" | "clicked";
+export type StepType = "email" | "wait" | "condition" | "task";
+export type ConditionType = "opened" | "replied" | "clicked" | "bounced" | "no_response";
 
 export interface StepAttachment {
-  id: string;
   name: string;
+  url: string;
   size: number;
-  type: "resume" | "portfolio" | "case_study" | "other";
-  url?: string;
-  localFile?: Blob;
+  type: string;
 }
 
 export type EnrollmentStatus =
@@ -24,12 +21,7 @@ export type EnrollmentStatus =
   | "unsubscribed"
   | "removed";
 
-export type EnrollmentStepStatus =
-  | "pending"
-  | "sent"
-  | "skipped"
-  | "bounced"
-  | "replied";
+export type EnrollmentStepStatus = "pending" | "sent" | "skipped" | "bounced" | "replied";
 
 export type SequenceEventType =
   | "sent"
@@ -41,41 +33,30 @@ export type SequenceEventType =
   | "resumed"
   | "removed";
 
-export interface Sequence {
-  id: string;
-  user_id?: string | null;
-  name: string;
-  description?: string | null;
-  goal?: string | null;
-  status: SequenceStatus;
-  steps: SequenceStep[];
-  contacts?: string[];
-  stats: SequenceStats;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface SequenceStep {
   id: string;
   sequence_id?: string;
+  step_order?: number;
   order: number;
-  type?: string;
-  stepType?: StepType;
-  conditionType?: ConditionType;
   step_name?: string;
-  delay_days: number;
-  delayDays?: number;
-  send_on_days?: string[];
-  send_from_hour?: number;
-  send_to_hour?: number;
-  template_id?: string | null;
-  templateId?: string | null;
+  step_type?: StepType;
+  stepType?: StepType;
+  type?: StepType | "linkedin";
+  conditionType?: ConditionType | "always" | "no_reply";
+  condition_type?: ConditionType | "always" | "no_reply" | null;
   subject: string;
   body: string;
+  delay_days: number;
+  delayDays?: number;
+  send_on_days?: Array<number | string>;
+  send_from_hour?: number;
+  send_to_hour?: number;
+  attachments?: StepAttachment[];
   status: "draft" | "active";
   stop_on_reply?: boolean;
   stop_on_bounce?: boolean;
-  attachments?: StepAttachment[];
+  template_id?: string | null;
+  templateId?: string | null;
 }
 
 export interface SequenceStats {
@@ -89,20 +70,22 @@ export interface SequenceStats {
   completionRate?: number;
 }
 
-export interface ContactSequenceStatus {
-  contactId: string;
-  currentStep: number;
-  status: EnrollmentStatus;
-  lastActivity: string;
-}
-
-export interface TimelineEvent {
+export interface Sequence {
   id: string;
-  type: SequenceEventType;
-  contactName: string;
-  stepNumber: number;
-  timestamp: string;
-  details?: string;
+  user_id?: string | null;
+  name: string;
+  description?: string | null;
+  goal?: string | null;
+  status: SequenceStatus;
+  steps: SequenceStep[];
+  stats: SequenceStats;
+  contacts?: string[];
+  step_count?: number;
+  enrollment_count?: number;
+  created_at?: string;
+  updated_at?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SequenceEnrollment {
@@ -110,12 +93,13 @@ export interface SequenceEnrollment {
   sequence_id: string;
   contact_id: string;
   status: EnrollmentStatus;
+  current_step_index?: number;
+  next_step_at?: string | null;
+  started_at?: string;
+  completed_at?: string | null;
   start_date?: string;
   enrolled_at?: string;
   current_step?: number;
-  current_step_index?: number;
-  next_step_at?: string | null;
-  completed_at?: string | null;
   created_at?: string;
   updated_at?: string;
   contact?: {
@@ -132,12 +116,15 @@ export interface SequenceEnrollmentStep {
   id: string;
   enrollment_id: string;
   step_id: string;
+  status: EnrollmentStepStatus;
+  sent_at?: string | null;
+  opened_at?: string | null;
+  replied_at?: string | null;
+  skipped_at?: string | null;
   step_order: number;
   scheduled_for: string;
-  status: EnrollmentStepStatus;
   subject_override?: string | null;
   body_override?: string | null;
-  sent_at?: string | null;
 }
 
 export interface SequenceEvent {
@@ -145,6 +132,22 @@ export interface SequenceEvent {
   enrollment_id?: string | null;
   step_id?: string | null;
   event_type: SequenceEventType;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   created_at: string;
+}
+
+export interface ContactSequenceStatus {
+  contactId: string;
+  currentStep: number;
+  status: EnrollmentStatus;
+  lastActivity: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  type: SequenceEventType;
+  contactName: string;
+  stepNumber: number;
+  timestamp: string;
+  details?: string;
 }

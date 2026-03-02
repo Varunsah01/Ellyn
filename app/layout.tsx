@@ -5,6 +5,7 @@ import { CsrfFetchProvider } from "@/components/CsrfFetchProvider";
 import { WebVitalsReporter } from "@/components/monitoring/WebVitalsReporter";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/Toaster";
+import { validateEnv } from "@/lib/env";
 import { Toaster as HotToaster } from "react-hot-toast";
 
 // Initialize DM Sans
@@ -20,6 +21,10 @@ const fraunces = Fraunces({
   variable: "--font-fraunces",
   display: "swap",
 });
+
+const publicSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const publicSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const isSupabaseConfigured = Boolean(publicSupabaseUrl && publicSupabaseAnonKey);
 
 export const metadata: Metadata = {
   title: "Ellyn - Professional Email Finder & Outreach Platform | Find Anyone's Email",
@@ -56,9 +61,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  validateEnv();
+
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${dm_sans.variable} ${fraunces.variable}`}>
+      <body
+        className={`${dm_sans.variable} ${fraunces.variable} antialiased`}
+        data-supabase-configured={isSupabaseConfigured ? "true" : "false"}
+      >
         <ThemeProvider
           attribute="class"
           defaultTheme="light"

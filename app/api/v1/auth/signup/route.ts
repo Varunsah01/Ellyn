@@ -1,77 +1,79 @@
-﻿import { createVersionedHandler } from '@/app/api/v1/_utils'
-import * as LegacyRoute from '@/app/api/auth/signup/route'
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
-const legacyConfig = LegacyRoute as Record<string, unknown>
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
+const SignupSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  full_name: z.string().min(1, "Full name is required"),
+});
 
-/**
- * Handle GET requests for `/api/v1/auth/signup`.
- * @returns {RouteHandler} Versioned route handler for GET /api/v1/auth/signup.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // GET /api/v1/auth/signup
- * fetch('/api/v1/auth/signup', { method: 'GET' })
- */
-export const GET = createVersionedHandler(legacyConfig.GET as any)
-/**
- * Handle POST requests for `/api/v1/auth/signup`.
- * @returns {RouteHandler} Versioned route handler for POST /api/v1/auth/signup.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // POST /api/v1/auth/signup
- * fetch('/api/v1/auth/signup', { method: 'POST' })
- */
-export const POST = createVersionedHandler(legacyConfig.POST as any)
-/**
- * Handle PUT requests for `/api/v1/auth/signup`.
- * @returns {RouteHandler} Versioned route handler for PUT /api/v1/auth/signup.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // PUT /api/v1/auth/signup
- * fetch('/api/v1/auth/signup', { method: 'PUT' })
- */
-export const PUT = createVersionedHandler(legacyConfig.PUT as any)
-/**
- * Handle PATCH requests for `/api/v1/auth/signup`.
- * @returns {RouteHandler} Versioned route handler for PATCH /api/v1/auth/signup.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // PATCH /api/v1/auth/signup
- * fetch('/api/v1/auth/signup', { method: 'PATCH' })
- */
-export const PATCH = createVersionedHandler(legacyConfig.PATCH as any)
-/**
- * Handle DELETE requests for `/api/v1/auth/signup`.
- * @returns {RouteHandler} Versioned route handler for DELETE /api/v1/auth/signup.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // DELETE /api/v1/auth/signup
- * fetch('/api/v1/auth/signup', { method: 'DELETE' })
- */
-export const DELETE = createVersionedHandler(legacyConfig.DELETE as any)
-/**
- * Handle OPTIONS requests for `/api/v1/auth/signup`.
- * @returns {RouteHandler} Versioned route handler for OPTIONS /api/v1/auth/signup.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // OPTIONS /api/v1/auth/signup
- * fetch('/api/v1/auth/signup', { method: 'OPTIONS' })
- */
-export const OPTIONS = createVersionedHandler(legacyConfig.OPTIONS as any)
-/**
- * Handle HEAD requests for `/api/v1/auth/signup`.
- * @returns {RouteHandler} Versioned route handler for HEAD /api/v1/auth/signup.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // HEAD /api/v1/auth/signup
- * fetch('/api/v1/auth/signup', { method: 'HEAD' })
- */
-export const HEAD = createVersionedHandler(legacyConfig.HEAD as any)
+function isDuplicateEmailError(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false;
 
+  const message = String(error.message ?? "").toLowerCase();
+  const code = String(error.code ?? "").toLowerCase();
+
+  return (
+    code === "user_already_exists" ||
+    message.includes("already registered") ||
+    message.includes("already exists") ||
+    message.includes("duplicate")
+  );
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const parsed = SignupSchema.safeParse(await request.json());
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid request body" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = await createServiceRoleClient();
+
+    const email = parsed.data.email.trim().toLowerCase();
+    const password = parsed.data.password;
+    const full_name = parsed.data.full_name.trim();
+
+    const { data, error } = await supabase.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name },
+    });
+
+    if (error) {
+      if (isDuplicateEmailError(error)) {
+        return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+      }
+
+      return NextResponse.json({ error: error.message || "Failed to create user" }, { status: 400 });
+    }
+
+    if (!data.user) {
+      return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+      },
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to create user" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}

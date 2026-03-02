@@ -1,28 +1,32 @@
-"use client"
+"use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
-import type { LucideIcon } from "lucide-react"
+import Link from "next/link";
+import { FormEvent, MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Copy, Loader2, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
+
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { EmptyState } from "@/components/dashboard/EmptyState";
+import { PageHeader } from "@/components/dashboard/PageHeader";
+import { UpgradePrompt } from "@/components/subscription/UpgradePrompt";
 import {
-  BookOpen,
-  Briefcase,
-  Copy,
-  Plus,
-  TrendingUp,
-  User,
-  WandSparkles,
-} from "lucide-react"
-import { TemplatePreview } from "@/components/TemplatePreview"
-import { DashboardShell } from "@/components/dashboard/DashboardShell"
-import { TemplateEditorSheet } from "@/components/templates/TemplateEditorSheet"
-import { ExtensionTemplatesSyncBanner } from "@/components/templates/ExtensionTemplatesSyncBanner"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/AlertDialog";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import {
-  TemplateCard,
-  type TemplateItem,
-} from "@/components/templates/TemplateCard"
-import { useSaveToExtension } from "@/components/templates/SaveToExtensionButton"
-import { UseTemplateDialog } from "@/components/templates/UseTemplateDialog"
-import { Button } from "@/components/ui/Button"
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/Card";
 import {
   Dialog,
   DialogContent,
@@ -30,953 +34,926 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/Dialog"
-import { Input } from "@/components/ui/Input"
-import { Label } from "@/components/ui/Label"
+} from "@/components/ui/Dialog";
+import { Input } from "@/components/ui/Input";
+import { Label } from "@/components/ui/Label";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/Select"
-import { Textarea } from "@/components/ui/Textarea"
-import { usePersona } from "@/context/PersonaContext"
-import { supabaseAuthedFetch } from "@/lib/auth/client-fetch"
-import { getPersonaCopy } from "@/lib/persona-copy"
-import { extractVariables } from "@/lib/template-variables"
-import { showToast } from "@/lib/toast"
-import { cn } from "@/lib/utils"
-import { AnimatePresence, motion } from "framer-motion"
+} from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
+import { useSubscription } from "@/context/SubscriptionContext";
+import { showToast } from "@/lib/toast";
 
-type TabKey =
-  | "all"
-  | "job_search"
-  | "networking"
-  | "follow_up"
-  | "sales_outreach"
-  | "enterprise"
-  | "mine"
-type AiUseCase = "job_seeker" | "smb_sales" | "general"
+type TemplateTone = "professional" | "casual" | "friendly" | "confident" | "humble";
 
-type TemplateDisplayCategory =
-  | "job_search"
-  | "networking"
-  | "follow_up"
-  | "sales_outreach"
-  | "enterprise"
-  | "other"
+type TemplateRecord = {
+  id: string;
+  user_id: string;
+  name: string;
+  subject: string;
+  body: string;
+  tone: TemplateTone | null;
+  is_ai_generated: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
 
-const JOB_SEEKER_TABS: { key: TabKey; label: string; icon: LucideIcon }[] = [
-  { key: "all", label: "All Templates", icon: BookOpen },
-  { key: "job_search", label: "Job Search", icon: Briefcase },
-  { key: "networking", label: "Networking", icon: User },
-  { key: "follow_up", label: "Follow-Up", icon: WandSparkles },
-  { key: "mine", label: "My Templates", icon: User },
-]
+type TemplateFormState = {
+  name: string;
+  subject: string;
+  body: string;
+  tone: TemplateTone;
+};
 
-const SMB_SALES_TABS: { key: TabKey; label: string; icon: LucideIcon }[] = [
-  { key: "all", label: "All Templates", icon: BookOpen },
-  { key: "sales_outreach", label: "Sales Outreach", icon: TrendingUp },
-  { key: "follow_up", label: "Follow-Up", icon: WandSparkles },
-  { key: "enterprise", label: "Enterprise", icon: TrendingUp },
-  { key: "mine", label: "My Templates", icon: User },
-]
+type GenerateFormState = {
+  purpose: string;
+  senderName: string;
+  recipientRole: string;
+  tone: TemplateTone;
+};
 
-const FOLLOW_UP_HINTS = [
-  "follow_up",
-  "follow-up",
-  "follow up",
-  "followup",
-  "nudge",
-  "breakup",
-  "last attempt",
-  "re_engagement",
-  "re-engagement",
-  "closing the loop",
-]
+type GeneratedTemplate = {
+  subject: string;
+  body: string;
+  tone: TemplateTone;
+};
 
-const NETWORKING_HINTS = [
-  "network",
-  "referral",
-  "informational",
-  "alumni",
-  "connection",
-  "intro",
-]
+type QuotaPromptState = {
+  feature: string;
+  used: number;
+  limit: number;
+};
 
-function classifyTemplateCategory(template: TemplateItem): TemplateDisplayCategory {
-  const rawCategory = String(template.category || "").trim().toLowerCase()
-  const useCase = String(template.use_case || "").trim().toLowerCase()
-  const name = String(template.name || "").trim().toLowerCase()
-  const subject = String(template.subject || "").trim().toLowerCase()
-  const tags = (template.tags || [])
-    .map((tag) => String(tag || "").trim().toLowerCase())
-    .join(" ")
-  const text = [rawCategory, useCase, name, subject, tags].join(" ")
-
-  if (
-    rawCategory === "job_search" ||
-    rawCategory === "networking" ||
-    rawCategory === "follow_up" ||
-    rawCategory === "sales_outreach" ||
-    rawCategory === "enterprise"
-  ) {
-    return rawCategory
-  }
-
-  if (FOLLOW_UP_HINTS.some((hint) => text.includes(hint))) {
-    return "follow_up"
-  }
-
-  if (rawCategory === "job_seeker") {
-    if (NETWORKING_HINTS.some((hint) => text.includes(hint))) {
-      return "networking"
-    }
-    return "job_search"
-  }
-
-  if (rawCategory === "smb_sales") {
-    if (text.includes("enterprise")) {
-      return "enterprise"
-    }
-    return "sales_outreach"
-  }
-
-  if (rawCategory === "general" || rawCategory === "custom") {
-    return "follow_up"
-  }
-
-  return "other"
-}
-
-const TONE_OPTIONS = [
+const TONE_OPTIONS: TemplateTone[] = [
   "professional",
+  "casual",
   "friendly",
-  "direct",
-  "warm",
-  "consultative",
-  "executive",
-  "enthusiastic",
-  "value-first",
-  "light",
   "confident",
-  "collaborative",
-] as const
+  "humble",
+];
 
-type ApiTemplate = {
-  id: string
-  name: string
-  subject: string
-  body: string
-  tone?: string
-  category?: string
-  use_case?: string
-  is_system?: boolean
-  is_default?: boolean
-  variables?: string[]
-  tags?: string[]
-  use_count?: number
-  usage_count?: number
+const EMPTY_TEMPLATE_FORM: TemplateFormState = {
+  name: "",
+  subject: "",
+  body: "",
+  tone: "professional",
+};
+
+const EMPTY_GENERATE_FORM: GenerateFormState = {
+  purpose: "",
+  senderName: "",
+  recipientRole: "",
+  tone: "professional",
+};
+
+function toToneLabel(tone: TemplateTone | null): string {
+  const value = tone ?? "professional";
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-type SavePayload = {
-  id?: string
-  name: string
-  subject: string
-  body: string
-  tone: string
-  category: string
-  use_case: string
-  variables: string[]
-  forceCreate?: boolean
-  is_default?: boolean
+function toneBadgeClassName(tone: TemplateTone | null): string {
+  if (tone === "casual") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (tone === "friendly") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (tone === "confident") return "border-violet-200 bg-violet-50 text-violet-700";
+  if (tone === "humble") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-slate-200 bg-slate-100 text-slate-700";
 }
 
-type QuickDraftForm = {
-  goal: string
-  contactName: string
-  company: string
-  tone: string
-}
-
-type QuickDraftResult = {
-  subject: string
-  body: string
-}
-
-function readTemplatesFromResponse(payload: unknown): ApiTemplate[] {
+function parseErrorMessage(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object") {
-    const raw = payload as {
-      templates?: unknown
-      data?: { templates?: unknown }
+    const raw = payload as { error?: unknown; data?: { error?: unknown } };
+    if (typeof raw.error === "string" && raw.error.trim()) {
+      return raw.error;
     }
-
-    if (Array.isArray(raw.templates)) {
-      return raw.templates as ApiTemplate[]
-    }
-
-    if (Array.isArray(raw.data?.templates)) {
-      return raw.data.templates as ApiTemplate[]
+    if (typeof raw.data?.error === "string" && raw.data.error.trim()) {
+      return raw.data.error;
     }
   }
-
-  return []
+  return fallback;
 }
 
-function mapTemplate(template: ApiTemplate): TemplateItem {
-  return {
-    id: template.id,
-    name: template.name,
-    subject: template.subject,
-    body: template.body,
-    tone: template.tone,
-    category: template.category,
-    use_case: template.use_case,
-    is_system: template.is_system ?? false,
-    is_default: template.is_default ?? false,
-    variables: template.variables ?? [],
-    tags: Array.isArray(template.tags) ? template.tags : [],
-    usage_count: template.usage_count ?? template.use_count ?? 0,
+function normalizeTone(value: unknown): TemplateTone {
+  if (
+    value === "professional" ||
+    value === "casual" ||
+    value === "friendly" ||
+    value === "confident" ||
+    value === "humble"
+  ) {
+    return value;
   }
+  return "professional";
 }
 
-function readApiErrorMessage(payload: unknown): string {
-  if (!payload || typeof payload !== "object") {
-    return "Request failed"
-  }
+function formatDate(value: string | null): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
-  const raw = payload as {
-    error?: unknown
-    data?: { error?: unknown }
-  }
-
-  if (typeof raw.error === "string" && raw.error.trim()) {
-    return raw.error
-  }
-
-  if (typeof raw.data?.error === "string" && raw.data.error.trim()) {
-    return raw.data.error
-  }
-
-  return "Request failed"
+async function parseJson(response: Response): Promise<unknown> {
+  return response.json().catch(() => ({}));
 }
 
 export default function TemplatesPage() {
-  const router = useRouter()
-  const { persona, isJobSeeker, isSalesRep } = usePersona()
-  const personaCopy = useMemo(() => getPersonaCopy(persona), [persona])
-  const { saveTemplate } = useSaveToExtension()
+  const { planType, aiDraftUsed, aiDraftLimit, refresh: refreshSubscription } = useSubscription();
 
-  const [userTemplates, setUserTemplates] = useState<TemplateItem[]>([])
-  const [systemTemplates, setSystemTemplates] = useState<TemplateItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState("")
-  const [activeTab, setActiveTab] = useState<TabKey>("all")
+  const [templates, setTemplates] = useState<TemplateRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [editorOpen, setEditorOpen] = useState(false)
-  const [editingTemplate, setEditingTemplate] = useState<TemplateItem | null>(
-    null
-  )
-  const [isSaving, setIsSaving] = useState(false)
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<TemplateFormState>(EMPTY_TEMPLATE_FORM);
+  const [isSavingCreate, setIsSavingCreate] = useState(false);
 
-  const [useDialogOpen, setUseDialogOpen] = useState(false)
-  const [usingTemplate, setUsingTemplate] = useState<TemplateItem | null>(null)
+  const [editingTemplate, setEditingTemplate] = useState<TemplateRecord | null>(null);
+  const [editForm, setEditForm] = useState<TemplateFormState>(EMPTY_TEMPLATE_FORM);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [enhanceInstructions, setEnhanceInstructions] = useState("Make this more concise and compelling.");
+  const [isEnhancingDraft, setIsEnhancingDraft] = useState(false);
+  const [toneTarget, setToneTarget] = useState<TemplateTone>("professional");
+  const [isChangingTone, setIsChangingTone] = useState(false);
 
-  const [quickDraftOpen, setQuickDraftOpen] = useState(false)
-  const [quickDraftForm, setQuickDraftForm] = useState<QuickDraftForm>({
-    goal: "",
-    contactName: "",
-    company: "",
-    tone: "professional",
-  })
-  const [quickDraftLoading, setQuickDraftLoading] = useState(false)
-  const [quickDraftError, setQuickDraftError] = useState<string | null>(null)
-  const [quickDraftResult, setQuickDraftResult] = useState<QuickDraftResult | null>(
-    null
-  )
+  const [isGenerateOpen, setIsGenerateOpen] = useState(false);
+  const [generateForm, setGenerateForm] = useState<GenerateFormState>(EMPTY_GENERATE_FORM);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedTemplate, setGeneratedTemplate] = useState<GeneratedTemplate | null>(null);
+  const [generatedTemplateName, setGeneratedTemplateName] = useState("AI Generated Template");
+  const [isSavingGenerated, setIsSavingGenerated] = useState(false);
 
-  const visibleTabs = useMemo(
-    () => (isJobSeeker ? JOB_SEEKER_TABS : SMB_SALES_TABS),
-    [isJobSeeker]
-  )
+  const [templateToDelete, setTemplateToDelete] = useState<TemplateRecord | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    const valid = visibleTabs.some((tab) => tab.key === activeTab)
-    if (valid) return
-    setActiveTab(isJobSeeker ? "job_search" : "sales_outreach")
-  }, [activeTab, isJobSeeker, visibleTabs])
+  const [upgradePromptOpen, setUpgradePromptOpen] = useState(false);
+  const [quotaPromptState, setQuotaPromptState] = useState<QuotaPromptState>({
+    feature: "ai_draft_generation",
+    used: 0,
+    limit: 0,
+  });
 
-  const inferredUseCase = useMemo<AiUseCase>(() => {
-    if (activeTab === "job_search" || activeTab === "networking") {
-      return "job_seeker"
-    }
-    if (activeTab === "sales_outreach" || activeTab === "enterprise") {
-      return "smb_sales"
-    }
-    if (isJobSeeker) return "job_seeker"
-    if (isSalesRep) return "smb_sales"
-    return "general"
-  }, [activeTab, isJobSeeker, isSalesRep])
+  const isPaidPlan = planType === "starter" || planType === "pro";
+  const aiCreditsRemaining = Math.max(0, aiDraftLimit - aiDraftUsed);
 
   const fetchTemplates = useCallback(async () => {
-    setLoading(true)
+    setIsLoading(true);
     try {
-      const [userRes, systemRes] = await Promise.all([
-        supabaseAuthedFetch("/api/v1/templates", { cache: "no-store" }),
-        supabaseAuthedFetch("/api/templates/system", { cache: "no-store" }),
-      ])
-
-      const [userPayload, systemPayload] = await Promise.all([
-        userRes.json().catch(() => null),
-        systemRes.json().catch(() => null),
-      ])
-
-      if (!userRes.ok) {
-        throw new Error(readApiErrorMessage(userPayload))
-      }
-      if (!systemRes.ok) {
-        throw new Error(readApiErrorMessage(systemPayload))
-      }
-
-      setUserTemplates(readTemplatesFromResponse(userPayload).map(mapTemplate))
-      setSystemTemplates(
-        readTemplatesFromResponse(systemPayload).map(mapTemplate)
-      )
-    } catch (error) {
-      showToast.error(
-        error instanceof Error ? error.message : "Failed to load templates"
-      )
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void fetchTemplates()
-  }, [fetchTemplates])
-
-  const allTemplates = useMemo(
-    () => [...systemTemplates, ...userTemplates],
-    [systemTemplates, userTemplates]
-  )
-
-  const userTemplateIds = useMemo(
-    () => new Set(userTemplates.map((template) => template.id)),
-    [userTemplates]
-  )
-
-  const isVisibleInAll = useCallback(
-    (template: TemplateItem) => {
-      if (userTemplateIds.has(template.id)) return true
-
-      const category = classifyTemplateCategory(template)
-      if (isJobSeeker) {
-        return category !== "sales_outreach" && category !== "enterprise"
-      }
-      return category !== "job_search" && category !== "networking"
-    },
-    [isJobSeeker, userTemplateIds]
-  )
-
-  const counts = useMemo<Record<TabKey, number>>(
-    () => ({
-      all: allTemplates.filter(isVisibleInAll).length,
-      job_search: allTemplates.filter(
-        (template) => classifyTemplateCategory(template) === "job_search"
-      ).length,
-      networking: allTemplates.filter(
-        (template) => classifyTemplateCategory(template) === "networking"
-      ).length,
-      follow_up: allTemplates.filter(
-        (template) => classifyTemplateCategory(template) === "follow_up"
-      ).length,
-      sales_outreach: allTemplates.filter(
-        (template) => classifyTemplateCategory(template) === "sales_outreach"
-      ).length,
-      enterprise: allTemplates.filter(
-        (template) => classifyTemplateCategory(template) === "enterprise"
-      ).length,
-      mine: userTemplates.length,
-    }),
-    [allTemplates, isVisibleInAll, userTemplates.length]
-  )
-
-  const filteredTemplates = useMemo(() => {
-    let list: TemplateItem[]
-    if (activeTab === "mine") {
-      list = userTemplates
-    } else if (activeTab === "all") {
-      list = allTemplates.filter(isVisibleInAll)
-    } else {
-      list = allTemplates.filter(
-        (template) => classifyTemplateCategory(template) === activeTab
-      )
-    }
-
-    const query = search.trim().toLowerCase()
-    if (!query) return list
-
-    return list.filter((template) => {
-      return (
-        template.name.toLowerCase().includes(query) ||
-        template.subject.toLowerCase().includes(query) ||
-        template.body.toLowerCase().includes(query)
-      )
-    })
-  }, [activeTab, allTemplates, isVisibleInAll, search, userTemplates])
-
-  const activeTabLabel = useMemo(
-    () => visibleTabs.find((tab) => tab.key === activeTab)?.label ?? "Templates",
-    [activeTab, visibleTabs]
-  )
-
-  const pageSubtitle =
-    personaCopy.personaLabel === "Job Seeker"
-      ? "Job search emails, cover letters & networking messages"
-      : "Cold outreach, sales sequences & follow-up emails"
-
-  const EmptyStateIcon = isJobSeeker ? Briefcase : TrendingUp
-  const emptyStateText = isJobSeeker
-    ? "No job search templates yet"
-    : "No sales templates yet"
-  const emptyStateCta = isJobSeeker
-    ? "Create your first job search template"
-    : "Create your first sales template"
-
-  const handleNew = useCallback(() => {
-    router.push("/dashboard/templates/new")
-  }, [router])
-
-  const handleOpenQuickDraft = () => {
-    router.push("/dashboard/templates/new?mode=blank")
-  }
-
-  const handleEdit = (template: TemplateItem) => {
-    setEditingTemplate(template)
-    setEditorOpen(true)
-  }
-
-  const handleDuplicate = (template: TemplateItem) => {
-    setEditingTemplate({
-      ...template,
-      id: "",
-      name: `${template.name} (Copy)`,
-      is_system: false,
-      is_default: false,
-    })
-    setEditorOpen(true)
-  }
-
-  const handleDelete = async (template: TemplateItem) => {
-    if (!template.id) return
-
-    const shouldDelete = window.confirm(
-      `Delete template \"${template.name}\"?`
-    )
-    if (!shouldDelete) return
-
-    try {
-      const response = await supabaseAuthedFetch(
-        `/api/v1/templates/${template.id}`,
-        { method: "DELETE" }
-      )
-      const payload = await response.json().catch(() => null)
+      const response = await fetch("/api/email-templates", { cache: "no-store" });
+      const payload = await parseJson(response);
 
       if (!response.ok) {
-        throw new Error(readApiErrorMessage(payload))
+        throw new Error(parseErrorMessage(payload, "Failed to load templates"));
       }
 
-      showToast.success("Template deleted")
-      await fetchTemplates()
+      const rows = (payload as { templates?: unknown }).templates;
+      setTemplates(Array.isArray(rows) ? (rows as TemplateRecord[]) : []);
     } catch (error) {
-      showToast.error(
-        error instanceof Error ? error.message : "Failed to delete template"
-      )
+      showToast.error(error instanceof Error ? error.message : "Failed to load templates");
+    } finally {
+      setIsLoading(false);
     }
-  }
-
-  const handleUse = (template: TemplateItem) => {
-    if (template.id && !template.is_system) {
-      void supabaseAuthedFetch(`/api/v1/templates/${template.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ use_count: (template.usage_count ?? 0) + 1 }),
-      }).catch(() => {
-        // usage increment is best-effort
-      })
-    }
-
-    setUsingTemplate(template)
-    setUseDialogOpen(true)
-  }
-
-  const handleSaveToExtension = useCallback(
-    async (template: TemplateItem): Promise<boolean> => {
-      const result = await saveTemplate({
-        id: template.id,
-        name: template.name,
-        subject: template.subject,
-        body: template.body,
-        tone: template.tone,
-        category: template.category,
-        use_case: template.use_case,
-        variables: template.variables,
-      })
-
-      return result.success
-    },
-    [saveTemplate]
-  )
+  }, []);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return
-      if (event.key.toLowerCase() !== "n") return
-      if (event.metaKey || event.ctrlKey || event.altKey) return
+    void fetchTemplates();
+  }, [fetchTemplates]);
 
-      const target = event.target as HTMLElement | null
-      if (!target) return
-
-      const editableTarget = target.closest(
-        "input, textarea, select, [contenteditable='true'], [role='textbox']"
-      )
-      if (editableTarget) return
-
-      event.preventDefault()
-      handleNew()
-    }
-
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [handleNew])
-
-  const handleSave = async (form: SavePayload) => {
-    setIsSaving(true)
-    try {
-      const isUpdate = Boolean(form.id && !form.forceCreate)
-      const endpoint = isUpdate
-        ? `/api/v1/templates/${form.id}`
-        : "/api/v1/templates"
-      const method = isUpdate ? "PATCH" : "POST"
-
-      const response = await supabaseAuthedFetch(endpoint, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          subject: form.subject,
-          body: form.body,
-          tone: form.tone,
-          category: form.category,
-          use_case: form.use_case,
-          variables: form.variables,
-          is_default: false,
-        }),
-      })
-
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) {
-        throw new Error(readApiErrorMessage(payload))
-      }
-
-      showToast.success(isUpdate ? "Template updated" : "Template created")
-      setEditorOpen(false)
-      setEditingTemplate(null)
-      await fetchTemplates()
-    } catch (error) {
-      showToast.error(
-        error instanceof Error ? error.message : "Failed to save template"
-      )
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  const updateQuickDraftField = <K extends keyof QuickDraftForm>(
-    key: K,
-    value: QuickDraftForm[K]
-  ) => {
-    setQuickDraftForm((prev) => ({ ...prev, [key]: value }))
-  }
-
-  const handleGenerateQuickDraft = async () => {
-    if (quickDraftForm.goal.trim().length < 3) {
-      setQuickDraftError("Goal must be at least 3 characters.")
-      return
-    }
-
-    if (!quickDraftForm.contactName.trim()) {
-      setQuickDraftError("Contact name is required.")
-      return
-    }
-
-    if (!quickDraftForm.company.trim()) {
-      setQuickDraftError("Company is required.")
-      return
-    }
-
-    setQuickDraftError(null)
-    setQuickDraftLoading(true)
-    try {
-      const response = await supabaseAuthedFetch("/api/v1/ai/draft-email", {
+  const createTemplate = useCallback(
+    async (form: TemplateFormState, options?: { aiGenerated?: boolean }) => {
+      const response = await fetch("/api/email-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          use_case: inferredUseCase,
-          tone: quickDraftForm.tone,
-          goal: quickDraftForm.goal.trim(),
-          contact: {
-            firstName: quickDraftForm.contactName.trim(),
-            company: quickDraftForm.company.trim(),
-          },
-          sender: {
-            name: "{{userName}}",
-          },
+          name: form.name.trim(),
+          subject: form.subject.trim(),
+          body: form.body.trim(),
+          tone: form.tone,
+          is_ai_generated: Boolean(options?.aiGenerated),
         }),
-      })
+      });
 
-      const payload = await response.json().catch(() => null)
-      if (response.status === 402) {
-        const quotaMessage = "AI quota exhausted. Upgrade your plan to continue."
-        setQuickDraftError(quotaMessage)
-        showToast.error(quotaMessage)
-        return
+      const payload = await parseJson(response);
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(payload, "Failed to save template"));
       }
 
-      if (!response.ok || !payload?.success) {
-        throw new Error(readApiErrorMessage(payload))
-      }
+      await fetchTemplates();
+    },
+    [fetchTemplates]
+  );
 
-      setQuickDraftResult({
-        subject: String(payload.subject || ""),
-        body: String(payload.body || ""),
-      })
-    } catch (error) {
-      setQuickDraftError(
-        error instanceof Error ? error.message : "Failed to generate quick draft"
-      )
-    } finally {
-      setQuickDraftLoading(false)
+  const handleQuotaExceeded = useCallback(
+    async (payload: unknown) => {
+      const raw = payload as { feature?: unknown; used?: unknown; limit?: unknown };
+
+      setQuotaPromptState({
+        feature: typeof raw.feature === "string" ? raw.feature : "ai_draft_generation",
+        used: Number(raw.used ?? aiDraftUsed),
+        limit: Number(raw.limit ?? aiDraftLimit),
+      });
+
+      setUpgradePromptOpen(true);
+      await refreshSubscription();
+    },
+    [aiDraftLimit, aiDraftUsed, refreshSubscription]
+  );
+
+  const openGenerateModal = useCallback(() => {
+    if (!isPaidPlan) {
+      setQuotaPromptState({
+        feature: "ai_draft_generation",
+        used: aiDraftUsed,
+        limit: aiDraftLimit,
+      });
+      setUpgradePromptOpen(true);
+      return;
     }
-  }
 
-  const handleQuickDraftCopy = async () => {
-    if (!quickDraftResult) return
+    setIsGenerateOpen(true);
+  }, [aiDraftLimit, aiDraftUsed, isPaidPlan]);
+
+  const openEditModal = (template: TemplateRecord) => {
+    setEditingTemplate(template);
+    setEditForm({
+      name: template.name,
+      subject: template.subject,
+      body: template.body,
+      tone: normalizeTone(template.tone),
+    });
+    setToneTarget(normalizeTone(template.tone));
+    setEnhanceInstructions("Make this more concise and compelling.");
+  };
+
+  const copyTemplate = async (template: TemplateRecord) => {
+    const text = `Subject: ${template.subject}\n\n${template.body}`;
 
     try {
-      await navigator.clipboard.writeText(
-        `Subject: ${quickDraftResult.subject}\n\n${quickDraftResult.body}`
-      )
-      showToast.success("Draft copied to clipboard")
+      await navigator.clipboard.writeText(text);
+      showToast.success("Template copied to clipboard");
     } catch {
-      showToast.error("Failed to copy draft")
+      showToast.error("Unable to copy template");
     }
-  }
+  };
 
-  const handleQuickDraftSaveAsTemplate = () => {
-    if (!quickDraftResult) return
+  const headerActions = useMemo(
+    () => (
+      <>
+        <Button type="button" variant="outline" onClick={() => setIsCreateOpen(true)}>
+          <Plus className="h-4 w-4" />
+          New Template
+        </Button>
+        <Button type="button" onClick={openGenerateModal}>
+          <Sparkles className="h-4 w-4" />
+          Generate with AI
+        </Button>
+      </>
+    ),
+    [openGenerateModal]
+  );
 
-    const namePrefix =
-      inferredUseCase === "job_seeker"
-        ? "Job Outreach"
-        : inferredUseCase === "smb_sales"
-          ? "Sales Outreach"
-          : "Outreach"
+  const handleCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-    const templateName = quickDraftForm.company.trim()
-      ? `${namePrefix} - ${quickDraftForm.company.trim()}`
-      : `${namePrefix} Draft`
+    if (!createForm.name.trim() || !createForm.subject.trim() || !createForm.body.trim()) {
+      showToast.error("Name, subject, and body are required");
+      return;
+    }
 
-    const variables = extractVariables(
-      `${quickDraftResult.subject} ${quickDraftResult.body}`
-    )
+    setIsSavingCreate(true);
+    try {
+      await createTemplate(createForm);
+      showToast.success("Template created");
+      setIsCreateOpen(false);
+      setCreateForm(EMPTY_TEMPLATE_FORM);
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Failed to create template");
+    } finally {
+      setIsSavingCreate(false);
+    }
+  };
 
-    setEditingTemplate({
-      id: "",
-      name: templateName,
-      subject: quickDraftResult.subject,
-      body: quickDraftResult.body,
-      tone: quickDraftForm.tone,
-      category: inferredUseCase === "general" ? "general" : inferredUseCase,
-      use_case: inferredUseCase,
-      is_system: false,
-      is_default: false,
-      variables,
-      usage_count: 0,
-    })
-    setQuickDraftOpen(false)
-    setEditorOpen(true)
-  }
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingTemplate) return;
+
+    if (!editForm.name.trim() || !editForm.subject.trim() || !editForm.body.trim()) {
+      showToast.error("Name, subject, and body are required");
+      return;
+    }
+
+    setIsSavingEdit(true);
+    try {
+      const response = await fetch(`/api/email-templates/${editingTemplate.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editForm.name.trim(),
+          subject: editForm.subject.trim(),
+          body: editForm.body.trim(),
+          tone: editForm.tone,
+        }),
+      });
+
+      const payload = await parseJson(response);
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(payload, "Failed to update template"));
+      }
+
+      await fetchTemplates();
+      setEditingTemplate(null);
+      showToast.success("Template updated");
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Failed to update template");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleEnhanceDraft = async () => {
+    if (!editingTemplate) return;
+    if (!editForm.subject.trim() || !editForm.body.trim()) {
+      showToast.error("Subject and body are required before enhancing");
+      return;
+    }
+
+    setIsEnhancingDraft(true);
+
+    try {
+      const response = await fetch("/api/ai/enhance-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: editForm.subject,
+          body: editForm.body,
+          instructions: enhanceInstructions.trim() || "Improve clarity and actionability.",
+        }),
+      });
+
+      const payload = await parseJson(response);
+
+      if (response.status === 402) {
+        await handleQuotaExceeded(payload);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(payload, "Failed to enhance draft"));
+      }
+
+      const output = payload as { subject?: unknown; body?: unknown };
+      setEditForm((prev) => ({
+        ...prev,
+        subject: typeof output.subject === "string" ? output.subject : prev.subject,
+        body: typeof output.body === "string" ? output.body : prev.body,
+      }));
+
+      showToast.success("Draft enhanced");
+      await refreshSubscription();
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Failed to enhance draft");
+    } finally {
+      setIsEnhancingDraft(false);
+    }
+  };
+
+  const handleChangeTone = async () => {
+    if (!editingTemplate) return;
+    if (!editForm.subject.trim() || !editForm.body.trim()) {
+      showToast.error("Subject and body are required before changing tone");
+      return;
+    }
+
+    setIsChangingTone(true);
+
+    try {
+      const response = await fetch("/api/ai/customize-tone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          subject: editForm.subject,
+          body: editForm.body,
+          tone: toneTarget,
+        }),
+      });
+
+      const payload = await parseJson(response);
+
+      if (response.status === 402) {
+        await handleQuotaExceeded(payload);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(payload, "Failed to change tone"));
+      }
+
+      const output = payload as { subject?: unknown; body?: unknown };
+      setEditForm((prev) => ({
+        ...prev,
+        tone: toneTarget,
+        subject: typeof output.subject === "string" ? output.subject : prev.subject,
+        body: typeof output.body === "string" ? output.body : prev.body,
+      }));
+
+      showToast.success("Tone updated");
+      await refreshSubscription();
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Failed to change tone");
+    } finally {
+      setIsChangingTone(false);
+    }
+  };
+
+  const handleGenerateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!generateForm.purpose.trim() || !generateForm.senderName.trim() || !generateForm.recipientRole.trim()) {
+      showToast.error("Purpose, your name, and recipient role are required");
+      return;
+    }
+
+    setIsGenerating(true);
+
+    try {
+      const response = await fetch("/api/ai/generate-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          context: {
+            senderName: generateForm.senderName.trim(),
+            recipientRole: generateForm.recipientRole.trim(),
+            purpose: generateForm.purpose.trim(),
+            tone: generateForm.tone,
+          },
+        }),
+      });
+
+      const payload = await parseJson(response);
+
+      if (response.status === 402) {
+        await handleQuotaExceeded(payload);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(payload, "Failed to generate template"));
+      }
+
+      const output = payload as { subject?: unknown; body?: unknown; tone?: unknown };
+
+      setGeneratedTemplate({
+        subject: typeof output.subject === "string" ? output.subject : "Quick introduction",
+        body:
+          typeof output.body === "string" && output.body.trim()
+            ? output.body
+            : "Hi there,\n\nI wanted to reach out.\n\nBest regards,",
+        tone: normalizeTone(output.tone ?? generateForm.tone),
+      });
+
+      showToast.success("Template generated");
+      await refreshSubscription();
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Failed to generate template");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSaveGeneratedTemplate = async () => {
+    if (!generatedTemplate) return;
+
+    const form: TemplateFormState = {
+      name: generatedTemplateName.trim() || "AI Generated Template",
+      subject: generatedTemplate.subject.trim(),
+      body: generatedTemplate.body.trim(),
+      tone: generatedTemplate.tone,
+    };
+
+    if (!form.subject || !form.body) {
+      showToast.error("Generated content is incomplete");
+      return;
+    }
+
+    setIsSavingGenerated(true);
+
+    try {
+      await createTemplate(form, { aiGenerated: true });
+      showToast.success("Template saved");
+      setIsGenerateOpen(false);
+      setGenerateForm(EMPTY_GENERATE_FORM);
+      setGeneratedTemplate(null);
+      setGeneratedTemplateName("AI Generated Template");
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Failed to save template");
+    } finally {
+      setIsSavingGenerated(false);
+    }
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!templateToDelete) return;
+
+    setIsDeleting(true);
+
+    try {
+      const response = await fetch(`/api/email-templates/${templateToDelete.id}`, {
+        method: "DELETE",
+      });
+
+      const payload = await parseJson(response);
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(payload, "Failed to delete template"));
+      }
+
+      await fetchTemplates();
+      setTemplateToDelete(null);
+      showToast.success("Template deleted");
+    } catch (error) {
+      showToast.error(error instanceof Error ? error.message : "Failed to delete template");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
-    <DashboardShell>
-      <ExtensionTemplatesSyncBanner />
+    <DashboardShell className="px-4 py-6 md:px-8">
+      <PageHeader
+        title="Templates"
+        description="Create reusable outreach templates and improve them with AI."
+        actions={headerActions}
+      />
 
-      <div className="flex gap-6">
-        <aside className="sticky top-6 hidden w-56 flex-shrink-0 self-start space-y-3 md:block">
-          <Input
-            placeholder="Search templates..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            className="h-8 text-sm"
-          />
+      <div className="mb-6 rounded-lg border border-[#E6E4F2] bg-white p-4">
+        {isPaidPlan ? (
+          <p className="text-sm text-[#2D2B55]">
+            <span className="font-semibold">AI credits remaining:</span> {aiCreditsRemaining} / {aiDraftLimit}
+          </p>
+        ) : (
+          <p className="text-sm text-[#2D2B55]">
+            AI generation is available on Starter and Pro plans. Upgrade to unlock template generation,
+            tone customization, and draft enhancement.
+          </p>
+        )}
+      </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              size="sm"
-              className="justify-start gap-1.5"
-              style={{ backgroundColor: "#7C3AED", color: "#fff" }}
-              onClick={handleNew}
-            >
-              <Plus className="h-4 w-4" />
-              New
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="justify-start gap-1.5"
-              onClick={handleOpenQuickDraft}
-            >
-              <WandSparkles className="h-4 w-4" />
-              Quick Draft
-            </Button>
-          </div>
-
-          <nav className="space-y-0.5 pt-1">
-            <AnimatePresence mode="popLayout" initial={false}>
-              {visibleTabs.map((tab) => {
-                const Icon = tab.icon
-                const isActive = activeTab === tab.key
-
-                return (
-                  <motion.div
-                    key={`${persona}:${tab.key}`}
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <button
-                      onClick={() => setActiveTab(tab.key)}
-                      className={cn(
-                        "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors",
-                        isActive
-                          ? "bg-violet-50 font-medium text-violet-700"
-                          : "text-muted-foreground hover:bg-muted"
-                      )}
-                    >
-                      <Icon className="h-4 w-4 flex-shrink-0" />
-                      <span className="flex-1 text-left">{tab.label}</span>
-                      {tab.key === "mine" ? (
-                        <span
-                          className={cn(
-                            "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                            isActive
-                              ? "bg-violet-100 text-violet-700"
-                              : "bg-slate-100 text-slate-600"
-                          )}
-                        >
-                          {counts.mine}
-                        </span>
-                      ) : (
-                        <span
-                          className={cn(
-                            "text-xs tabular-nums",
-                            isActive ? "text-violet-500" : "text-muted-foreground"
-                          )}
-                        >
-                          {counts[tab.key]}
-                        </span>
-                      )}
-                    </button>
-                  </motion.div>
-                )
-              })}
-            </AnimatePresence>
-          </nav>
-        </aside>
-
-        <div className="min-w-0 flex-1">
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1
-                className="text-2xl font-semibold text-[#2D2B55]"
-                style={{ fontFamily: "Fraunces, serif" }}
-              >
-                Templates
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {pageSubtitle}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {filteredTemplates.length} template
-                {filteredTemplates.length !== 1 ? "s" : ""}
-                {activeTab !== "all"
-                  ? ` in ${activeTabLabel}`
-                  : ""}
-              </p>
-            </div>
-
-            <div className="w-full space-y-2 md:hidden">
-              <Input
-                placeholder="Search templates..."
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="h-9 w-full"
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  size="sm"
-                  style={{ backgroundColor: "#7C3AED", color: "#fff" }}
-                  onClick={handleNew}
-                >
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  New Template
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleOpenQuickDraft}>
-                  <WandSparkles className="mr-1.5 h-4 w-4" />
-                  Quick Draft
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="h-48 animate-pulse rounded-xl bg-muted" />
-              ))}
-            </div>
-          ) : filteredTemplates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <EmptyStateIcon className="mb-3 h-10 w-10 text-muted-foreground/40" />
-              <p className="text-sm font-medium text-muted-foreground">
-                {search ? "No templates match your search" : emptyStateText}
-              </p>
-              {!search && (
-                <Button
-                  size="sm"
-                  className="mt-4"
-                  style={{ backgroundColor: "#7C3AED", color: "#fff" }}
-                  onClick={handleNew}
-                >
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  {emptyStateCta}
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredTemplates.map((template) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  onUse={handleUse}
-                  onEdit={handleEdit}
-                  onDuplicate={handleDuplicate}
-                  onDelete={handleDelete}
-                  onSaveToExtension={handleSaveToExtension}
-                />
-              ))}
-            </div>
-          )}
+      {isLoading ? (
+        <div className="flex min-h-[260px] items-center justify-center rounded-xl border border-[#E6E4F2] bg-white">
+          <Loader2 className="h-5 w-5 animate-spin text-[#2D2B55]" />
         </div>
-      </div>
+      ) : templates.length === 0 ? (
+        <div className="rounded-xl bg-white p-4">
+          <EmptyState
+            icon={<Sparkles className="h-7 w-7 text-[#5C5887]" />}
+            title="No templates yet"
+            description="No templates yet. Create your first template or generate one with AI."
+            action={{
+              label: "Create Template",
+              onClick: () => setIsCreateOpen(true),
+            }}
+          />
+          <div className="mt-3 flex items-center justify-center">
+            <Button type="button" variant="outline" onClick={openGenerateModal}>
+              <Sparkles className="h-4 w-4" />
+              Generate with AI
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {templates.map((template) => (
+            <Card key={template.id} className="border-[#E6E4F2] bg-white">
+              <CardHeader className="space-y-3 pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <CardTitle className="line-clamp-1 text-base text-[#2D2B55]">{template.name}</CardTitle>
+                  <Badge className={toneBadgeClassName(template.tone)}>{toToneLabel(template.tone)}</Badge>
+                </div>
+                <CardDescription className="line-clamp-2 text-sm text-slate-600">
+                  {template.subject || "No subject"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="line-clamp-5 min-h-[96px] whitespace-pre-wrap text-sm text-slate-700">
+                  {template.body || "No body content"}
+                </p>
 
-      <div className="fixed bottom-6 right-4 z-40 flex items-center gap-2 md:hidden">
-        <Button
-          size="icon"
-          variant="outline"
-          className="h-12 w-12 rounded-full border-violet-200 bg-white shadow-lg"
-          onClick={handleOpenQuickDraft}
-          aria-label="Quick Draft"
-        >
-          <WandSparkles className="h-5 w-5" />
-        </Button>
-        <Button
-          size="icon"
-          className="h-12 w-12 rounded-full shadow-lg"
-          style={{ backgroundColor: "#7C3AED", color: "#fff" }}
-          onClick={handleNew}
-          aria-label="New Template"
-        >
-          <Plus className="h-5 w-5" />
-        </Button>
-      </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => openEditModal(template)}>
+                    Edit
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void copyTemplate(template)}>
+                    <Copy className="h-4 w-4" />
+                    Use
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700"
+                    onClick={() => setTemplateToDelete(template)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
 
-      <TemplateEditorSheet
-        open={editorOpen}
-        template={editingTemplate}
-        isSaving={isSaving}
-        onOpenChange={setEditorOpen}
-        onSave={handleSave}
-      />
-
-      <UseTemplateDialog
-        open={useDialogOpen}
-        template={usingTemplate}
-        onOpenChange={setUseDialogOpen}
-      />
+                <p className="text-xs text-slate-500">Created {formatDate(template.created_at)}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <Dialog
-        open={quickDraftOpen}
-        onOpenChange={(open) => {
-          setQuickDraftOpen(open)
+        open={isCreateOpen}
+        onOpenChange={(open: boolean) => {
+          setIsCreateOpen(open);
           if (!open) {
-            setQuickDraftError(null)
+            setCreateForm(EMPTY_TEMPLATE_FORM);
           }
         }}
       >
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Quick Draft</DialogTitle>
-            <DialogDescription>
-              Generate a draft in seconds, then save it as a template.
-            </DialogDescription>
+            <DialogTitle>New Template</DialogTitle>
+            <DialogDescription>Create a reusable template for outreach.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {quickDraftError && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {quickDraftError}
-              </div>
-            )}
-
+          <form className="space-y-4" onSubmit={handleCreateSubmit}>
             <div className="space-y-1.5">
-              <Label htmlFor="qd-goal">Goal</Label>
-              <Textarea
-                id="qd-goal"
-                rows={3}
-                placeholder="Get a reply for a 15-minute intro call"
-                value={quickDraftForm.goal}
-                onChange={(event) => updateQuickDraftField("goal", event.target.value)}
+              <Label htmlFor="create-name">Name</Label>
+              <Input
+                id="create-name"
+                value={createForm.name}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, name: event.target.value }))}
+                required
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="qd-contact">Contact Name</Label>
-                <Input
-                  id="qd-contact"
-                  placeholder="Avery"
-                  value={quickDraftForm.contactName}
-                  onChange={(event) =>
-                    updateQuickDraftField("contactName", event.target.value)
-                  }
-                />
+            <div className="space-y-1.5">
+              <Label htmlFor="create-subject">Subject</Label>
+              <Input
+                id="create-subject"
+                value={createForm.subject}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, subject: event.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="create-body">Body</Label>
+              <Textarea
+                id="create-body"
+                rows={8}
+                value={createForm.body}
+                onChange={(event) => setCreateForm((prev) => ({ ...prev, body: event.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Tone</Label>
+              <Select
+                value={createForm.tone}
+                onValueChange={(value) => setCreateForm((prev) => ({ ...prev, tone: normalizeTone(value) }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select tone" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TONE_OPTIONS.map((tone) => (
+                    <SelectItem key={tone} value={tone}>
+                      {toToneLabel(tone)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSavingCreate}>
+                {isSavingCreate ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Template"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editingTemplate)}
+        onOpenChange={(open: boolean) => {
+          if (!open) {
+            setEditingTemplate(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Edit Template</DialogTitle>
+            <DialogDescription>Update content and apply AI improvements.</DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={handleEditSubmit}>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(event) => setEditForm((prev) => ({ ...prev, name: event.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-subject">Subject</Label>
+              <Input
+                id="edit-subject"
+                value={editForm.subject}
+                onChange={(event) => setEditForm((prev) => ({ ...prev, subject: event.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-body">Body</Label>
+              <Textarea
+                id="edit-body"
+                rows={10}
+                value={editForm.body}
+                onChange={(event) => setEditForm((prev) => ({ ...prev, body: event.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Tone</Label>
+              <Select
+                value={editForm.tone}
+                onValueChange={(value) => setEditForm((prev) => ({ ...prev, tone: normalizeTone(value) }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select tone" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TONE_OPTIONS.map((tone) => (
+                    <SelectItem key={tone} value={tone}>
+                      {toToneLabel(tone)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div>
+                <p className="text-sm font-semibold text-[#2D2B55]">AI Tools</p>
+                <p className="text-xs text-slate-600">Use your AI credits to improve this draft.</p>
               </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="qd-company">Company</Label>
+              <div className="space-y-2">
+                <Label htmlFor="enhance-instructions">Enhance Instructions</Label>
                 <Input
-                  id="qd-company"
-                  placeholder="Acme"
-                  value={quickDraftForm.company}
+                  id="enhance-instructions"
+                  value={enhanceInstructions}
+                  onChange={(event) => setEnhanceInstructions(event.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isEnhancingDraft || isChangingTone}
+                  onClick={() => void handleEnhanceDraft()}
+                >
+                  {isEnhancingDraft ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Enhancing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      AI Enhance
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex-1 space-y-1.5">
+                  <Label>Change Tone</Label>
+                  <Select value={toneTarget} onValueChange={(value) => setToneTarget(normalizeTone(value))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select tone" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TONE_OPTIONS.map((tone) => (
+                        <SelectItem key={tone} value={tone}>
+                          {toToneLabel(tone)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isChangingTone || isEnhancingDraft}
+                  onClick={() => void handleChangeTone()}
+                >
+                  {isChangingTone ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Applying...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="h-4 w-4" />
+                      Change Tone
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingTemplate(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSavingEdit}>
+                {isSavingEdit ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Changes"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isGenerateOpen}
+        onOpenChange={(open: boolean) => {
+          setIsGenerateOpen(open);
+          if (!open) {
+            setGenerateForm(EMPTY_GENERATE_FORM);
+            setGeneratedTemplate(null);
+            setGeneratedTemplateName("AI Generated Template");
+          }
+        }}
+      >
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Generate with AI</DialogTitle>
+            <DialogDescription>Describe your outreach goal and let AI draft a template.</DialogDescription>
+          </DialogHeader>
+
+          <form className="space-y-4" onSubmit={handleGenerateSubmit}>
+            <div className="space-y-1.5">
+              <Label htmlFor="generate-purpose">Purpose</Label>
+              <Textarea
+                id="generate-purpose"
+                rows={4}
+                placeholder="Cold outreach to a hiring manager at Google"
+                value={generateForm.purpose}
+                onChange={(event) => setGenerateForm((prev) => ({ ...prev, purpose: event.target.value }))}
+                required
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="generate-sender">Your Name</Label>
+                <Input
+                  id="generate-sender"
+                  value={generateForm.senderName}
+                  onChange={(event) => setGenerateForm((prev) => ({ ...prev, senderName: event.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="generate-recipient-role">Recipient Role</Label>
+                <Input
+                  id="generate-recipient-role"
+                  value={generateForm.recipientRole}
                   onChange={(event) =>
-                    updateQuickDraftField("company", event.target.value)
+                    setGenerateForm((prev) => ({ ...prev, recipientRole: event.target.value }))
                   }
+                  required
                 />
               </div>
             </div>
@@ -984,71 +961,154 @@ export default function TemplatesPage() {
             <div className="space-y-1.5">
               <Label>Tone</Label>
               <Select
-                value={quickDraftForm.tone}
-                onValueChange={(value) => updateQuickDraftField("tone", value)}
+                value={generateForm.tone}
+                onValueChange={(value) => setGenerateForm((prev) => ({ ...prev, tone: normalizeTone(value) }))}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select tone" />
                 </SelectTrigger>
                 <SelectContent>
                   {TONE_OPTIONS.map((tone) => (
                     <SelectItem key={tone} value={tone}>
-                      {tone}
+                      {toToneLabel(tone)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            <Button
-              type="button"
-              onClick={() => void handleGenerateQuickDraft()}
-              disabled={quickDraftLoading}
-              className="w-full"
-              style={{ backgroundColor: "#7C3AED", color: "#fff" }}
-            >
-              {quickDraftLoading ? "Generating..." : "Generate Draft"}
+            <Button type="submit" disabled={isGenerating}>
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  Generate
+                </>
+              )}
             </Button>
+          </form>
 
-            {quickDraftResult && (
-              <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                <TemplatePreview
-                  subject={quickDraftResult.subject}
-                  body={quickDraftResult.body}
-                  className="border-slate-200 bg-white"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    onClick={handleQuickDraftSaveAsTemplate}
-                    style={{ backgroundColor: "#7C3AED", color: "#fff" }}
-                  >
-                    Save as Template
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void handleQuickDraftCopy()}
-                  >
-                    <Copy className="mr-1.5 h-4 w-4" />
-                    Copy to Clipboard
-                  </Button>
-                </div>
+          {generatedTemplate ? (
+            <div className="space-y-3 rounded-lg border border-[#E6E4F2] bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[#2D2B55]">Generated Result</p>
+                <Badge className={toneBadgeClassName(generatedTemplate.tone)}>
+                  {toToneLabel(generatedTemplate.tone)}
+                </Badge>
               </div>
-            )}
-          </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setQuickDraftOpen(false)}
-            >
-              Close
-            </Button>
-          </DialogFooter>
+              <div className="space-y-1.5">
+                <Label htmlFor="generated-subject">Subject</Label>
+                <Input
+                  id="generated-subject"
+                  value={generatedTemplate.subject}
+                  onChange={(event) =>
+                    setGeneratedTemplate((prev) => (prev ? { ...prev, subject: event.target.value } : prev))
+                  }
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="generated-body">Body</Label>
+                <Textarea
+                  id="generated-body"
+                  rows={8}
+                  value={generatedTemplate.body}
+                  onChange={(event) =>
+                    setGeneratedTemplate((prev) => (prev ? { ...prev, body: event.target.value } : prev))
+                  }
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="generated-name">Template Name</Label>
+                <Input
+                  id="generated-name"
+                  value={generatedTemplateName}
+                  onChange={(event) => setGeneratedTemplateName(event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() =>
+                    void navigator.clipboard
+                      .writeText(`Subject: ${generatedTemplate.subject}\n\n${generatedTemplate.body}`)
+                      .then(() => showToast.success("Generated template copied"))
+                      .catch(() => showToast.error("Unable to copy generated template"))
+                  }
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy
+                </Button>
+                <Button type="button" disabled={isSavingGenerated} onClick={() => void handleSaveGeneratedTemplate()}>
+                  {isSavingGenerated ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Template"
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={Boolean(templateToDelete)}
+        onOpenChange={(open: boolean) => {
+          if (!open) setTemplateToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The template will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeleting}
+              className="bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600"
+              onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                event.preventDefault();
+                void handleDeleteTemplate();
+              }}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <UpgradePrompt
+        variant="modal"
+        open={upgradePromptOpen}
+        onDismiss={() => setUpgradePromptOpen(false)}
+        feature={quotaPromptState.feature}
+        used={quotaPromptState.used}
+        limit={quotaPromptState.limit}
+      />
+
+      {!isPaidPlan ? (
+        <p className="mt-6 text-center text-sm text-slate-600">
+          Need AI templates?{" "}
+          <Link href="/dashboard/upgrade" className="font-medium text-[#2D2B55] underline">
+            Upgrade your plan
+          </Link>
+        </p>
+      ) : null}
     </DashboardShell>
-  )
+  );
 }

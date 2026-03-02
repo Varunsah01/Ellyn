@@ -1,501 +1,558 @@
-"use client"
+﻿"use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { subDays, format } from "date-fns"
-import { DateRange } from "react-day-picker"
+import { type ComponentType, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Briefcase,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Download,
   Mail,
   MessageSquare,
-  Clock,
+  Percent,
   Users,
-  TrendingUp,
-  BarChart2,
-} from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
-import { ArrowUp, ArrowDown } from "lucide-react"
-import { DashboardShell } from "@/components/dashboard/DashboardShell"
-import { DateRangeFilter } from "@/components/analytics/DateRangeFilter"
-import { ExportMenu } from "@/components/analytics/ExportMenu"
-import { OverviewMetrics } from "@/components/analytics/OverviewMetrics"
-import { OutreachFunnel } from "@/components/analytics/OutreachFunnel"
-import { SequencePerformanceTable } from "@/components/analytics/SequencePerformanceTable"
-import { ActivityHeatmap } from "@/components/analytics/ActivityHeatmap"
-import { TimeSeriesCharts } from "@/components/analytics/TimeSeriesCharts"
-import { ContactInsights } from "@/components/analytics/ContactInsights"
-import { usePersona } from "@/context/PersonaContext"
-import { cn } from "@/lib/utils"
+} from "lucide-react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { PageHeader } from "@/components/dashboard/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/Table";
+import { showToast } from "@/lib/toast";
 
-interface OverviewData {
-  totalContacts: number
-  totalDrafts: number
-  emailsSent: number
-  replyRate: string | null
-  bestPerformingSequence: string | null
-  bestPerformingReplyRate: string | null
-  mostActiveDay: string | null
-  mostActiveHour: string | null
-}
+type PeriodOption = "7d" | "30d" | "90d" | "all";
 
-interface ComparisonData {
-  contacts: number
-  drafts: number
-  emailsSent: number
-  replyRate: number
-}
+type AnalyticsResponse = {
+  overview: {
+    totalContacts: number;
+    totalSent: number;
+    totalReplied: number;
+    totalBounced: number;
+    replyRate: number;
+  };
+  contactsByStatus: { status: string; count: number }[];
+  contactsOverTime: { date: string; count: number }[];
+  topCompanies: { company_name: string; count: number }[];
+  topRoles: { role: string; count: number }[];
+  sequencePerformance: {
+    id: string;
+    name: string;
+    enrolled: number;
+    sent: number;
+    opened: number;
+    replied: number;
+    replyRate: number;
+  }[];
+  previousPeriod?: {
+    contacts: number;
+    sent: number;
+    replied: number;
+    replyRate: number;
+  };
+};
 
-interface SequenceRow {
-  id: string
-  name: string
-  enrolled: number
-  sent: number
-  opened: number
-  replied: number
-  replyRate: number
-  openRate: number
-  status?: string
-}
+type SequenceSortKey = "name" | "enrolled" | "sent" | "opened" | "replied" | "replyRate";
 
-interface ContactsTimePoint {
-  date: string
-  count: number
-  label: string
-}
+type SortDirection = "asc" | "desc";
 
-interface ContactInsightsData {
-  topCompanies: { name: string; count: number }[]
-  topRoles: { name: string; count: number }[]
-  sourceBreakdown: { source: string; count: number; percentage: string }[]
-  topTags: { name: string; count: number }[]
-}
+const PERIOD_OPTIONS: Array<{ value: PeriodOption; label: string }> = [
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "all", label: "All time" },
+];
 
-interface HeatmapPoint {
-  day: number
-  hour: number
-  count: number
-}
+const STATUS_COLORS: Record<string, string> = {
+  discovered: "#64748b",
+  sent: "#2563eb",
+  replied: "#16a34a",
+  bounced: "#dc2626",
+};
 
-interface UserAnalytics {
-  outreach: {
-    totalSent: number
-    openRate: number
-    replyRate: number
-    avgResponseDays: number
+const STATUS_LABELS: Record<string, string> = {
+  discovered: "Discovered",
+  sent: "Sent",
+  replied: "Replied",
+  bounced: "Bounced",
+};
+
+function formatShortDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
   }
-  sequences: {
-    active: number
-    totalEnrolled: number
-    completionRate: number
-    topPerforming: { id: string; name: string; replyRate: number }[]
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
+function formatPercent(value: number): string {
+  return `${value.toFixed(1)}%`;
+}
+
+function TrendIndicator({ value }: { value: number | null }) {
+  if (value === null || !Number.isFinite(value) || value === 0) {
+    return <span className="text-xs text-slate-500">No change</span>;
   }
-  contactGrowth: { date: string; count: number }[]
-  activityHeatmap: HeatmapPoint[]
-  totalContacts: number
-  applicationsTracked: number
+
+  const positive = value > 0;
+
+  return (
+    <span className={positive ? "inline-flex items-center gap-1 text-xs text-emerald-600" : "inline-flex items-center gap-1 text-xs text-rose-600"}>
+      {positive ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}
+      {Math.abs(value).toFixed(1)}%
+    </span>
+  );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
-
-function transformHeatmap(flat: HeatmapPoint[]) {
-  return DAY_LABELS.map((day, dayIndex) => ({
-    day,
-    dayIndex,
-    hours: Array.from({ length: 24 }, (_, hour) => ({
-      hour,
-      count: flat.find((p) => p.day === dayIndex && p.hour === hour)?.count ?? 0,
-    })),
-  }))
-}
-
-function rangeToParams(range: DateRange | undefined) {
-  if (!range?.from) {
-    const start = subDays(new Date(), 30)
-    return {
-      startDate: format(start, "yyyy-MM-dd"),
-      endDate: format(new Date(), "yyyy-MM-dd"),
-    }
-  }
-  return {
-    startDate: format(range.from, "yyyy-MM-dd"),
-    endDate: format(range.to ?? range.from, "yyyy-MM-dd"),
-  }
-}
-
-// ─── KPI card ─────────────────────────────────────────────────────────────────
-
-interface KpiCardProps {
-  title: string
-  value: string | number
-  icon: React.ElementType
-  description: string
-  trend?: { value: number; isPositive: boolean }
-  loading?: boolean
-}
-
-function KpiCard({ title, value, icon: Icon, description, trend, loading }: KpiCardProps) {
+function OverviewCard({
+  title,
+  value,
+  icon: Icon,
+  trend,
+  empty,
+}: {
+  title: string;
+  value: number | string;
+  icon: ComponentType<{ className?: string }>;
+  trend: number | null;
+  empty: boolean;
+}) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+      <CardHeader className="pb-2">
+        <CardDescription className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-500">
+          <span>{title}</span>
+          <Icon className="h-4 w-4 text-slate-500" />
+        </CardDescription>
+        <CardTitle className="text-2xl font-semibold text-[#2D2B55]">{empty ? "—" : value}</CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <div className="space-y-2 animate-pulse">
-            <div className="h-8 w-24 rounded bg-muted" />
-            <div className="h-3 w-32 rounded bg-muted" />
-          </div>
-        ) : (
-          <>
-            <div className="text-2xl font-bold">{value}</div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-              {trend && (
-                <span
-                  className={cn(
-                    "flex items-center gap-1 font-medium",
-                    trend.isPositive
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-red-600 dark:text-red-400"
-                  )}
-                >
-                  {trend.isPositive ? (
-                    <ArrowUp className="h-3 w-3" />
-                  ) : (
-                    <ArrowDown className="h-3 w-3" />
-                  )}
-                  {Math.abs(trend.value).toFixed(1)}%
-                </span>
-              )}
-              <span>{description}</span>
-            </div>
-          </>
-        )}
+        {empty ? <span className="text-xs text-slate-500">No data yet</span> : <TrendIndicator value={trend} />}
       </CardContent>
     </Card>
-  )
+  );
 }
-
-// ─── Inner page (needs useSearchParams) ───────────────────────────────────────
-
-function AnalyticsPageInner() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const { persona, isJobSeeker } = usePersona()
-
-  // ── Date range state ──────────────────────────────────────────────────────
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
-    const range = searchParams.get("range") ?? "30d"
-    const days = range === "7d" ? 7 : range === "90d" ? 90 : 30
-    return { from: subDays(new Date(), days), to: new Date() }
-  })
-  const [compareEnabled, setCompareEnabled] = useState(false)
-
-  // Sync date range changes to URL
-  const handleRangeChange = useCallback(
-    (range: DateRange | undefined) => {
-      setDateRange(range)
-      const params = new URLSearchParams(searchParams.toString())
-      if (!range) {
-        params.delete("range")
-      } else {
-        const days = range.to && range.from
-          ? Math.round((range.to.getTime() - range.from.getTime()) / 86_400_000)
-          : 30
-        params.set("range", `${days}d`)
-      }
-      router.replace(`/dashboard/analytics?${params.toString()}`, { scroll: false })
-    },
-    [router, searchParams]
-  )
-
-  // ── Fetch state ───────────────────────────────────────────────────────────
-  const [loading, setLoading] = useState(true)
-  const [overviewData, setOverviewData] = useState<OverviewData | null>(null)
-  const [comparison, setComparison] = useState<ComparisonData | null>(null)
-  const [sequences, setSequences] = useState<SequenceRow[]>([])
-  const [contactsTime, setContactsTime] = useState<ContactsTimePoint[]>([])
-  const [contactInsights, setContactInsights] = useState<ContactInsightsData | null>(null)
-  const [userAnalytics, setUserAnalytics] = useState<UserAnalytics | null>(null)
-
-  // ── Fetch all data ────────────────────────────────────────────────────────
-  const { startDate, endDate } = useMemo(() => rangeToParams(dateRange), [dateRange])
-
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
-    try {
-      const qs = `startDate=${startDate}&endDate=${endDate}`
-      const compareQs = compareEnabled ? `&compareWith=previous_period` : ""
-
-      const [overviewRes, seqRes, contactsTimeRes, insightsRes, userRes] = await Promise.all([
-        fetch(`/api/analytics?metric=overview&${qs}${compareQs}`),
-        fetch(`/api/analytics?metric=sequence_performance&${qs}`),
-        fetch(`/api/analytics?metric=contacts_over_time&${qs}`),
-        fetch(`/api/analytics?metric=contact_insights&${qs}`),
-        fetch(`/api/v1/analytics/user?startDate=${startDate}&endDate=${endDate}`),
-      ])
-
-      const [overviewJson, seqJson, contactsTimeJson, insightsJson, userJson] =
-        await Promise.all([
-          overviewRes.ok ? overviewRes.json() : null,
-          seqRes.ok ? seqRes.json() : null,
-          contactsTimeRes.ok ? contactsTimeRes.json() : null,
-          insightsRes.ok ? insightsRes.json() : null,
-          userRes.ok ? userRes.json() : null,
-        ])
-
-      if (overviewJson?.data) setOverviewData(overviewJson.data as OverviewData)
-      if (overviewJson?.comparison) setComparison(overviewJson.comparison as ComparisonData)
-      if (Array.isArray(seqJson?.data)) setSequences(seqJson.data as SequenceRow[])
-      if (Array.isArray(contactsTimeJson?.data)) setContactsTime(contactsTimeJson.data as ContactsTimePoint[])
-      if (insightsJson?.data) setContactInsights(insightsJson.data as ContactInsightsData)
-      if (userJson && !userJson.error) setUserAnalytics(userJson as UserAnalytics)
-    } catch (err) {
-      console.error("[Analytics page] fetch error:", err)
-    } finally {
-      setLoading(false)
-    }
-  }, [startDate, endDate, compareEnabled])
-
-  useEffect(() => {
-    void fetchAll()
-  }, [fetchAll])
-
-  // ── Derived values ────────────────────────────────────────────────────────
-  const heatmapData = useMemo(
-    () => transformHeatmap(userAnalytics?.activityHeatmap ?? []),
-    [userAnalytics]
-  )
-
-  // Persona-aware KPI values
-  const kpiCards: KpiCardProps[] = useMemo(() => {
-    const ua = userAnalytics
-    const ov = overviewData
-    if (isJobSeeker) {
-      return [
-        {
-          title: "Applications Tracked",
-          value: ua?.applicationsTracked ?? 0,
-          icon: Briefcase,
-          description: "Contacts in progress",
-          loading,
-        },
-        {
-          title: "Emails Sent",
-          value: ua?.outreach.totalSent ?? ov?.emailsSent ?? 0,
-          icon: Mail,
-          description: "Total outreach sent",
-          loading,
-        },
-        {
-          title: "Response Rate",
-          value: ua?.outreach.replyRate != null
-            ? `${ua.outreach.replyRate.toFixed(1)}%`
-            : ov?.replyRate != null
-            ? `${ov.replyRate}%`
-            : "—",
-          icon: MessageSquare,
-          description: "Of sent emails",
-          loading,
-        },
-        {
-          title: "Avg Days to Reply",
-          value: ua?.outreach.avgResponseDays != null && ua.outreach.avgResponseDays > 0
-            ? `${ua.outreach.avgResponseDays.toFixed(1)}d`
-            : "—",
-          icon: Clock,
-          description: "Average response time",
-          loading,
-        },
-      ]
-    }
-    // SMB Sales persona
-    return [
-      {
-        title: "Total Leads",
-        value: ua?.totalContacts ?? ov?.totalContacts ?? 0,
-        icon: Users,
-        description: "Contacts in database",
-        loading,
-      },
-      {
-        title: "Emails Sent",
-        value: ua?.outreach.totalSent ?? ov?.emailsSent ?? 0,
-        icon: Mail,
-        description: "Total outreach sent",
-        loading,
-      },
-      {
-        title: "Open Rate",
-        value: ua?.outreach.openRate != null
-          ? `${ua.outreach.openRate.toFixed(1)}%`
-          : "—",
-        icon: TrendingUp,
-        description: "Of sent emails",
-        loading,
-      },
-      {
-        title: "Reply Rate",
-        value: ua?.outreach.replyRate != null
-          ? `${ua.outreach.replyRate.toFixed(1)}%`
-          : ov?.replyRate != null
-          ? `${ov.replyRate}%`
-          : "—",
-        icon: BarChart2,
-        description: "Of sent emails",
-        loading,
-      },
-    ]
-  }, [isJobSeeker, userAnalytics, overviewData, loading])
-
-  // Export data shape for ExportMenu
-  const exportData = useMemo(() => ({
-    overview: overviewData ?? {
-      totalContacts: 0,
-      totalDrafts: 0,
-      emailsSent: 0,
-      replyRate: null,
-      bestPerformingSequence: null,
-    },
-    sequences,
-    contacts: contactInsights ?? {},
-  }), [overviewData, sequences, contactInsights])
-
-  // ── Render ────────────────────────────────────────────────────────────────
-  return (
-    <DashboardShell>
-      {/* Header */}
-      <div className="flex flex-col gap-4 pb-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Analytics</h1>
-            <p className="text-sm text-muted-foreground">
-              {isJobSeeker
-                ? "Track your job search outreach performance"
-                : "Monitor your sales campaign metrics"}
-            </p>
-          </div>
-          <ExportMenu data={exportData} dateRange={dateRange} />
-        </div>
-
-        <DateRangeFilter
-          dateRange={dateRange}
-          onDateRangeChange={handleRangeChange}
-          compareEnabled={compareEnabled}
-          onCompareToggle={setCompareEnabled}
-        />
-      </div>
-
-      <div className="space-y-8">
-        {/* Persona-aware KPI row */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {kpiCards.map((card) => (
-            <KpiCard key={card.title} {...card} />
-          ))}
-        </div>
-
-        {/* Overview metrics */}
-        {overviewData && (
-          <OverviewMetrics
-            data={overviewData}
-            comparison={compareEnabled ? comparison : null}
-            loading={loading}
-          />
-        )}
-        {loading && !overviewData && (
-          <OverviewMetrics
-            data={{
-              totalContacts: 0,
-              totalDrafts: 0,
-              emailsSent: 0,
-              replyRate: null,
-              bestPerformingSequence: null,
-              bestPerformingReplyRate: null,
-              mostActiveDay: null,
-              mostActiveHour: null,
-            }}
-            loading
-          />
-        )}
-
-        {/* Outreach funnel */}
-        <OutreachFunnel
-          contactsFound={userAnalytics?.totalContacts ?? overviewData?.totalContacts ?? 0}
-          emailsSent={userAnalytics?.outreach.totalSent ?? overviewData?.emailsSent ?? 0}
-          opened={Math.round(
-            ((userAnalytics?.outreach.openRate ?? 0) / 100) *
-              (userAnalytics?.outreach.totalSent ?? overviewData?.emailsSent ?? 0)
-          )}
-          clicked={0}
-          replied={Math.round(
-            ((userAnalytics?.outreach.replyRate ?? 0) / 100) *
-              (userAnalytics?.outreach.totalSent ?? overviewData?.emailsSent ?? 0)
-          )}
-          loading={loading}
-        />
-
-        {/* Contact growth + Email trend side by side */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          <TimeSeriesCharts
-            contactsData={contactsTime}
-            loading={loading}
-          />
-          <ActivityHeatmap data={heatmapData} loading={loading} />
-        </div>
-
-        {/* Sequence performance */}
-        <SequencePerformanceTable
-          data={sequences}
-          loading={loading}
-          persona={persona}
-        />
-
-        {/* Contact insights */}
-        {contactInsights ? (
-          <ContactInsights
-            topCompanies={contactInsights.topCompanies}
-            topRoles={contactInsights.topRoles}
-            sourceBreakdown={contactInsights.sourceBreakdown}
-            topTags={contactInsights.topTags}
-            loading={loading}
-          />
-        ) : (
-          <ContactInsights
-            topCompanies={[]}
-            topRoles={[]}
-            sourceBreakdown={[]}
-            topTags={[]}
-            loading={loading}
-          />
-        )}
-      </div>
-    </DashboardShell>
-  )
-}
-
-// ─── Page export (Suspense boundary for useSearchParams) ──────────────────────
 
 export default function AnalyticsPage() {
-  return (
-    <Suspense
-      fallback={
-        <DashboardShell>
-          <div className="space-y-4">
-            <div className="h-8 w-48 animate-pulse rounded bg-muted" />
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-32 animate-pulse rounded-lg bg-muted" />
-              ))}
-            </div>
-          </div>
-        </DashboardShell>
+  const [period, setPeriod] = useState<PeriodOption>("30d");
+  const [data, setData] = useState<AnalyticsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SequenceSortKey>("replyRate");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  const fetchAnalytics = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/v1/analytics/user?period=${period}`, { cache: "no-store" });
+      const payload = (await response.json().catch(() => ({}))) as AnalyticsResponse & { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to load analytics");
       }
-    >
-      <AnalyticsPageInner />
-    </Suspense>
-  )
+
+      setData(payload);
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load analytics");
+      setData(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [period]);
+
+  useEffect(() => {
+    void fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  const hasData = useMemo(() => {
+    if (!data) return false;
+
+    return (
+      data.overview.totalContacts > 0 ||
+      data.overview.totalSent > 0 ||
+      data.overview.totalReplied > 0 ||
+      data.sequencePerformance.length > 0
+    );
+  }, [data]);
+
+  const contactsTrend = useMemo(() => {
+    if (!data?.previousPeriod) return null;
+    const prev = data.previousPeriod.contacts;
+    if (prev <= 0) return null;
+    return ((data.overview.totalContacts - prev) / prev) * 100;
+  }, [data]);
+
+  const sentTrend = useMemo(() => {
+    if (!data?.previousPeriod) return null;
+    const prev = data.previousPeriod.sent;
+    if (prev <= 0) return null;
+    return ((data.overview.totalSent - prev) / prev) * 100;
+  }, [data]);
+
+  const repliesTrend = useMemo(() => {
+    if (!data?.previousPeriod) return null;
+    const prev = data.previousPeriod.replied;
+    if (prev <= 0) return null;
+    return ((data.overview.totalReplied - prev) / prev) * 100;
+  }, [data]);
+
+  const replyRateTrend = useMemo(() => {
+    if (!data?.previousPeriod) return null;
+    return data.overview.replyRate - data.previousPeriod.replyRate;
+  }, [data]);
+
+  const contactsChartData = useMemo(() => {
+    return (data?.contactsOverTime ?? []).map((point) => ({
+      ...point,
+      label: formatShortDate(point.date),
+    }));
+  }, [data]);
+
+  const statusData = useMemo(() => {
+    return (data?.contactsByStatus ?? []).map((item) => ({
+      ...item,
+      label: STATUS_LABELS[item.status] ?? item.status,
+      color: STATUS_COLORS[item.status] ?? "#64748b",
+    }));
+  }, [data]);
+
+  const topCompanies = useMemo(() => data?.topCompanies ?? [], [data]);
+
+  const sortedSequences = useMemo(() => {
+    const rows = [...(data?.sequencePerformance ?? [])];
+
+    rows.sort((a, b) => {
+      const left = a[sortKey];
+      const right = b[sortKey];
+
+      if (typeof left === "string" && typeof right === "string") {
+        return sortDirection === "asc"
+          ? left.localeCompare(right)
+          : right.localeCompare(left);
+      }
+
+      const leftNum = Number(left);
+      const rightNum = Number(right);
+
+      if (Number.isNaN(leftNum) || Number.isNaN(rightNum)) return 0;
+
+      return sortDirection === "asc" ? leftNum - rightNum : rightNum - leftNum;
+    });
+
+    return rows;
+  }, [data, sortDirection, sortKey]);
+
+  const toggleSort = (key: SequenceSortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setSortKey(key);
+    setSortDirection("desc");
+  };
+
+  return (
+    <DashboardShell className="px-4 py-6 md:px-8">
+      <PageHeader
+        title="Analytics"
+        description="Track contacts, outreach, and sequence performance."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                showToast.info("Coming soon");
+              }}
+            >
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-2">
+          {PERIOD_OPTIONS.map((option) => {
+            const isActive = period === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setPeriod(option.value)}
+                className={[
+                  "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors",
+                  isActive
+                    ? "border-[#2D2B55] bg-[#2D2B55] text-white"
+                    : "border-slate-200 bg-white text-[#2D2B55] hover:bg-slate-50",
+                ].join(" ")}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {error ? (
+          <Card className="border-rose-200 bg-rose-50">
+            <CardContent className="pt-6">
+              <p className="text-sm text-rose-700">{error}</p>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <OverviewCard
+            title="Total Contacts"
+            value={formatNumber(data?.overview.totalContacts ?? 0)}
+            icon={Users}
+            trend={contactsTrend}
+            empty={!hasData && !isLoading}
+          />
+          <OverviewCard
+            title="Emails Sent"
+            value={formatNumber(data?.overview.totalSent ?? 0)}
+            icon={Mail}
+            trend={sentTrend}
+            empty={!hasData && !isLoading}
+          />
+          <OverviewCard
+            title="Replies"
+            value={formatNumber(data?.overview.totalReplied ?? 0)}
+            icon={MessageSquare}
+            trend={repliesTrend}
+            empty={!hasData && !isLoading}
+          />
+          <OverviewCard
+            title="Reply Rate"
+            value={formatPercent(data?.overview.replyRate ?? 0)}
+            icon={Percent}
+            trend={replyRateTrend}
+            empty={!hasData && !isLoading}
+          />
+        </section>
+
+        {!isLoading && !hasData ? (
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm text-slate-600">Start finding emails to see your analytics.</p>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Contacts Over Time</CardTitle>
+              <CardDescription>Cumulative contacts for the selected period.</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[280px]">
+              {isLoading ? (
+                <div className="h-full animate-pulse rounded-md bg-slate-100" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={contactsChartData} margin={{ top: 8, right: 12, left: 4, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Line
+                      type="monotone"
+                      dataKey="count"
+                      stroke="#2D2B55"
+                      strokeWidth={2}
+                      dot={false}
+                      name="Contacts"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Contact Status Breakdown</CardTitle>
+              <CardDescription>Discovered, sent, replied, and bounced contacts.</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[280px]">
+              {isLoading ? (
+                <div className="h-full animate-pulse rounded-md bg-slate-100" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={statusData}
+                      dataKey="count"
+                      nameKey="label"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={84}
+                      innerRadius={42}
+                      label={({ name, value }) => `${String(name ?? "")}: ${value ?? 0}`}
+                    >
+                      {statusData.map((entry) => (
+                        <Cell key={entry.status} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Top Companies</CardTitle>
+              <CardDescription>Top 10 companies by contact count.</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[320px]">
+              {isLoading ? (
+                <div className="h-full animate-pulse rounded-md bg-slate-100" />
+              ) : topCompanies.length === 0 ? (
+                <p className="text-sm text-slate-500">No company data yet.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={topCompanies.map((item) => ({
+                      ...item,
+                      label: item.company_name,
+                    }))}
+                    layout="vertical"
+                    margin={{ top: 6, right: 12, left: 4, bottom: 6 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis type="number" allowDecimals={false} />
+                    <YAxis type="category" dataKey="label" width={140} tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#2D2B55" radius={[4, 4, 4, 4]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Top Roles</CardTitle>
+              <CardDescription>Top 10 contact roles.</CardDescription>
+            </CardHeader>
+            <CardContent className="h-[320px]">
+              {isLoading ? (
+                <div className="h-full animate-pulse rounded-md bg-slate-100" />
+              ) : (data?.topRoles?.length ?? 0) === 0 ? (
+                <p className="text-sm text-slate-500">No role data yet.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={(data?.topRoles ?? []).map((item) => ({
+                      ...item,
+                      label: item.role,
+                    }))}
+                    layout="vertical"
+                    margin={{ top: 6, right: 12, left: 4, bottom: 6 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis type="number" allowDecimals={false} />
+                    <YAxis type="category" dataKey="label" width={110} tick={{ fontSize: 12 }} />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#2D2B55" radius={[4, 4, 4, 4]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </section>
+
+        <section>
+          <Card>
+            <CardHeader>
+              <CardTitle>Sequence Performance</CardTitle>
+              <CardDescription>Enrollment and engagement metrics by sequence.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>
+                      <button type="button" className="font-medium text-inherit" onClick={() => toggleSort("name")}>Sequence Name</button>
+                    </TableHead>
+                    <TableHead>
+                      <button type="button" className="font-medium text-inherit" onClick={() => toggleSort("enrolled")}>Enrolled</button>
+                    </TableHead>
+                    <TableHead>
+                      <button type="button" className="font-medium text-inherit" onClick={() => toggleSort("sent")}>Sent</button>
+                    </TableHead>
+                    <TableHead>
+                      <button type="button" className="font-medium text-inherit" onClick={() => toggleSort("opened")}>Opened</button>
+                    </TableHead>
+                    <TableHead>
+                      <button type="button" className="font-medium text-inherit" onClick={() => toggleSort("replied")}>Replied</button>
+                    </TableHead>
+                    <TableHead>
+                      <button type="button" className="font-medium text-inherit" onClick={() => toggleSort("replyRate")}>Reply Rate</button>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-8 text-center text-sm text-slate-500">
+                        Loading sequence performance...
+                      </TableCell>
+                    </TableRow>
+                  ) : sortedSequences.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="py-8 text-center text-sm text-slate-500">
+                        No sequences yet.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    sortedSequences.map((sequence) => (
+                      <TableRow key={sequence.id}>
+                        <TableCell className="font-medium text-[#2D2B55]">{sequence.name}</TableCell>
+                        <TableCell>{formatNumber(sequence.enrolled)}</TableCell>
+                        <TableCell>{formatNumber(sequence.sent)}</TableCell>
+                        <TableCell>{formatNumber(sequence.opened)}</TableCell>
+                        <TableCell>{formatNumber(sequence.replied)}</TableCell>
+                        <TableCell>{formatPercent(sequence.replyRate)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </section>
+      </div>
+    </DashboardShell>
+  );
 }
+

@@ -1,77 +1,58 @@
-﻿import { createVersionedHandler } from '@/app/api/v1/_utils'
-import * as LegacyRoute from '@/app/api/auth/change-password/route'
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
-const legacyConfig = LegacyRoute as Record<string, unknown>
+import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
+import { createServiceRoleClient } from "@/lib/supabase/server";
 
+const ChangePasswordSchema = z
+  .object({
+    newPassword: z.string().min(8, "New password must be at least 8 characters").optional(),
+    password: z.string().min(8, "New password must be at least 8 characters").optional(),
+  })
+  .refine((value) => Boolean(value.newPassword || value.password), {
+    path: ["newPassword"],
+    message: "newPassword is required",
+  });
 
-/**
- * Handle GET requests for `/api/v1/auth/change-password`.
- * @returns {RouteHandler} Versioned route handler for GET /api/v1/auth/change-password.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // GET /api/v1/auth/change-password
- * fetch('/api/v1/auth/change-password', { method: 'GET' })
- */
-export const GET = createVersionedHandler(legacyConfig.GET as any)
-/**
- * Handle POST requests for `/api/v1/auth/change-password`.
- * @returns {RouteHandler} Versioned route handler for POST /api/v1/auth/change-password.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // POST /api/v1/auth/change-password
- * fetch('/api/v1/auth/change-password', { method: 'POST' })
- */
-export const POST = createVersionedHandler(legacyConfig.POST as any)
-/**
- * Handle PUT requests for `/api/v1/auth/change-password`.
- * @returns {RouteHandler} Versioned route handler for PUT /api/v1/auth/change-password.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // PUT /api/v1/auth/change-password
- * fetch('/api/v1/auth/change-password', { method: 'PUT' })
- */
-export const PUT = createVersionedHandler(legacyConfig.PUT as any)
-/**
- * Handle PATCH requests for `/api/v1/auth/change-password`.
- * @returns {RouteHandler} Versioned route handler for PATCH /api/v1/auth/change-password.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // PATCH /api/v1/auth/change-password
- * fetch('/api/v1/auth/change-password', { method: 'PATCH' })
- */
-export const PATCH = createVersionedHandler(legacyConfig.PATCH as any)
-/**
- * Handle DELETE requests for `/api/v1/auth/change-password`.
- * @returns {RouteHandler} Versioned route handler for DELETE /api/v1/auth/change-password.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // DELETE /api/v1/auth/change-password
- * fetch('/api/v1/auth/change-password', { method: 'DELETE' })
- */
-export const DELETE = createVersionedHandler(legacyConfig.DELETE as any)
-/**
- * Handle OPTIONS requests for `/api/v1/auth/change-password`.
- * @returns {RouteHandler} Versioned route handler for OPTIONS /api/v1/auth/change-password.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // OPTIONS /api/v1/auth/change-password
- * fetch('/api/v1/auth/change-password', { method: 'OPTIONS' })
- */
-export const OPTIONS = createVersionedHandler(legacyConfig.OPTIONS as any)
-/**
- * Handle HEAD requests for `/api/v1/auth/change-password`.
- * @returns {RouteHandler} Versioned route handler for HEAD /api/v1/auth/change-password.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // HEAD /api/v1/auth/change-password
- * fetch('/api/v1/auth/change-password', { method: 'HEAD' })
- */
-export const HEAD = createVersionedHandler(legacyConfig.HEAD as any)
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getAuthenticatedUserFromRequest(request);
+    const parsed = ChangePasswordSchema.safeParse(await request.json());
 
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid request body" },
+        { status: 400 }
+      );
+    }
+
+    const newPassword = parsed.data.newPassword ?? parsed.data.password;
+    if (!newPassword) {
+      return NextResponse.json({ error: "newPassword is required" }, { status: 400 });
+    }
+
+    const supabase = await createServiceRoleClient();
+    const { error } = await supabase.auth.admin.updateUserById(user.id, {
+      password: newPassword,
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message || "Failed to update password" }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to update password" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ error: "Method not allowed" }, { status: 405 });
+}

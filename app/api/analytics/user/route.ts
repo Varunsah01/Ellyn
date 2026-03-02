@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { format, subDays } from 'date-fns'
+import { subDays } from 'date-fns'
 
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { buildCacheKey, getOrSet } from '@/lib/cache/redis'
@@ -600,4 +600,3 @@ function buildUserAnalyticsCsv(
 
 // Re-export period helper for typed consumers
 export type { AnalyticsPeriod }
-export { format as _formatDate }

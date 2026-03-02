@@ -1,62 +1,121 @@
-import { NextResponse } from "next/server"
-import { getAuthenticatedUser } from "@/lib/auth/helpers"
-import { createServiceRoleClient } from "@/lib/supabase/server"
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
-// GET /api/v1/tracker
-// Returns all contacts that are in a stage (tracker-enrolled) plus stage data
-export async function GET() {
+import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
+import { createServiceRoleClient } from "@/lib/supabase/server";
+
+const TrackerStatusSchema = z.enum([
+  "saved",
+  "applied",
+  "interviewing",
+  "offered",
+  "rejected",
+]);
+
+const CreateApplicationSchema = z.object({
+  company_name: z.string().trim().min(1, "Company name is required"),
+  role: z.string().trim().min(1, "Role is required"),
+  status: TrackerStatusSchema.optional().default("saved"),
+  applied_date: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .transform((value) => (value ? value : null)),
+  notes: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .transform((value) => (value ? value : null)),
+  job_url: z
+    .string()
+    .trim()
+    .url("Job URL must be a valid URL")
+    .optional()
+    .nullable()
+    .transform((value) => (value ? value : null)),
+});
+
+type TrackerApplicationRow = {
+  id: string;
+  user_id: string;
+  company_name: string;
+  role: string;
+  status: z.infer<typeof TrackerStatusSchema>;
+  applied_date: string | null;
+  notes: string | null;
+  job_url: string | null;
+  created_at: string;
+};
+
+export async function GET(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser()
-    const supabase = await createServiceRoleClient()
+    const user = await getAuthenticatedUserFromRequest(request);
+    const supabase = await createServiceRoleClient();
 
-    // All contacts with a stage (tracked contacts) + outreach info
-    const { data: contacts, error } = await supabase
-      .from("contacts")
-      .select(
-        "id, first_name, last_name, email, company_name, role, linkedin_url, " +
-        "avatar_url, stage_id, applied_at, interview_date, job_url, " +
-        "salary_range, excitement_level, notes, tags, created_at, updated_at, " +
-        "confidence, status"
-      )
+    const { data, error } = await supabase
+      .from("application_tracker")
+      .select("id, user_id, company_name, role, status, applied_date, notes, job_url, created_at")
       .eq("user_id", user.id)
-      .not("stage_id", "is", null)
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: false });
 
-    if (error) throw error
-
-    // Fetch last outreach date per contact from outreach table
-    type ContactRow = Record<string, unknown> & { id: string }
-    const rows = (contacts ?? []) as unknown as ContactRow[]
-    const contactIds = rows.map((c) => c.id)
-    const lastContactedMap: Record<string, string> = {}
-
-    if (contactIds.length > 0) {
-      const { data: outreach } = await supabase
-        .from("outreach")
-        .select("contact_id, sent_at")
-        .eq("user_id", user.id)
-        .in("contact_id", contactIds)
-        .not("sent_at", "is", null)
-        .order("sent_at", { ascending: false })
-
-      for (const row of (outreach ?? []) as { contact_id: string; sent_at: string }[]) {
-        if (!lastContactedMap[row.contact_id]) {
-          lastContactedMap[row.contact_id] = row.sent_at
-        }
-      }
+    if (error) {
+      return NextResponse.json({ error: error.message || "Failed to fetch applications" }, { status: 500 });
     }
 
-    const enriched = rows.map((c) => ({
-      ...c,
-      last_contacted_at: lastContactedMap[c.id] ?? null,
-    }))
-
-    return NextResponse.json(enriched)
-  } catch (err) {
-    if (err instanceof Error && err.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    return NextResponse.json({ applications: (data ?? []) as TrackerApplicationRow[] });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    console.error("[tracker GET]", err)
-    return NextResponse.json({ error: "Failed to fetch tracker data" }, { status: 500 })
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to fetch applications" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getAuthenticatedUserFromRequest(request);
+    const body = await request.json();
+    const parsed = CreateApplicationSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid request body" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = await createServiceRoleClient();
+    const { data, error } = await supabase
+      .from("application_tracker")
+      .insert({
+        user_id: user.id,
+        company_name: parsed.data.company_name,
+        role: parsed.data.role,
+        status: parsed.data.status,
+        applied_date: parsed.data.applied_date,
+        notes: parsed.data.notes,
+        job_url: parsed.data.job_url,
+      })
+      .select("id, user_id, company_name, role, status, applied_date, notes, job_url, created_at")
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message || "Failed to create application" }, { status: 500 });
+    }
+
+    return NextResponse.json({ application: data as TrackerApplicationRow }, { status: 201 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to create application" },
+      { status: 500 }
+    );
   }
 }

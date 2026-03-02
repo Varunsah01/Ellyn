@@ -1,68 +1,81 @@
-"use client"
+"use client";
 
-import Link from 'next/link'
-import { X } from 'lucide-react'
+import Link from "next/link";
 
-import { Button } from '@/components/ui/Button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/Dialog'
+import { Button } from "@/components/ui/Button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/Dialog";
+
+type UpgradePromptVariant = "inline" | "modal";
 
 type UpgradePromptProps = {
-  variant: 'banner' | 'modal'
-  feature: string
-  used: number
-  limit: number
-  open?: boolean
-  onDismiss?: () => void
+  feature?: string;
+  used: number;
+  limit: number;
+  variant?: UpgradePromptVariant;
+  open?: boolean;
+  onDismiss?: () => void;
+};
+
+function InlinePrompt({ used, limit }: { used: number; limit: number }) {
+  return (
+    <div className="rounded-lg border border-[#FFD7D7] bg-[#FFF5F5] p-4">
+      <p className="text-sm font-semibold text-[#7A2E2E]">
+        You&apos;ve reached your monthly limit of {limit} lookups.
+      </p>
+      <p className="mt-1 text-sm text-[#7A2E2E]">
+        Upgrade to Starter (500/mo) or Pro (1,500/mo) to continue.
+      </p>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <p className="text-xs text-[#A14A4A]">Current usage: {used} / {limit}</p>
+        <Button asChild size="sm">
+          <Link href="/dashboard/upgrade">View Plans</Link>
+        </Button>
+      </div>
+    </div>
+  );
 }
 
-export function UpgradePrompt({ variant, feature, used, limit, open, onDismiss }: UpgradePromptProps) {
-  const featureLabel = feature === 'email_generation' ? 'email generations' : 'AI draft generations'
-  const message = `You've used ${used} of ${limit} ${featureLabel} this month.`
-
-  if (variant === 'modal') {
+export function UpgradePrompt({
+  used,
+  limit,
+  variant = "inline",
+  open,
+  onDismiss,
+}: UpgradePromptProps) {
+  if (variant === "modal") {
     return (
-      <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onDismiss?.() }}>
+      <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onDismiss?.()}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Upgrade to Pro</DialogTitle>
+            <DialogTitle>Upgrade Required</DialogTitle>
+            <DialogDescription>
+              You&apos;ve reached your monthly limit of {limit} lookups.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">{message}</p>
-            <p className="text-sm text-muted-foreground">
-              Upgrade to Pro to unlock higher limits and premium features.
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600">
+              Upgrade to Starter (500/mo) or Pro (1,500/mo) to continue.
             </p>
-            <div className="flex gap-3">
+            <p className="text-xs text-slate-500">Current usage: {used} / {limit}</p>
+            <div className="flex items-center gap-2">
               <Button asChild className="flex-1">
-                <Link href="/dashboard/upgrade">Upgrade to Pro</Link>
+                <Link href="/dashboard/upgrade">View Plans</Link>
               </Button>
-              <Button variant="outline" onClick={onDismiss}>
-                Maybe later
+              <Button type="button" variant="outline" onClick={onDismiss}>
+                Close
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
-    )
+    );
   }
 
-  return (
-    <div className="flex items-center justify-between bg-amber-50 border-b border-amber-200 px-4 py-2">
-      <p className="text-sm text-amber-800 font-medium">
-        {message}{' '}
-        <Link href="/dashboard/upgrade" className="underline font-semibold hover:text-amber-900">
-          Upgrade to Pro
-        </Link>
-      </p>
-      {onDismiss && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label="Dismiss"
-          className="ml-4 text-amber-600 hover:text-amber-800"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      )}
-    </div>
-  )
+  return <InlinePrompt used={used} limit={limit} />;
 }

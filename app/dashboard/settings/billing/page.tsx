@@ -70,8 +70,14 @@ export default function BillingPage() {
     try {
       const res = await fetch('/api/v1/subscription/portal', { method: 'POST' })
       const data = await res.json()
-      if (data.url) {
-        window.location.href = data.url
+      const portalLink =
+        typeof data?.link === 'string'
+          ? data.link
+          : typeof data?.url === 'string'
+            ? data.url
+            : null
+      if (portalLink) {
+        window.location.href = portalLink
       } else {
         showToast.error(data.error ?? 'Failed to open billing portal.')
       }

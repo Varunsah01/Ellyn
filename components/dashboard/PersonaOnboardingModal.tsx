@@ -1,117 +1,174 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
+import { useMemo, useState } from "react";
+import { Briefcase, TrendingUp } from "lucide-react";
 
+import { Button } from "@/components/ui/Button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
-} from "@/components/ui/Dialog"
-import { Button } from "@/components/ui/Button"
-import { PersonaSelector } from "@/components/dashboard/PersonaSelector"
-import { usePersona } from "@/context/PersonaContext"
-import { showToast } from "@/lib/toast"
-import type { Persona } from "@/lib/persona-copy"
+} from "@/components/ui/Dialog";
+import { usePersona } from "@/context/PersonaContext";
+import type { Persona } from "@/lib/persona-copy";
+import { showToast } from "@/lib/toast";
+import { cn } from "@/lib/utils";
 
-type Props = {
-  onDismiss: () => void
+const ONBOARDING_DONE_KEY = "ellyn_onboarding_done";
+
+type PersonaCardConfig = {
+  persona: Persona;
+  title: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+type PersonaOnboardingModalProps = {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onDismiss?: () => void;
+};
+
+const PERSONA_CARDS: PersonaCardConfig[] = [
+  {
+    persona: "job_seeker",
+    title: "Job Seeker",
+    description:
+      "Find hiring managers & recruiters, send personalized cold emails, track applications",
+    icon: Briefcase,
+  },
+  {
+    persona: "smb_sales",
+    title: "Sales & Business",
+    description:
+      "Generate B2B leads, run cold outreach campaigns, track pipeline",
+    icon: TrendingUp,
+  },
+];
+
+const TOUR_STEPS = [
+  "\uD83D\uDCE7 Use the Email Finder to discover professional emails",
+  "\uD83D\uDC65 Save contacts and manage your outreach in Contacts",
+  "\uD83D\uDE80 Build automated sequences in the Sequences section",
+];
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
-const WELCOME_MESSAGES: Record<Persona, string> = {
-  job_seeker: "Welcome! We'll help you reach the right people at your target companies.",
-  smb_sales: "Welcome! We'll help you build your prospect pipeline and book more meetings.",
-}
-
-export function PersonaOnboardingModal({ onDismiss }: Props) {
-  const { setPersona } = usePersona()
-  const [selected, setSelected] = useState<Persona | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 300)
-    return () => clearTimeout(timer)
-  }, [])
-
-  const handleSkip = () => {
-    try {
-      localStorage.setItem("ellyn_persona_onboarded", "1")
-    } catch {
-      // localStorage unavailable
-    }
-    onDismiss()
+async function runMiniTour() {
+  for (const step of TOUR_STEPS) {
+    showToast.info(step);
+    await wait(2000);
   }
+}
 
-  const handleGetStarted = async () => {
-    if (!selected) return
-    setSubmitting(true)
+export function PersonaOnboardingModal({
+  open,
+  onOpenChange,
+  onDismiss,
+}: PersonaOnboardingModalProps) {
+  const { setPersona } = usePersona();
+  const [selectedPersona, setSelectedPersona] = useState<Persona | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const controlled = typeof open === "boolean";
+  const isOpen = controlled ? open : true;
+
+  const heading = useMemo(
+    () => `Welcome to Ellyn! ${String.fromCodePoint(0x1f44b)}`,
+    []
+  );
+
+  const closeModal = () => {
+    onOpenChange?.(false);
+    onDismiss?.();
+  };
+
+  const handleContinue = async () => {
+    if (!selectedPersona || isSubmitting) return;
+
+    setIsSubmitting(true);
     try {
-      await setPersona(selected)
-      showToast.success(WELCOME_MESSAGES[selected])
+      await setPersona(selectedPersona);
       try {
-        localStorage.setItem("ellyn_persona_onboarded", "1")
+        localStorage.setItem(ONBOARDING_DONE_KEY, "1");
       } catch {
         // localStorage unavailable
       }
-      // Trigger dashboard tour for engaged users
-      try {
-        const { syncOnboardingState } = await import("@/lib/onboarding")
-        await syncOnboardingState({ tourPending: true })
-      } catch {
-        // non-critical
-      }
-      window.dispatchEvent(new CustomEvent("ellyn:start-tour"))
-      onDismiss()
+      closeModal();
+      void runMiniTour();
     } catch {
       // Error toast is handled in PersonaContext.
     } finally {
-      setSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
-
-  if (!mounted) return null
+  };
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) handleSkip() }}>
-      <DialogContent
-        className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto"
-      >
-        <DialogHeader className="mb-2 text-center">
-          <DialogTitle
-            className="text-2xl"
-            style={{ fontFamily: "'Fraunces', serif", color: "#2D2B55" }}
-          >
-            How are you using Ellyn?
+    <Dialog
+      open={isOpen}
+      onOpenChange={(nextOpen) => {
+        if (!isSubmitting && !nextOpen) {
+          closeModal();
+        }
+      }}
+    >
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl overflow-y-auto border-[#E6E4F2] bg-[#FAFAFA] p-6">
+        <DialogHeader className="space-y-2 text-center sm:text-center">
+          <DialogTitle className="text-3xl font-semibold text-[#2D2B55]">
+            {heading}
           </DialogTitle>
-          <DialogDescription className="mt-1 text-sm text-gray-500">
-            We&apos;ll tailor the experience to your goal.
+          <DialogDescription className="text-base text-[#5E5B86]">
+            How are you planning to use Ellyn?
           </DialogDescription>
         </DialogHeader>
 
-        <PersonaSelector value={selected} onChange={setSelected} />
+        <div className="grid gap-3 pt-2 md:grid-cols-2">
+          {PERSONA_CARDS.map((card) => {
+            const Icon = card.icon;
+            const isSelected = selectedPersona === card.persona;
 
-        <Button
-          onClick={handleGetStarted}
-          disabled={!selected || submitting}
-          className="mt-2 w-full"
-          style={{
-            backgroundColor: selected ? "#7C3AED" : undefined,
-            color: selected ? "#FFFFFF" : undefined,
-          }}
-        >
-          {submitting ? "Saving..." : "Get Started"}
-        </Button>
+            return (
+              <button
+                key={card.persona}
+                type="button"
+                onClick={() => setSelectedPersona(card.persona)}
+                className={cn(
+                  "rounded-xl border bg-white p-5 text-left transition-all hover:border-[#FF6B6B]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B6B]/40",
+                  isSelected
+                    ? "border-[#FF6B6B] ring-2 ring-[#FF6B6B]/20"
+                    : "border-[#E6E4F2]"
+                )}
+              >
+                <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#F3F1FF] text-[#2D2B55]">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <p className="text-lg font-semibold text-[#2D2B55]">{card.title}</p>
+                <p className="mt-2 text-sm leading-relaxed text-[#5E5B86]">
+                  {card.description}
+                </p>
+              </button>
+            );
+          })}
+        </div>
 
-        <button
-          type="button"
-          onClick={handleSkip}
-          className="mt-2 w-full text-center text-sm text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          Skip for now
-        </button>
+        <div className="pt-2">
+          <Button
+            type="button"
+            onClick={() => {
+              void handleContinue();
+            }}
+            disabled={!selectedPersona || isSubmitting}
+            className="w-full bg-[#2D2B55] text-white hover:bg-[#232047] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSubmitting ? "Saving..." : "Continue"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

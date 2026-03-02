@@ -1,10 +1,7 @@
 import { createBrowserClient } from '@supabase/ssr'
 
 const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || ''
-const rawSupabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY?.trim() ||
-  ''
+const rawSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || ''
 
 function requirePublicEnv(name: string, value: string): string {
   if (!value) {
@@ -22,9 +19,6 @@ function requirePublicEnv(name: string, value: string): string {
 export function createClient() {
   return createBrowserClient(
     requirePublicEnv('NEXT_PUBLIC_SUPABASE_URL', rawSupabaseUrl),
-    requirePublicEnv(
-      'NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY)',
-      rawSupabaseAnonKey
-    )
+    requirePublicEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', rawSupabaseAnonKey)
   )
 }

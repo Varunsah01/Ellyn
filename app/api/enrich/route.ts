@@ -1,387 +1,489 @@
-import { NextRequest, NextResponse } from 'next/server';
-import {
-  lookupCompanyDomain,
-  brandfetchDomain,
-  googleSearchDomain,
-  heuristicDomainGuess
-} from '@/lib/domain-lookup';
-import { predictDomainWithLLM } from '@/lib/llm-domain-prediction';
-import { verifyDomainMX } from '@/lib/mx-verification';
-import {
-  generateSmartEmailPatternsCached,
-  estimateCompanySize,
-  getKnownDomain,
-  type EmailPattern,
-} from '@/lib/enhanced-email-patterns';
-import { getLearnedPatterns, applyLearning } from '@/lib/learning-system';
-import { EnrichSchema, formatZodError } from '@/lib/validation/schemas';
-import {
-  logDomainResolution,
-  type LayerAttempt,
-  type DomainSource,
-} from '@/lib/domain-resolution-analytics';
-import { ApiCallError } from '@/lib/api-circuit-breaker';
-import { captureApiException } from '@/lib/monitoring/sentry';
-import { getGeminiClient } from '@/lib/gemini';
-import { verifyEmailZeroBounce } from '@/lib/zerobounce';
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 
-/**
- * Use Gemini Flash to rank the 6 candidate email patterns and return the top 2.
- * Falls back to the top 2 by confidence score if Gemini is unavailable.
- */
-async function rankWithGemini(
-  candidates: EmailPattern[],
+import {
+  estimateCompanySize,
+  generateSmartEmailPatternsCached,
+  type EmailPattern,
+} from '@/lib/enhanced-email-patterns'
+import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
+import { captureApiException } from '@/lib/monitoring/sentry'
+import { verifyDomainMX } from '@/lib/mx-verification'
+import { incrementEmailGeneration, QuotaExceededError } from '@/lib/quota'
+import { resolveDomain } from '@/lib/domain-resolution-service'
+import { createServiceRoleClient } from '@/lib/supabase/server'
+import { verifyEmailZeroBounce } from '@/lib/zerobounce'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const enrichSchema = z.object({
+  firstName: z.string().trim().min(1),
+  lastName: z.string().trim().min(1),
+  companyName: z.string().trim().min(1),
+  role: z.string().trim().min(1).optional(),
+})
+
+type RankedCandidate = {
+  email: string
+  pattern: string
+  confidence: number
+}
+
+type EnrichResponse = {
+  success: true
+  result: {
+    email: string
+    pattern: string
+    confidence: number
+    verified: boolean
+    badge: 'verified' | 'most_probable' | 'domain_no_mx'
+    verificationSource?: 'zerobounce' | 'mx_only'
+  }
+  domain: string
+  metadata: {
+    companySize: string
+    emailProvider: string
+    domainSource: string
+    patternsChecked: number
+  }
+}
+
+function quotaExceededResponse(error: QuotaExceededError) {
+  return NextResponse.json(
+    {
+      error: 'quota_exceeded',
+      feature: error.feature,
+      used: error.used,
+      limit: error.limit,
+      plan_type: error.plan_type,
+      upgrade_url: '/dashboard/upgrade',
+    },
+    { status: 402 }
+  )
+}
+
+function normalizeNamePart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+}
+
+function buildFallbackCandidates(firstName: string, lastName: string, domain: string): RankedCandidate[] {
+  const first = normalizeNamePart(firstName)
+  const last = normalizeNamePart(lastName)
+  const firstInitial = first.slice(0, 1)
+
+  const rawCandidates: RankedCandidate[] = [
+    { email: `${first}.${last}@${domain}`, pattern: 'first.last', confidence: 85 },
+    { email: `${firstInitial}${last}@${domain}`, pattern: 'flast', confidence: 75 },
+    { email: `${first}${last}@${domain}`, pattern: 'firstlast', confidence: 68 },
+    { email: `${first}@${domain}`, pattern: 'first', confidence: 62 },
+    { email: `${last}.${first}@${domain}`, pattern: 'last.first', confidence: 50 },
+    { email: `${firstInitial}.${last}@${domain}`, pattern: 'f.last', confidence: 45 },
+  ]
+
+  return rawCandidates.filter((candidate) => candidate.email.includes('@'))
+}
+
+function dedupeAndFillCandidates(
+  baseCandidates: EmailPattern[],
+  firstName: string,
+  lastName: string,
+  domain: string
+): RankedCandidate[] {
+  const unique = new Map<string, RankedCandidate>()
+
+  for (const candidate of baseCandidates) {
+    const email = String(candidate.email || '').trim().toLowerCase()
+    if (!email) continue
+
+    const normalizedCandidate: RankedCandidate = {
+      email,
+      pattern: String(candidate.pattern || 'unknown').trim().toLowerCase() || 'unknown',
+      confidence: Math.max(0, Math.min(100, Number(candidate.confidence) || 0)),
+    }
+
+    if (!unique.has(normalizedCandidate.email)) {
+      unique.set(normalizedCandidate.email, normalizedCandidate)
+    }
+  }
+
+  const fallback = buildFallbackCandidates(firstName, lastName, domain)
+  for (const candidate of fallback) {
+    if (!unique.has(candidate.email)) {
+      unique.set(candidate.email, candidate)
+    }
+    if (unique.size >= 6) break
+  }
+
+  const output = Array.from(unique.values())
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 6)
+
+  if (output.length === 0) {
+    return fallback.slice(0, 6)
+  }
+
+  return output
+}
+
+async function rankWithGeminiOrFallback(
+  candidates: RankedCandidate[],
   context: {
     firstName: string
     lastName: string
     domain: string
-    companySize: string
-    emailProvider: string
-    role: string | undefined
+    role?: string
   }
-): Promise<[EmailPattern, EmailPattern]> {
-  const first = candidates[0] as EmailPattern;
-  const second = (candidates[1] ?? candidates[0]) as EmailPattern;
-  const fallback: [EmailPattern, EmailPattern] = [first, second];
+): Promise<RankedCandidate[]> {
+  const fallbackTopTwo = candidates.slice(0, 2)
 
-  if (candidates.length < 2) return fallback;
+  if (!process.env.GOOGLE_AI_API_KEY?.trim()) {
+    return fallbackTopTwo
+  }
 
-  const candidateList = candidates
-    .map((c, i) => `${i + 1}. ${c.email} (pattern: ${c.pattern}, confidence: ${c.confidence})`)
-    .join('\n');
-
-  const prompt = `You are an expert at predicting professional email addresses.
-
-Context:
-- Name: ${context.firstName} ${context.lastName}
-- Domain: ${context.domain}
-- Company size: ${context.companySize}
-- Email provider: ${context.emailProvider || 'unknown'}
-- Role: ${context.role || 'unknown'}
-
-Candidate emails:
-${candidateList}
-
-Select the 2 most probable email addresses for this person. Consider name conventions for the company size and email provider.
-
-Return ONLY valid JSON, no markdown:
-{"ranked": ["most_probable_email@domain.com", "second_most_probable@domain.com"]}`;
+  const prompt = [
+    'Rank the 6 email candidates by probability for the target person.',
+    `Name: ${context.firstName} ${context.lastName}`,
+    `Domain: ${context.domain}`,
+    `Role: ${context.role || 'unknown'}`,
+    'Candidates:',
+    ...candidates.map((candidate, index) => `${index + 1}. ${candidate.email} (${candidate.pattern}, ${candidate.confidence})`),
+    'Return only JSON with shape: {"ranked":["email1","email2"]}',
+  ].join('\n')
 
   try {
-    const gemini = getGeminiClient();
-    const response = await gemini.generateText({
-      prompt,
-      maxTokens: 100,
-      temperature: 0,
-      action: 'email-ranking',
-    });
+    const geminiClient = new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY)
+    const model = geminiClient.getGenerativeModel({ model: 'gemini-2.0-flash-exp' })
+    const llmResponse = await model.generateContent(prompt)
+    const llmText = llmResponse.response.text()?.trim() ?? ''
+    if (!llmText) {
+      return fallbackTopTwo
+    }
 
-    const cleaned = response.text.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
-    const firstBrace = cleaned.indexOf('{');
-    const lastBrace = cleaned.lastIndexOf('}');
-    if (firstBrace === -1 || lastBrace === -1) return fallback;
+    const cleaned = llmText.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim()
+    const firstBrace = cleaned.indexOf('{')
+    const lastBrace = cleaned.lastIndexOf('}')
+    if (firstBrace === -1 || lastBrace === -1) return fallbackTopTwo
 
-    const parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as { ranked?: unknown };
-    if (!Array.isArray(parsed.ranked) || parsed.ranked.length < 2) return fallback;
+    const parsed = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1)) as {
+      ranked?: unknown
+    }
 
-    const rank1Email = String(parsed.ranked[0]).toLowerCase();
-    const rank2Email = String(parsed.ranked[1]).toLowerCase();
+    if (!Array.isArray(parsed.ranked)) {
+      return fallbackTopTwo
+    }
 
-    const rank1 = (candidates.find(c => c.email === rank1Email) ?? candidates[0]) as EmailPattern;
-    const rank2 = (candidates.find(c => c.email === rank2Email) ?? candidates[1] ?? candidates[0]) as EmailPattern;
+    const rankedEmails = parsed.ranked
+      .map((entry) => String(entry || '').trim().toLowerCase())
+      .filter(Boolean)
 
-    return [rank1, rank2];
-  } catch (err) {
-    console.warn('[Enrich] Gemini ranking failed, using confidence fallback:', err instanceof Error ? err.message : err);
-    return fallback;
+    const rankedCandidates: RankedCandidate[] = []
+    for (const email of rankedEmails) {
+      const candidate = candidates.find((item) => item.email === email)
+      if (candidate && !rankedCandidates.some((item) => item.email === candidate.email)) {
+        rankedCandidates.push(candidate)
+      }
+      if (rankedCandidates.length >= 2) break
+    }
+
+    if (rankedCandidates.length < 2) {
+      for (const fallbackCandidate of fallbackTopTwo) {
+        if (!rankedCandidates.some((item) => item.email === fallbackCandidate.email)) {
+          rankedCandidates.push(fallbackCandidate)
+        }
+        if (rankedCandidates.length >= 2) break
+      }
+    }
+
+    return rankedCandidates.slice(0, 2)
+  } catch {
+    return fallbackTopTwo
   }
 }
 
-function buildFailureSuggestion(layers: LayerAttempt[]): string {
-  if (layers.some(l => l.errorType === 'circuit_open'))
-    return 'Some lookup services are temporarily unavailable â€” please try again in a few minutes'
-  const errors = layers.filter(l => l.result === 'error').map(l => l.errorType)
-  if (errors.includes('rate_limit'))
-    return 'API rate limits reached â€” please wait a moment and try again'
-  if (errors.includes('timeout'))
-    return 'Domain lookup timed out â€” try using the full legal company name'
-  return 'Please provide the company website URL directly (e.g. "acme.com")'
+function buildSuccessResponse(params: {
+  result: EnrichResponse['result']
+  domain: string
+  companySize: string
+  emailProvider: string
+  domainSource: string
+  patternsChecked: number
+}): EnrichResponse {
+  return {
+    success: true,
+    result: params.result,
+    domain: params.domain,
+    metadata: {
+      companySize: params.companySize,
+      emailProvider: params.emailProvider,
+      domainSource: params.domainSource,
+      patternsChecked: params.patternsChecked,
+    },
+  }
 }
 
-/**
- * Handle POST requests for `/api/enrich`.
- * @param {NextRequest} request - Request input.
- * @returns {unknown} JSON response for the POST /api/enrich request.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {ValidationError} If the request payload fails validation.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // POST /api/enrich
- * fetch('/api/enrich', { method: 'POST' })
- */
+function logDomainResolutionAsync(params: {
+  userId: string
+  companyName: string
+  domain: string | null
+  domainSource: string
+  confidence: number
+  layersAttempted: Array<{ layer: string; result: string }>
+}): void {
+  void (async () => {
+    try {
+      const supabase = await createServiceRoleClient()
+
+      const primaryInsert = await supabase.from('domain_resolution_logs').insert({
+        user_id: params.userId,
+        company_name: params.companyName,
+        domain: params.domain,
+        layers_attempted: params.layersAttempted,
+        resolution_source: params.domainSource,
+        confidence_score: params.confidence,
+      })
+
+      if (!primaryInsert.error) return
+
+      // Backward compatibility for legacy schema variant.
+      await supabase.from('domain_resolution_logs').insert({
+        company_name: params.companyName,
+        domain: params.domain,
+        domain_source: params.domainSource,
+        mx_valid: null,
+        confidence_score: params.confidence,
+        attempted_layers: params.layersAttempted,
+      })
+    } catch {
+      // Fire-and-forget logging should never block API response.
+    }
+  })()
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const parsed = EnrichSchema.safeParse(await request.json());
+    let userId = ''
+    try {
+      const user = await getAuthenticatedUserFromRequest(request)
+      userId = user.id
+      await incrementEmailGeneration(user.id)
+    } catch (error) {
+      if (error instanceof QuotaExceededError) {
+        return quotaExceededResponse(error)
+      }
+      if (error instanceof Error && error.message === 'Unauthorized') {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      throw error
+    }
+
+    const payload = await request.json().catch(() => null)
+    const parsed = enrichSchema.safeParse(payload)
+
     if (!parsed.success) {
       return NextResponse.json(
-        { error: 'Validation failed', details: formatZodError(parsed.error) },
+        {
+          error: 'Validation failed',
+          details: parsed.error.issues.map((issue) => ({
+            path: issue.path.join('.'),
+            message: issue.message,
+          })),
+        },
         { status: 400 }
-      );
-    }
-    const { firstName, lastName, companyName, role } = parsed.data;
-
-    // 2. Find company domain (FREE CASCADE)
-    let domain: string | null = null;
-    let domainSource: DomainSource = 'unknown';
-    const attemptedLayers: LayerAttempt[] = [];
-
-    console.log('[Enrich] Looking up domain for:', companyName);
-
-    // Step 1: Check known domains
-    domain = await getKnownDomain(companyName);
-    if (domain) {
-      domainSource = 'known_database';
-      attemptedLayers.push({ layer: 'known_database', result: 'hit' });
-      console.log('[Enrich] Found in known domains:', domain);
-    } else {
-      attemptedLayers.push({ layer: 'known_database', result: 'miss' });
+      )
     }
 
-    // Step 2: Try Clearbit (free)
-    if (!domain) {
-      try {
-        domain = await lookupCompanyDomain(companyName);
-        if (domain) {
-          domainSource = 'clearbit';
-          attemptedLayers.push({ layer: 'clearbit', result: 'hit' });
-        } else {
-          attemptedLayers.push({ layer: 'clearbit', result: 'miss' });
-        }
-      } catch (err) {
-        const errorType = err instanceof ApiCallError ? err.errorType : 'api_error';
-        attemptedLayers.push({ layer: 'clearbit', result: 'error', error: String(err), errorType });
-        console.error('[Enrich] Clearbit failed:', errorType, err);
-      }
-    }
+    const { firstName, lastName, companyName, role } = parsed.data
 
-    // Step 3: Try Brandfetch (free)
-    if (!domain) {
-      try {
-        domain = await brandfetchDomain(companyName);
-        if (domain) {
-          domainSource = 'brandfetch';
-          attemptedLayers.push({ layer: 'brandfetch', result: 'hit' });
-        } else {
-          attemptedLayers.push({ layer: 'brandfetch', result: 'miss' });
-        }
-      } catch (err) {
-        const errorType = err instanceof ApiCallError ? err.errorType : 'api_error';
-        attemptedLayers.push({ layer: 'brandfetch', result: 'error', error: String(err), errorType });
-        console.error('[Enrich] Brandfetch failed:', errorType, err);
-      }
-    }
+    // Phase 1: Domain resolution cascade.
+    const resolved = await resolveDomain(companyName)
 
-    // Step 3.5: LLM prediction (Claude Haiku â€” cheap, fast, handles acronyms/rebrands)
-    if (!domain) {
-      try {
-        const llmResult = await predictDomainWithLLM(companyName);
-        if (llmResult) {
-          domain = llmResult.domain;
-          domainSource = 'llm_prediction';
-          attemptedLayers.push({ layer: 'llm_prediction', result: 'hit' });
-          console.log('[Enrich] LLM predicted:', domain, `($${llmResult.costUsd.toFixed(6)})`);
-        } else {
-          attemptedLayers.push({ layer: 'llm_prediction', result: 'miss' });
-        }
-      } catch (err) {
-        const errorType = err instanceof ApiCallError ? err.errorType : 'api_error';
-        attemptedLayers.push({ layer: 'llm_prediction', result: 'error', error: String(err), errorType });
-        console.error('[Enrich] LLM prediction failed:', errorType, err);
-      }
-    }
-
-    // Step 4: Try Google Search (free 100/day)
-    if (!domain) {
-      try {
-        domain = await googleSearchDomain(companyName);
-        if (domain) {
-          domainSource = 'google_search';
-          attemptedLayers.push({ layer: 'google_search', result: 'hit' });
-        } else {
-          attemptedLayers.push({ layer: 'google_search', result: 'miss' });
-        }
-      } catch (err) {
-        const errorType = err instanceof ApiCallError ? err.errorType : 'api_error';
-        attemptedLayers.push({ layer: 'google_search', result: 'error', error: String(err), errorType });
-        console.error('[Enrich] Google search failed:', errorType, err);
-      }
-    }
-
-    // Step 5: Smart heuristic fallback (last resort)
-    if (!domain) {
-      const heuristicResult = await heuristicDomainGuess(companyName);
-      if (heuristicResult) {
-        domain = heuristicResult;
-        domainSource = 'heuristic';
-        attemptedLayers.push({ layer: 'heuristic', result: 'hit' });
-        console.log('[Enrich] Smart TLD resolved:', domain);
-      } else {
-        attemptedLayers.push({ layer: 'heuristic', result: 'miss' });
-        logDomainResolution({ companyName, domain: '', domainSource: 'unknown', mxValid: false, confidenceScore: 0, attemptedLayers });
-        return NextResponse.json({
-          success: false,
-          error: 'Could not determine company domain',
-          suggestion: buildFailureSuggestion(attemptedLayers),
-        }, { status: 400 });
-      }
-    }
-
-    // 3. Verify domain MX records (ALWAYS ON, FREE)
-    console.log('[Enrich] Verifying MX records for:', domain);
-    const mxInfo = await verifyDomainMX(domain);
-
-    // Confidence score mirrors the return value logic below
-    const confidenceScore =
-      domainSource === 'known_database' ? 95 :
-      domainSource === 'clearbit' ? 90 :
-      domainSource === 'brandfetch' ? 85 :
-      domainSource === 'llm_prediction' ? 70 :
-      domainSource === 'google_search' ? 75 :
-      50;
-
-    if (!mxInfo.hasMX) {
-      // Log the failed resolution before returning the error
-      logDomainResolution({
+    if (!resolved) {
+      logDomainResolutionAsync({
+        userId,
         companyName,
-        domain,
-        domainSource,
-        mxValid: false,
-        confidenceScore,
-        attemptedLayers,
-      });
+        domain: null,
+        domainSource: 'unresolved',
+        confidence: 0,
+        layersAttempted: [{ layer: 'cascade', result: 'failed' }],
+      })
 
-      return NextResponse.json({
-        success: false,
-        error: 'Invalid domain - no email servers found',
-        suggestion: 'Please verify the company name is correct',
-        attempted: {
-          companyName,
-          domain,
-          source: domainSource
-        }
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Could not resolve domain for company. Please provide the company website URL directly.',
+          suggestion: true,
+        },
+        { status: 400 }
+      )
     }
 
-    // 4. Build company profile
-    const companyProfile = {
-      domain,
-      estimatedSize: estimateCompanySize(domain),
-      emailProvider: mxInfo.provider
-    };
+    const domain = resolved.domain
 
-    console.log('[Enrich] Company profile:', companyProfile);
+    // Phase 2: Pattern generation and ranking.
+    const companySize = estimateCompanySize(domain)
 
-    // 5. Generate smart email patterns
-    let emailPatterns = await generateSmartEmailPatternsCached(
+    const generatedCandidates = await generateSmartEmailPatternsCached(
       firstName,
       lastName,
-      companyProfile,
+      {
+        domain,
+        estimatedSize: companySize,
+      },
       role
-    );
+    )
 
-    // 6. Apply learning from past successes
-    const learnedPatterns = await getLearnedPatterns(domain);
-    if (learnedPatterns.length > 0) {
-      console.log('[Enrich] Applying learning from', learnedPatterns.length, 'patterns');
-      emailPatterns = applyLearning(emailPatterns, learnedPatterns);
+    const candidates = dedupeAndFillCandidates(generatedCandidates, firstName, lastName, domain)
+    const ranked = await rankWithGeminiOrFallback(candidates, {
+      firstName,
+      lastName,
+      domain,
+      role,
+    })
+
+    const top = ranked[0] ?? candidates[0]
+    if (!top) {
+      throw new Error('Failed to generate email candidates')
     }
 
-    // 7. Gemini Flash ranking — select top 2 from the 6 candidates
-    const top2 = await rankWithGemini(
-      emailPatterns,
-      { firstName, lastName, domain, companySize: companyProfile.estimatedSize, emailProvider: mxInfo.provider || '', role }
-    );
+    // Phase 3: Verification (MX always first, then up to two ZeroBounce checks).
+    const mxInfo = await verifyDomainMX(domain)
 
-    // 8. Sequential ZeroBounce SMTP verification (max 2 checks per request)
-    let topResult: EmailPattern & { verified: boolean; verificationSource: 'zerobounce' | null; badge: 'verified' | 'most_probable' } = {
-      ...top2[0],
-      verified: false,
-      verificationSource: null,
-      badge: 'most_probable',
-    };
-    let emailsChecked = 0;
+    if (!mxInfo.hasMX) {
+      const response = buildSuccessResponse({
+        result: {
+          email: top.email,
+          pattern: top.pattern,
+          confidence: 20,
+          verified: false,
+          badge: 'domain_no_mx',
+          verificationSource: 'mx_only',
+        },
+        domain,
+        companySize,
+        emailProvider: mxInfo.provider || 'Unknown',
+        domainSource: resolved.source,
+        patternsChecked: 1,
+      })
 
-    if (process.env.ZEROBOUNCE_API_KEY) {
-      // Check rank #1
-      const r1 = await verifyEmailZeroBounce(top2[0].email);
-      emailsChecked++;
-      if (r1.deliverability === 'DELIVERABLE') {
-        topResult = {
-          ...top2[0],
-          confidence: Math.min(95, top2[0].confidence + 20),
-          verified: true,
-          verificationSource: 'zerobounce',
-          badge: 'verified',
-        };
-      } else if (top2[1]) {
-        // Check rank #2 only if rank #1 is not deliverable
-        const r2 = await verifyEmailZeroBounce(top2[1].email);
-        emailsChecked++;
-        if (r2.deliverability === 'DELIVERABLE') {
-          topResult = {
-            ...top2[1],
-            confidence: Math.min(95, top2[1].confidence + 20),
+      logDomainResolutionAsync({
+        userId,
+        companyName,
+        domain,
+        domainSource: resolved.source,
+        confidence: resolved.confidence,
+        layersAttempted: [{ layer: resolved.source, result: 'hit' }],
+      })
+
+      return NextResponse.json(response)
+    }
+
+    const zerobounceKey = process.env.ZEROBOUNCE_API_KEY?.trim()
+
+    if (!zerobounceKey) {
+      const response = buildSuccessResponse({
+        result: {
+          email: top.email,
+          pattern: top.pattern,
+          confidence: top.confidence,
+          verified: false,
+          badge: 'most_probable',
+          verificationSource: 'mx_only',
+        },
+        domain,
+        companySize,
+        emailProvider: mxInfo.provider || 'Unknown',
+        domainSource: resolved.source,
+        patternsChecked: 1,
+      })
+
+      logDomainResolutionAsync({
+        userId,
+        companyName,
+        domain,
+        domainSource: resolved.source,
+        confidence: resolved.confidence,
+        layersAttempted: [{ layer: resolved.source, result: 'hit' }],
+      })
+
+      return NextResponse.json(response)
+    }
+
+    const verificationCandidates = ranked.slice(0, 2)
+    let checked = 0
+
+    for (const candidate of verificationCandidates) {
+      const verification = await verifyEmailZeroBounce(candidate.email)
+      checked += 1
+
+      if (verification.deliverability === 'DELIVERABLE') {
+        const response = buildSuccessResponse({
+          result: {
+            email: candidate.email,
+            pattern: candidate.pattern,
+            confidence: Math.max(candidate.confidence, 90),
             verified: true,
-            verificationSource: 'zerobounce',
             badge: 'verified',
-          };
-        }
+            verificationSource: 'zerobounce',
+          },
+          domain,
+          companySize,
+          emailProvider: mxInfo.provider || 'Unknown',
+          domainSource: resolved.source,
+          patternsChecked: checked,
+        })
+
+        logDomainResolutionAsync({
+          userId,
+          companyName,
+          domain,
+          domainSource: resolved.source,
+          confidence: resolved.confidence,
+          layersAttempted: [{ layer: resolved.source, result: 'hit' }],
+        })
+
+        return NextResponse.json(response)
       }
+
+      if (checked >= 2) break
     }
 
-    // 9. Log resolution outcome asynchronously (non-blocking)
-    logDomainResolution({
+    const response = buildSuccessResponse({
+      result: {
+        email: top.email,
+        pattern: top.pattern,
+        confidence: top.confidence,
+        verified: false,
+        badge: 'most_probable',
+      },
+      domain,
+      companySize,
+      emailProvider: mxInfo.provider || 'Unknown',
+      domainSource: resolved.source,
+      patternsChecked: Math.max(1, checked),
+    })
+
+    logDomainResolutionAsync({
+      userId,
       companyName,
       domain,
-      domainSource,
-      mxValid: mxInfo.hasMX,
-      confidenceScore,
-      attemptedLayers,
-    });
+      domainSource: resolved.source,
+      confidence: resolved.confidence,
+      layersAttempted: [{ layer: resolved.source, result: 'hit' }],
+    })
 
-    // 10. Return enriched data
-    return NextResponse.json({
-      success: true,
-      cost: 0,
-      source: domainSource,
-      enrichment: {
-        domain,
-        companyName,
-        size: companyProfile.estimatedSize,
-        emailProvider: mxInfo.provider,
-        mxRecords: mxInfo.mxCount,
-        mxServers: mxInfo.mxServers
-      },
-      emails: emailPatterns,
-      topResult,
-      verification: {
-        mxVerified: mxInfo.verified,
-        smtpVerified: topResult.verified,
-        emailsChecked,
-      },
-      confidence: {
-        domainAccuracy: confidenceScore,
-        learningApplied: learnedPatterns.length > 0,
-        learnedPatternCount: learnedPatterns.length
-      }
-    });
-
+    return NextResponse.json(response)
   } catch (error) {
-    console.error('[Enrich] Error:', error);
     captureApiException(error, { route: '/api/enrich', method: 'POST' })
+
     return NextResponse.json(
-      { error: 'Enrichment failed', details: error instanceof Error ? error.message : 'Unknown error' },
+      {
+        error: error instanceof Error ? error.message : 'Enrichment failed',
+      },
       { status: 500 }
-    );
+    )
   }
 }
