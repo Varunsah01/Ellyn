@@ -1,26 +1,25 @@
--- ⚠️ DEPRECATED: This file has been incorporated into migration 029.
--- Use lib/db/migrations/029_rls_hardening.sql instead.
--- This file is kept for reference only. Do not run it directly.
+-- Migration 029: RLS Hardening
+-- Description: Applies strict user-scoped Row Level Security policies to all
+--              multi-tenant tables. Incorporates the content of lib/db/rls-policies.sql
+--              into the numbered migration sequence so it cannot be skipped.
+-- Dependencies: 028_migration_tracking
+-- Idempotent: Yes (uses DO $$ blocks with IF NOT EXISTS / DROP POLICY IF EXISTS)
 
 -- ============================================================================
--- Row Level Security (RLS) Hardening Policies
+-- PRE-FLIGHT CHECK: Verify this migration hasn't already been applied
 -- ============================================================================
--- Purpose:
---   1) Remove existing permissive policies (including "allow all" patterns).
---   2) Recreate strict user-scoped policies for core multi-tenant tables.
---   3) Ensure users can only access their own rows:
---        - user_id = auth.uid() for tenant tables
---        - id = auth.uid() for user_profiles
---   4) If a table has a `shared` column, SELECT also allows shared = true.
---
--- Target tables:
---   - contacts
---   - leads
---   - email_templates
---   - user_profiles
---   - user_quotas
---   - contact_outreach_history
---   - usage_analytics
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.schema_migrations WHERE version = '029'
+  ) THEN
+    RAISE NOTICE 'Migration 029 already applied, skipping.';
+    RETURN;
+  END IF;
+END $$;
+
+-- ============================================================================
+-- MIGRATION BODY — sourced from lib/db/rls-policies.sql
 -- ============================================================================
 
 SET search_path = public;
@@ -200,19 +199,9 @@ BEGIN
 END
 $$;
 
--- ----------------------------------------------------------------------------
--- Optional verification query (run manually):
--- SELECT schemaname, tablename, policyname, cmd, qual, with_check
--- FROM pg_policies
--- WHERE schemaname = 'public'
---   AND tablename IN (
---     'contacts',
---     'leads',
---     'email_templates',
---     'user_profiles',
---     'user_quotas',
---     'contact_outreach_history',
---     'usage_analytics'
---   )
--- ORDER BY tablename, policyname;
--- ----------------------------------------------------------------------------
+-- ============================================================================
+-- RECORD MIGRATION
+-- ============================================================================
+INSERT INTO public.schema_migrations (version, name)
+VALUES ('029', 'rls_hardening')
+ON CONFLICT (version) DO NOTHING;
