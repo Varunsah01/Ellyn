@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   DndContext,
@@ -35,6 +36,8 @@ import {
 } from "lucide-react"
 import { format, isPast, parseISO, isThisMonth } from "date-fns"
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts"
+import { DashboardShell } from "@/components/dashboard/DashboardShell"
+import { PageHeader } from "@/components/dashboard/PageHeader"
 import { Button } from "@/components/ui/Button"
 import { Badge } from "@/components/ui/Badge"
 import {
@@ -49,6 +52,7 @@ import { cn } from "@/lib/utils"
 import { showToast } from "@/lib/toast"
 import { supabaseAuthedFetch } from "@/lib/auth/client-fetch"
 import { usePersona } from "@/context/PersonaContext"
+import { useRefreshListener } from "@/lib/context/AppRefreshContext"
 import { getPersonaCopy } from "@/lib/persona-copy"
 import { DealCard } from "@/components/pipeline/DealCard"
 import { DealFormDialog, type DealFormData } from "@/components/pipeline/DealFormDialog"
@@ -673,7 +677,9 @@ function DeleteDealDialog({
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function PipelinePage() {
+  const router = useRouter()
   const { isJobSeeker, persona, isLoading: personaLoading } = usePersona()
+
   const copy = getPersonaCopy(persona)
   const stages = isJobSeeker ? JOB_SEEKER_STAGES : SALES_STAGES
   const addButtonLabel = isJobSeeker ? "Add Application" : "Add Deal"
@@ -758,6 +764,8 @@ export default function PipelinePage() {
     if (!personaLoading) void fetchData()
   }, [personaLoading, fetchData])
 
+  useRefreshListener('deals', fetchData)
+
   // ── Computed ────────────────────────────────────────────────────────────────
 
   const dealsByStage = useMemo(() => {
@@ -785,6 +793,28 @@ export default function PipelinePage() {
     ),
     [deals]
   )
+
+  // ── Redirect job_seeker persona ────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!personaLoading && isJobSeeker) {
+      router.replace("/dashboard")
+    }
+  }, [personaLoading, isJobSeeker, router])
+
+  if (personaLoading) {
+    return (
+      <DashboardShell>
+        <div className="flex min-h-[320px] items-center justify-center">
+          <span className="text-sm text-[#5E5B86]">Loading...</span>
+        </div>
+      </DashboardShell>
+    )
+  }
+
+  if (isJobSeeker) {
+    return null
+  }
 
   const closed = deals.filter((d) => d.stage === "won" || d.stage === "lost").length
   const wonCount = deals.filter((d) => d.stage === "won").length
@@ -1006,87 +1036,67 @@ export default function PipelinePage() {
 
   // ── Loading ─────────────────────────────────────────────────────────────────
 
-  if (personaLoading || loading) {
+  if (loading) {
     return (
-      <div className="p-6">
-        <div className="h-8 w-48 animate-pulse rounded bg-muted mb-4" />
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {Array.from({ length: Math.max(stages.length, 5) }, (_, idx) => idx + 1).map((i) => (
-            <div key={i} className="flex-shrink-0 w-64 h-64 animate-pulse rounded-xl bg-muted" />
-          ))}
+      <DashboardShell>
+        <div className="p-6">
+          <div className="h-8 w-48 animate-pulse rounded bg-muted mb-4" />
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {Array.from({ length: Math.max(stages.length, 5) }, (_, idx) => idx + 1).map((i) => (
+              <div key={i} className="flex-shrink-0 w-64 h-64 animate-pulse rounded-xl bg-muted" />
+            ))}
+          </div>
         </div>
-      </div>
+      </DashboardShell>
     )
   }
 
-  const totalPipeline = laneValue(activeDeals)
-
   return (
-    <div className="flex flex-col h-full">
+    <DashboardShell>
+      <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-6 py-4 border-b bg-card flex-shrink-0">
-        <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
-          <div>
-            <h1
-              className="text-2xl font-bold tracking-tight"
-              style={{ fontFamily: "'Fraunces', serif", color: "#2D2B55" }}
-            >
-              {copy.pipeline}
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              {isJobSeeker ? (
-                <>
-                  Applications in progress:{" "}
-                  <span className="font-semibold text-foreground">
-                    {activeDeals.length}
-                  </span>
-                </>
-              ) : (
-                <>
-                  Total Pipeline:{" "}
-                  <span className="font-semibold text-foreground">
-                    {formatCurrency(totalPipeline)}
-                  </span>
-                </>
-              )}
-            </p>
-          </div>
+        <PageHeader
+          title={isJobSeeker ? "Application Pipeline" : copy.pipeline}
+          description={isJobSeeker
+            ? "Track your job applications from saved to offer"
+            : "Track deals from first contact to close"}
+          actions={
+            <>
+              <div className="flex items-center rounded-lg border bg-muted/30 p-0.5 gap-0.5">
+                <Button
+                  variant={view === "kanban" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 px-2.5"
+                  onClick={() => setView("kanban")}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5 mr-1" />
+                  Kanban
+                </Button>
+                <Button
+                  variant={view === "table" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 px-2.5"
+                  onClick={() => setView("table")}
+                >
+                  <List className="h-3.5 w-3.5 mr-1" />
+                  Table
+                </Button>
+              </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* View toggle */}
-            <div className="flex items-center rounded-lg border bg-muted/30 p-0.5 gap-0.5">
               <Button
-                variant={view === "kanban" ? "default" : "ghost"}
                 size="sm"
-                className="h-7 px-2.5"
-                onClick={() => setView("kanban")}
+                onClick={() => {
+                  setEditingDeal(null)
+                  setFormOpen(true)
+                }}
               >
-                <LayoutGrid className="h-3.5 w-3.5 mr-1" />
-                Kanban
+                <Plus className="mr-1.5 h-4 w-4" />
+                {addButtonLabel}
               </Button>
-              <Button
-                variant={view === "table" ? "default" : "ghost"}
-                size="sm"
-                className="h-7 px-2.5"
-                onClick={() => setView("table")}
-              >
-                <List className="h-3.5 w-3.5 mr-1" />
-                Table
-              </Button>
-            </div>
-
-            <Button
-              size="sm"
-              onClick={() => {
-                setEditingDeal(null)
-                setFormOpen(true)
-              }}
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              {addButtonLabel}
-            </Button>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         {/* Stats row */}
         {isJobSeeker ? (
@@ -1311,5 +1321,6 @@ export default function PipelinePage() {
         onConfirm={() => void handleDeleteDeal()}
       />
     </div>
+    </DashboardShell>
   )
 }

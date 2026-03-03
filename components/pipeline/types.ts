@@ -31,6 +31,7 @@ export interface Deal {
   created_at: string
   updated_at: string
   contacts: DealContact | null
+  lead_score?: number | null
 }
 
 export const STAGE_CONFIG: Record<

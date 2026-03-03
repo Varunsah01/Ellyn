@@ -10,6 +10,7 @@ This document tracks the current implementation status of the main Next.js dashb
 | --- | --- | --- |
 | `/dashboard` | ✅ | Home dashboard with stats, email finder, recent contacts, next steps, extension banner, onboarding modal hook. |
 | `/tracker` | ✅ | Job seeker-only application tracker Kanban (Saved, Applied, Interviewing, Offered, Rejected) with add/edit/delete and status move actions. |
+| `/dashboard/pipeline` | ✅ | Deal Pipeline (SMB sales): Kanban + table view, drag-to-advance stages, won/lost dialogs, revenue panel, realtime updates. |
 | `/dashboard/contacts` | ✅ | Full contact management: search, filters, pagination, add/edit/delete, CSV export, realtime refresh. |
 | `/dashboard/templates` | ✅ | Template grid, create/edit/delete, AI generate/enhance/tone actions, free-plan upgrade gating. |
 | `/dashboard/sequences` | ✅ | Sequence list cards, status badges, delete confirmation. |
