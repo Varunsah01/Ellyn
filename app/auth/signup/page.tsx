@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 
+import { AuthFormLayout } from "@/components/auth/AuthFormLayout";
+import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { createClient } from "@/lib/supabase/client";
 import { showToast } from "@/lib/toast";
+import { validatePasswordStrength } from "@/lib/validation/password";
 import { Button } from "@/components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import {
   Form,
   FormControl,
@@ -36,9 +38,33 @@ const signupSchema = z
 
 type SignupFormValues = z.infer<typeof signupSchema>;
 
+function GoogleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4">
+      <path
+        fill="#EA4335"
+        d="M12 10.2v3.9h5.5c-.2 1.3-1.5 3.9-5.5 3.9-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.4 14.6 2.5 12 2.5 6.8 2.5 2.5 6.8 2.5 12s4.3 9.5 9.5 9.5c5.5 0 9.2-3.9 9.2-9.3 0-.6-.1-1.1-.2-1.6H12z"
+      />
+      <path
+        fill="#34A853"
+        d="M3.6 7.4l3.2 2.3c.9-1.7 2.7-2.8 5.2-2.8 1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.4 14.6 2.5 12 2.5 8.2 2.5 4.9 4.6 3.6 7.4z"
+      />
+      <path
+        fill="#4A90E2"
+        d="M12 21.5c2.6 0 4.8-.9 6.5-2.5l-3-2.5c-.8.6-2 1.1-3.5 1.1-3.9 0-5.2-2.6-5.5-3.9l-3.2 2.5c1.3 2.9 4.6 5.3 8.7 5.3z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M6.5 13.7c-.1-.4-.2-.9-.2-1.4s.1-1 .2-1.4L3.3 8.4C2.8 9.4 2.5 10.7 2.5 12s.3 2.6.8 3.6l3.2-1.9z"
+      />
+    </svg>
+  );
+}
+
 export default function SignupPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -50,8 +76,19 @@ export default function SignupPage() {
     },
   });
 
+  const isSupabaseConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+
+  const passwordValue = form.watch("password");
+  const passwordStrength = useMemo(
+    () => validatePasswordStrength(passwordValue ?? ""),
+    [passwordValue]
+  );
+
   const onSubmit = async (values: SignupFormValues) => {
     setIsSubmitting(true);
+    form.clearErrors("root");
 
     try {
       const response = await fetch("/api/v1/auth/signup", {
@@ -71,7 +108,9 @@ export default function SignupPage() {
       };
 
       if (!response.ok) {
-        showToast.error(payload.error ?? "Failed to create account");
+        const message = payload.error ?? "Failed to create account";
+        form.setError("root", { message });
+        showToast.error(message);
         return;
       }
 
@@ -82,6 +121,7 @@ export default function SignupPage() {
       });
 
       if (signInError) {
+        form.setError("root", { message: signInError.message });
         showToast.error(signInError.message);
         return;
       }
@@ -95,130 +135,177 @@ export default function SignupPage() {
     }
   };
 
+  const handleGoogleAuth = async () => {
+    setIsGoogleSubmitting(true);
+    form.clearErrors("root");
+
+    try {
+      const origin =
+        typeof window !== "undefined"
+          ? window.location.origin
+          : process.env.NEXT_PUBLIC_APP_URL;
+      const redirectTo = origin ? `${origin}/dashboard` : undefined;
+
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: redirectTo ? { redirectTo } : undefined,
+      });
+
+      if (error) {
+        form.setError("root", { message: error.message });
+      }
+    } catch (error) {
+      form.setError("root", {
+        message: error instanceof Error ? error.message : "Google sign-up failed",
+      });
+    } finally {
+      setIsGoogleSubmitting(false);
+    }
+  };
+
   return (
-    <main className="min-h-screen bg-[#FAFAFA] px-4 py-10 text-[#2D2B55]">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-lg items-center">
-        <Card className="w-full border-[#E7E6EF] bg-white shadow-sm">
-          <CardHeader className="space-y-2">
-            <CardTitle className="font-fraunces text-3xl text-[#2D2B55]">
-              Create your account
-            </CardTitle>
-            <p className="font-dm-sans text-sm text-[#5E5B86]">
-              Start using ELLYN with your free account.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="full_name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-dm-sans text-[#2D2B55]">Full Name</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          placeholder="Jane Doe"
-                          autoComplete="name"
-                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+    <AuthFormLayout
+      title="Create your account"
+      subtitle="Start using ELLYN with your free account."
+      isSupabaseConfigured={isSupabaseConfigured}
+      errorMessage={form.formState.errors.root?.message}
+      isBusy={isSubmitting || isGoogleSubmitting}
+    >
+      <div className="space-y-5">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full border-[#D8D6EA] bg-white text-[#2D2B55] hover:bg-[#F5F3FD]"
+          onClick={() => void handleGoogleAuth()}
+          disabled={isGoogleSubmitting}
+        >
+          {isGoogleSubmitting ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <span className="mr-2">
+              <GoogleIcon />
+            </span>
+          )}
+          Continue with Google
+        </Button>
 
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-dm-sans text-[#2D2B55]">
-                        Email Address
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="email"
-                          placeholder="you@example.com"
-                          autoComplete="email"
-                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-[#E2E2E8]" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-white px-2 text-[#7A7894]">Or create with email</span>
+          </div>
+        </div>
 
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-dm-sans text-[#2D2B55]">Password</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="password"
-                          placeholder="Minimum 8 characters"
-                          autoComplete="new-password"
-                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="full_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-dm-sans text-[#2D2B55]">Full Name</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder="Jane Doe"
+                      autoComplete="name"
+                      className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-                <FormField
-                  control={form.control}
-                  name="confirmPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-dm-sans text-[#2D2B55]">
-                        Confirm Password
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="password"
-                          placeholder="Re-enter password"
-                          autoComplete="new-password"
-                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-dm-sans text-[#2D2B55]">Email Address</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="email"
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="h-11 w-full bg-[#2D2B55] font-dm-sans text-white hover:bg-[#25234A]"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating account...
-                    </>
-                  ) : (
-                    "Create account"
-                  )}
-                </Button>
-              </form>
-            </Form>
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-dm-sans text-[#2D2B55]">Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      placeholder="Minimum 8 characters"
+                      autoComplete="new-password"
+                      className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-            <p className="mt-6 text-center font-dm-sans text-sm text-[#5E5B86]">
-              Already have an account?{" "}
-              <Link href="/auth/login" className="font-medium text-[#2D2B55] underline">
-                Log in
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
+            {passwordValue ? <PasswordStrengthIndicator result={passwordStrength} /> : null}
+
+            <FormField
+              control={form.control}
+              name="confirmPassword"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-dm-sans text-[#2D2B55]">Confirm Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      placeholder="Re-enter password"
+                      autoComplete="new-password"
+                      className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="h-11 w-full bg-[#2D2B55] font-dm-sans text-white hover:bg-[#25234A]"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating account...
+                </>
+              ) : (
+                "Create account"
+              )}
+            </Button>
+          </form>
+        </Form>
+
+        <p className="text-center font-dm-sans text-sm text-[#5E5B86]">
+          Already have an account?{" "}
+          <Link href="/auth/login" className="font-medium text-[#2D2B55] underline">
+            Log in
+          </Link>
+        </p>
       </div>
-    </main>
+    </AuthFormLayout>
   );
 }

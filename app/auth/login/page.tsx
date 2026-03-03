@@ -8,9 +8,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 
+import { AuthFormLayout, AuthPageLoading } from "@/components/auth/AuthFormLayout";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import {
   Form,
   FormControl,
@@ -28,10 +28,34 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
+function GoogleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4">
+      <path
+        fill="#EA4335"
+        d="M12 10.2v3.9h5.5c-.2 1.3-1.5 3.9-5.5 3.9-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.4 14.6 2.5 12 2.5 6.8 2.5 2.5 6.8 2.5 12s4.3 9.5 9.5 9.5c5.5 0 9.2-3.9 9.2-9.3 0-.6-.1-1.1-.2-1.6H12z"
+      />
+      <path
+        fill="#34A853"
+        d="M3.6 7.4l3.2 2.3c.9-1.7 2.7-2.8 5.2-2.8 1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.4 14.6 2.5 12 2.5 8.2 2.5 4.9 4.6 3.6 7.4z"
+      />
+      <path
+        fill="#4A90E2"
+        d="M12 21.5c2.6 0 4.8-.9 6.5-2.5l-3-2.5c-.8.6-2 1.1-3.5 1.1-3.9 0-5.2-2.6-5.5-3.9l-3.2 2.5c1.3 2.9 4.6 5.3 8.7 5.3z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M6.5 13.7c-.1-.4-.2-.9-.2-1.4s.1-1 .2-1.4L3.3 8.4C2.8 9.4 2.5 10.7 2.5 12s.3 2.6.8 3.6l3.2-1.9z"
+      />
+    </svg>
+  );
+}
+
 function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   const redirectPath = useMemo(() => {
     const redirect = searchParams.get("redirect");
@@ -48,6 +72,10 @@ function LoginPageContent() {
       password: "",
     },
   });
+
+  const isSupabaseConfigured = Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
 
   const onSubmit = async (values: LoginFormValues) => {
     setIsSubmitting(true);
@@ -76,113 +104,162 @@ function LoginPageContent() {
     }
   };
 
+  const handleGoogleAuth = async () => {
+    setIsGoogleSubmitting(true);
+    form.clearErrors("root");
+
+    try {
+      const origin =
+        typeof window !== "undefined"
+          ? window.location.origin
+          : process.env.NEXT_PUBLIC_APP_URL;
+
+      const params = new URLSearchParams();
+      const redirect = searchParams.get("redirect");
+      const source = searchParams.get("source");
+      const next = searchParams.get("next");
+      const extensionId = searchParams.get("extensionId");
+
+      if (redirect && redirect.startsWith("/") && !redirect.startsWith("//")) {
+        params.set("redirect", redirect);
+      }
+      if (source) params.set("source", source);
+      if (next) params.set("next", next);
+      if (extensionId) params.set("extensionId", extensionId);
+
+      const query = params.toString();
+      const redirectTo = origin ? `${origin}/auth/login${query ? `?${query}` : ""}` : undefined;
+
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: redirectTo ? { redirectTo } : undefined,
+      });
+
+      if (error) {
+        form.setError("root", { message: error.message });
+      }
+    } catch (error) {
+      form.setError("root", {
+        message: error instanceof Error ? error.message : "Google sign-in failed",
+      });
+    } finally {
+      setIsGoogleSubmitting(false);
+    }
+  };
+
   return (
-    <main className="min-h-screen bg-[#FAFAFA] px-4 py-10 text-[#2D2B55]">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-lg items-center">
-        <Card className="w-full border-[#E7E6EF] bg-white shadow-sm">
-          <CardHeader className="space-y-2">
-            <CardTitle className="font-fraunces text-3xl text-[#2D2B55]">Log in</CardTitle>
-            <p className="font-dm-sans text-sm text-[#5E5B86]">
-              Sign in to continue to your dashboard.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-dm-sans text-[#2D2B55]">
-                        Email Address
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="email"
-                          placeholder="you@example.com"
-                          autoComplete="email"
-                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+    <AuthFormLayout
+      title="Log in"
+      subtitle="Sign in to continue to your dashboard."
+      isSupabaseConfigured={isSupabaseConfigured}
+      errorMessage={form.formState.errors.root?.message}
+      isBusy={isSubmitting || isGoogleSubmitting}
+    >
+      <div className="space-y-5">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full border-[#D8D6EA] bg-white text-[#2D2B55] hover:bg-[#F5F3FD]"
+          onClick={() => void handleGoogleAuth()}
+          disabled={isGoogleSubmitting}
+        >
+          {isGoogleSubmitting ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <span className="mr-2">
+              <GoogleIcon />
+            </span>
+          )}
+          Continue with Google
+        </Button>
 
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="font-dm-sans text-[#2D2B55]">Password</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="password"
-                          placeholder="Your password"
-                          autoComplete="current-password"
-                          className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-[#E2E2E8]" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-white px-2 text-[#7A7894]">Or continue with email</span>
+          </div>
+        </div>
 
-                {form.formState.errors.root?.message ? (
-                  <p className="text-sm text-red-600">{form.formState.errors.root.message}</p>
-                ) : null}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-dm-sans text-[#2D2B55]">Email Address</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="email"
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="h-11 w-full bg-[#2D2B55] font-dm-sans text-white hover:bg-[#25234A]"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Logging in...
-                    </>
-                  ) : (
-                    "Log in"
-                  )}
-                </Button>
-              </form>
-            </Form>
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="font-dm-sans text-[#2D2B55]">Password</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="password"
+                      placeholder="Your password"
+                      autoComplete="current-password"
+                      className="border-[#D8D6EA] focus-visible:ring-[#2D2B55]"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-            <div className="mt-6 flex flex-col gap-2 text-center font-dm-sans text-sm text-[#5E5B86]">
-              <Link href="/auth/forgot-password" className="font-medium text-[#2D2B55] underline">
-                Forgot password?
-              </Link>
-              <p>
-                Don&apos;t have an account?{" "}
-                <Link href="/auth/signup" className="font-medium text-[#2D2B55] underline">
-                  Sign up
-                </Link>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="h-11 w-full bg-[#2D2B55] font-dm-sans text-white hover:bg-[#25234A]"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Logging in...
+                </>
+              ) : (
+                "Log in"
+              )}
+            </Button>
+          </form>
+        </Form>
+
+        <div className="space-y-2 text-center font-dm-sans text-sm text-[#5E5B86]">
+          <Link href="/auth/forgot-password" className="font-medium text-[#2D2B55] underline">
+            Forgot password?
+          </Link>
+          <p>
+            Don&apos;t have an account?{" "}
+            <Link href="/auth/signup" className="font-medium text-[#2D2B55] underline">
+              Sign up
+            </Link>
+          </p>
+        </div>
       </div>
-    </main>
+    </AuthFormLayout>
   );
 }
 
 function LoginPageFallback() {
-  return (
-    <main className="min-h-screen bg-[#FAFAFA] px-4 py-10 text-[#2D2B55]">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-lg items-center">
-        <Card className="w-full border-[#E7E6EF] bg-white shadow-sm">
-          <CardHeader className="space-y-2">
-            <CardTitle className="font-fraunces text-3xl text-[#2D2B55]">Log in</CardTitle>
-            <p className="font-dm-sans text-sm text-[#5E5B86]">Loading form...</p>
-          </CardHeader>
-        </Card>
-      </div>
-    </main>
-  );
+  return <AuthPageLoading text="Loading login..." />;
 }
 
 export default function LoginPage() {
