@@ -28,9 +28,10 @@ const STEPS: Step[] = [
 ]
 
 export function OnboardingChecklist() {
-  const { isLoading, onboardingStepsCompleted, onboardingCompleted } = usePersona()
+  const { isLoading, onboardingStepsCompleted, onboardingCompleted, refreshOnboardingSteps } = usePersona()
   const [dismissed, setDismissed] = useState<boolean | null>(null)
   const [showComplete, setShowComplete] = useState(false)
+  const [markingExtension, setMarkingExtension] = useState(false)
 
   // Read dismissed state from localStorage after mount
   useEffect(() => {
@@ -59,22 +60,31 @@ export function OnboardingChecklist() {
     setDismissed(true)
   }
 
+  const handleMarkExtensionInstalled = async () => {
+    setMarkingExtension(true)
+    try {
+      await fetch("/api/v1/user/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step: "extension_installed" }),
+      })
+      refreshOnboardingSteps()
+    } catch {
+      // silently fail
+    } finally {
+      setMarkingExtension(false)
+    }
+  }
+
   // Don't render until auth check + dismissed state resolved
   if (isLoading || dismissed === null) return null
-  // Don't show at all if permanently dismissed (unless user re-opens)
-  // (collapsed=true means show the ? button instead)
 
   const completedIds = new Set(onboardingStepsCompleted)
   const completedCount = STEPS.filter((s) => completedIds.has(s.id)).length
   const progressPercent = Math.round((completedCount / STEPS.length) * 100)
 
-  // Determine animation delay: if modal is likely showing, delay checklist more
-  let modalLikelyShowing = false
-  try {
-    modalLikelyShowing = !localStorage.getItem("ellyn_persona_onboarded")
-  } catch {
-    // ignore
-  }
+  // Delay checklist appearance if the persona modal is likely showing
+  const modalLikelyShowing = !onboardingStepsCompleted.includes("persona_selected")
   const animationDelay = modalLikelyShowing ? 1.8 : 0.5
 
   // If permanently dismissed, show the ? re-open button
@@ -143,26 +153,39 @@ export function OnboardingChecklist() {
         <ul className="px-4 pb-4 space-y-2">
           {STEPS.map((step) => {
             const done = completedIds.has(step.id)
+            const isExtension = step.id === "extension_installed"
             return (
-              <li key={step.id} className="flex items-center gap-3">
-                {done ? (
-                  <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-purple-100">
-                    <Check className="h-3 w-3 text-purple-600" />
-                  </div>
-                ) : (
-                  <div className="h-5 w-5 flex-shrink-0 rounded-full border-2 border-gray-300" />
-                )}
-                {done ? (
-                  <span className="text-sm text-gray-400 line-through">{step.label}</span>
-                ) : (
-                  <a
-                    href={step.href}
-                    target={step.external ? "_blank" : undefined}
-                    rel={step.external ? "noopener noreferrer" : undefined}
-                    className="text-sm text-gray-700 hover:text-purple-700 hover:underline transition-colors"
+              <li key={step.id} className="flex flex-col gap-1">
+                <div className="flex items-center gap-3">
+                  {done ? (
+                    <div className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-purple-100">
+                      <Check className="h-3 w-3 text-purple-600" />
+                    </div>
+                  ) : (
+                    <div className="h-5 w-5 flex-shrink-0 rounded-full border-2 border-gray-300" />
+                  )}
+                  {done ? (
+                    <span className="text-sm text-gray-400 line-through">{step.label}</span>
+                  ) : (
+                    <a
+                      href={step.href}
+                      target={step.external ? "_blank" : undefined}
+                      rel={step.external ? "noopener noreferrer" : undefined}
+                      className="text-sm text-gray-700 hover:text-purple-700 hover:underline transition-colors"
+                    >
+                      {step.label}
+                    </a>
+                  )}
+                </div>
+                {/* Manual "mark done" button for extension step */}
+                {isExtension && !done && (
+                  <button
+                    onClick={() => void handleMarkExtensionInstalled()}
+                    disabled={markingExtension}
+                    className="ml-8 text-xs text-purple-600 hover:text-purple-800 underline disabled:opacity-50 text-left"
                   >
-                    {step.label}
-                  </a>
+                    {markingExtension ? "Saving..." : "I've installed it ✓"}
+                  </button>
                 )}
               </li>
             )

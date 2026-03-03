@@ -357,7 +357,8 @@ export const DraftUpsertSchema = z.object({
 })
 
 export const GmailSendSchema = z.object({
-  leadId: requiredInline(1, 64),
+  leadId: optionalInline(64),
+  contactId: optionalInline(64),
   to: z.preprocess(
     (value) => (typeof value === 'string' ? sanitizeInlineString(value).toLowerCase() : value),
     z.string().email().max(254)
@@ -365,6 +366,9 @@ export const GmailSendSchema = z.object({
   subject: requiredInline(1, 300),
   body: requiredMultiline(1, 20000),
   isHtml: z.boolean().optional(),
+}).refine((data) => data.contactId || data.leadId, {
+  message: 'At least one of contactId or leadId must be provided',
+  path: ['contactId'],
 })
 
 export const EnhanceDraftSchema = z.object({

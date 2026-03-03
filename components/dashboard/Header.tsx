@@ -13,7 +13,8 @@ import { GlobalSearch } from "./GlobalSearch";
 import { NotificationsDropdown, type Notification } from "./NotificationsDropdown";
 import { Badge } from "@/components/ui/Badge";
 import { usePathname, useRouter } from "next/navigation";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createClient } from "@/lib/supabase/client";
 
 interface HeaderProps {
   breadcrumbs?: { label: string; href?: string }[];
@@ -62,7 +63,7 @@ export function Header({ breadcrumbs }: HeaderProps) {
     setIsSigningOut(true);
 
     if (isSupabaseConfigured) {
-      await supabase.auth.signOut();
+      await createClient().auth.signOut();
     }
 
     setIsSigningOut(false);

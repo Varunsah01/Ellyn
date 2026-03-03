@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { X, ArrowLeft, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { cn } from "@/lib/utils"
-import { getOnboardingState, syncOnboardingState } from "@/lib/onboarding"
+import { getOnboardingState, setOnboardingState } from "@/lib/onboarding"
 
 type TourStep = {
   id: string
@@ -51,6 +51,7 @@ export function DashboardTour() {
 
   const step = tourSteps[stepIndex]
 
+  // Start tour if tourPending flag is set in localStorage
   useEffect(() => {
     const state = getOnboardingState()
     if (state.tourPending && !state.tourDismissed && !state.tourCompleted) {
@@ -59,6 +60,7 @@ export function DashboardTour() {
     }
   }, [])
 
+  // Also listen for the imperative start event dispatched after persona selection
   useEffect(() => {
     const handleStartTour = () => {
       const state = getOnboardingState()
@@ -71,6 +73,7 @@ export function DashboardTour() {
     return () => window.removeEventListener("ellyn:start-tour", handleStartTour)
   }, [])
 
+  // Position tooltip next to the highlighted element
   useEffect(() => {
     if (!open || !step) return
 
@@ -128,31 +131,25 @@ export function DashboardTour() {
     }
   }, [open, step])
 
+  // Escape key closes tour
   useEffect(() => {
     if (!open) return
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        handleDismiss()
-      }
+      if (event.key === "Escape") handleDismiss()
     }
     window.addEventListener("keydown", handleKey)
     return () => window.removeEventListener("keydown", handleKey)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  const handleDismiss = async () => {
+  const handleDismiss = () => {
     setOpen(false)
-    await syncOnboardingState({
-      tourPending: false,
-      tourDismissed: true,
-    })
+    setOnboardingState({ tourPending: false, tourDismissed: true })
   }
 
-  const handleComplete = async () => {
+  const handleComplete = () => {
     setOpen(false)
-    await syncOnboardingState({
-      tourPending: false,
-      tourCompleted: true,
-    })
+    setOnboardingState({ tourPending: false, tourCompleted: true })
   }
 
   const nextStep = () => {

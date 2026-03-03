@@ -41,7 +41,7 @@ import {
 import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { supabaseAuthedFetch } from "@/lib/auth/client-fetch";
-import type { Lead, EmailResult } from "@/lib/supabase";
+import type { Lead, EmailResult } from "@/lib/supabase/types";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 

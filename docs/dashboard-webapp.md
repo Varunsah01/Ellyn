@@ -47,6 +47,10 @@ This document tracks the current implementation status of the main Next.js dashb
 | `GET /api/v1/subscription/status` | ✅ |
 | `PATCH /api/v1/user/profile` | ✅ |
 | `GET /api/v1/subscription/invoices` | ✅ (returns empty list gracefully when no customer) |
+| `GET /api/gmail/status` | ✅ |
+| `POST /api/gmail/disconnect` | ✅ |
+| `POST /api/gmail/send` | ✅ |
+| `GET /api/v1/auth/gmail` | ✅ (initiates OAuth) |
 
 ## Notes
 

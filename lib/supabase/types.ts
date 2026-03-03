@@ -1,55 +1,6 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+// Database Types — moved from lib/supabase.ts
+// Import from here instead of the legacy lib/supabase.ts module.
 
-// Config validation
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? ''
-const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? ''
-
-const isValidUrl = (() => {
-  try {
-    const protocol = new URL(supabaseUrl).protocol
-    return protocol === 'https:' || protocol === 'http:'
-  } catch {
-    return false
-  }
-})()
-
-export const isSupabaseConfigured = Boolean(
-  isValidUrl &&
-    supabaseAnon &&
-    supabaseUrl !== 'your-supabase-url' &&
-    supabaseAnon !== 'your-supabase-anon-key'
-)
-
-if (!isSupabaseConfigured) {
-  console.warn(
-    '[Ellyn] Supabase not configured - set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY'
-  )
-}
-
-// Client
-export const supabase: SupabaseClient = isSupabaseConfigured
-  ? (createClient<Database>(supabaseUrl, supabaseAnon) as unknown as SupabaseClient)
-  : new Proxy({} as SupabaseClient, {
-      get() {
-        throw new Error('Supabase not configured')
-      },
-    })
-
-// Server-side only (API routes / webhooks) - uses service role to bypass RLS
-export function createServiceClient(): SupabaseClient {
-  if (!isValidUrl) {
-    throw new Error('NEXT_PUBLIC_SUPABASE_URL is invalid or not set')
-  }
-
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-  if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY not set')
-
-  return createClient(supabaseUrl, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-}
-
-// Database Types
 type TableDef<Row, Insert, Update> = {
   Row: Row
   Insert: Insert

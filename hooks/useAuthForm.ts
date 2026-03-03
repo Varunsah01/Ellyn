@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, type ReadonlyURLSearchParams } from "next/navigation";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createClient } from "@/lib/supabase/client";
 
 export type ExtensionPayload = {
   id: string;
@@ -157,7 +158,7 @@ export function useAuthForm({ searchParams }: UseAuthFormOptions) {
       try {
         const {
           data: { session },
-        } = await supabase.auth.getSession();
+        } = await createClient().auth.getSession();
         accessToken =
           typeof session?.access_token === "string" ? session.access_token.trim() : "";
         refreshToken =
@@ -247,6 +248,8 @@ export function useAuthForm({ searchParams }: UseAuthFormOptions) {
     if (!isSupabaseConfigured) return;
 
     let isMounted = true;
+
+    const supabase = createClient();
 
     const checkSession = async () => {
       const { data, error } = await supabase.auth.getSession();

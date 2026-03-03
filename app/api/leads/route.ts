@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
 import { LeadCreateSchema, formatZodError } from '@/lib/validation/schemas';
 import { captureApiException } from '@/lib/monitoring/sentry';
@@ -18,6 +18,7 @@ import { captureApiException } from '@/lib/monitoring/sentry';
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser();
+    const supabase = await createServiceRoleClient();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const search = searchParams.get('search');
@@ -92,6 +93,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser();
+    const supabase = await createServiceRoleClient();
     const parsed = LeadCreateSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(

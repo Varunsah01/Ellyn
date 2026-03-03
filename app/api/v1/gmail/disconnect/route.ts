@@ -1,5 +1,5 @@
 import { createVersionedHandler } from '@/app/api/v1/_utils'
-import * as LegacyRoute from '@/app/api/gmail/send/route'
+import * as LegacyRoute from '@/app/api/gmail/disconnect/route'
 
 const legacyConfig = LegacyRoute as Record<string, unknown>
 

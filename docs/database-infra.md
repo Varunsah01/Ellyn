@@ -111,6 +111,7 @@ Two generations of schema coexist (both supported after migration 025):
 | `023_sequence_tracker_columns.sql` | ✅ present |
 | `024_application_tracker.sql` | ✅ present |
 | `025_complete_missing_tables.sql` | ✅ present — **run this** |
+| `027_gmail_production.sql` | ✅ present — adds `gmail_email`, `token_expires_at`, `encrypted_version` to `gmail_credentials`; adds `user_id`, `contact_id`, `from_email` to `email_history`; adds RLS + index |
 
 ## Environment Variables
 
@@ -151,6 +152,9 @@ Two generations of schema coexist (both supported after migration 025):
 - `SENTRY_ORG`
 - `SENTRY_PROJECT`
 - `SENTRY_AUTH_TOKEN`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GMAIL_TOKEN_ENCRYPTION_KEY`
 - `ENABLE_DEBUG_ENDPOINTS`
 - `SECRET_ADMIN_TOKEN`
 - `ADMIN_IP_WHITELIST`

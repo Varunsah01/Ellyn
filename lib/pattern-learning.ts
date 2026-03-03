@@ -4,7 +4,7 @@
  * Stores user feedback to improve future predictions
  */
 
-import { supabase } from './supabase';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 
 export interface LearnedPattern {
   id: string;
@@ -33,6 +33,7 @@ export async function recordPatternFeedback(
   feedback: PatternFeedback
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const supabase = await createServiceRoleClient();
     const { company_domain, pattern, worked } = feedback;
 
     // Get existing pattern data
@@ -130,6 +131,7 @@ export async function getLearnedPatterns(
   companyDomain: string
 ): Promise<LearnedPattern[]> {
   try {
+    const supabase = await createServiceRoleClient();
     const { data, error } = await supabase
       .from('learned_patterns')
       .select('*')
@@ -260,6 +262,7 @@ export async function getGlobalPatternStats(): Promise<
   }>
 > {
   try {
+    const supabase = await createServiceRoleClient();
     const { data, error } = await supabase
       .from('learned_patterns')
       .select('pattern, success_count, failure_count, company_domain');
@@ -327,6 +330,7 @@ export async function clearCompanyPatterns(
   companyDomain: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const supabase = await createServiceRoleClient();
     const { error } = await supabase
       .from('learned_patterns')
       .delete()

@@ -30,7 +30,9 @@
       "Bash(ls:*)",
       "Bash(grep -n \"incrementAIDraftGeneration\\\\|QuotaExceededError\" /c/Users/varun/Desktop/Coding/Ellyn/app/api/ai/*.ts)",
       "Bash(curl:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(rm:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
-import { PersonaOnboardingModal } from "@/components/dashboard/PersonaOnboardingModal";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { UpgradePrompt } from "@/components/subscription/UpgradePrompt";
 import { Badge } from "@/components/ui/Badge";
@@ -107,11 +106,6 @@ type DashboardStat = {
   change: number | null;
 };
 
-type PersonaStatusResponse = {
-  persona?: Persona | null;
-  profile_persona?: Persona | null;
-};
-
 type NextStep = {
   title: string;
   description: string;
@@ -121,7 +115,6 @@ type NextStep = {
 };
 
 const EXTENSION_DISMISS_KEY = "ellyn_extension_install_banner_dismissed";
-const ONBOARDING_DONE_KEY = "ellyn_onboarding_done";
 const DISCOVERY_FORM_ID = "dashboard-email-discovery-form";
 
 function unwrapPayload<T>(payload: unknown): T {
@@ -301,7 +294,6 @@ export default function DashboardPage() {
   } | null>(null);
 
   const [showExtensionBanner, setShowExtensionBanner] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [didShowUpgradeToast, setDidShowUpgradeToast] = useState(false);
 
   const extensionInstallUrl =
@@ -417,51 +409,6 @@ export default function DashboardPage() {
 
     return () => {
       window.clearTimeout(timeoutId);
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timeoutId: number | null = null;
-
-    const evaluateOnboardingState = async () => {
-      let localOnboardingDone = false;
-      try {
-        localOnboardingDone = localStorage.getItem(ONBOARDING_DONE_KEY) === "1";
-      } catch {
-        localOnboardingDone = false;
-      }
-
-      let serverPersonaMissing = false;
-      try {
-        const response = await fetch("/api/v1/user/persona", { cache: "no-store" });
-        if (response.ok) {
-          const payload = (await response.json()) as PersonaStatusResponse;
-          const persistedPersona = payload.profile_persona ?? payload.persona ?? null;
-          serverPersonaMissing = persistedPersona === null;
-        }
-      } catch {
-        serverPersonaMissing = false;
-      }
-
-      if (cancelled || (!serverPersonaMissing && localOnboardingDone)) {
-        return;
-      }
-
-      timeoutId = window.setTimeout(() => {
-        if (!cancelled) {
-          setShowOnboarding(true);
-        }
-      }, 500);
-    };
-
-    void evaluateOnboardingState();
-
-    return () => {
-      cancelled = true;
-      if (timeoutId !== null) {
-        window.clearTimeout(timeoutId);
-      }
     };
   }, []);
 
@@ -933,7 +880,6 @@ export default function DashboardPage() {
           </div>
         </section>
       </div>
-      <PersonaOnboardingModal open={showOnboarding} onOpenChange={setShowOnboarding} />
     </DashboardShell>
   );
 }

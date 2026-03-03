@@ -22,7 +22,8 @@ import { usePersona } from "@/context/PersonaContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useAnalytics";
 import { useSequenceStats } from "@/lib/hooks/useSequences";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { createClient } from "@/lib/supabase/client";
 import { useSubscription } from "@/context/SubscriptionContext";
 
 interface SidebarProps {
@@ -130,7 +131,7 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     const loadUser = async () => {
       if (!isSupabaseConfigured) return;
 
-      const { data, error } = await supabase.auth.getUser();
+      const { data, error } = await createClient().auth.getUser();
       if (!isMounted || error || !data.user) return;
 
       const authUser = data.user;
@@ -176,7 +177,7 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
     setIsSigningOut(true);
     try {
       if (isSupabaseConfigured) {
-        await supabase.auth.signOut();
+        await createClient().auth.signOut();
       }
       router.replace("/auth/login");
     } catch (error) {

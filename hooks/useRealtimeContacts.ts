@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { Contact } from '@/lib/supabase';
+import type { Contact } from '@/lib/supabase/types';
 import { createClient } from '@/lib/supabase/client';
 
 export interface UseRealtimeContactsResult {

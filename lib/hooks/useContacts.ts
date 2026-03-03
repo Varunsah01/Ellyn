@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRefreshListener } from '@/lib/context/AppRefreshContext';
 import { createClient } from '@/lib/supabase/client';
-import { supabase } from '@/lib/supabase';
 import { supabaseAuthedFetch } from '@/lib/auth/client-fetch';
 
 export interface Contact {
@@ -73,7 +72,8 @@ export function useContacts(options: UseContactsOptions = {}): UseContactsResult
   const [error, setError] = useState<string | null>(null);
 
   const fetchContactsDirectly = useCallback(async () => {
-    let query = supabase
+    const supabaseClient = createClient();
+    let query = supabaseClient
       .from('contacts')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });

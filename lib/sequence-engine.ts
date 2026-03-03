@@ -244,6 +244,40 @@ export const computeSequenceStats = ({
  * @example
  * getSequenceStatusLabel('status')
  */
+/**
+ * Send an email via the internal Gmail API route.
+ * Thin integration point for the sequence engine; full server-to-server refactor deferred.
+ */
+export async function sendViaGmailApi({
+  to,
+  subject,
+  body,
+  contactId,
+  isHtml = true,
+}: {
+  to: string
+  subject: string
+  body: string
+  contactId?: string
+  isHtml?: boolean
+}): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+
+  const response = await fetch(`${baseUrl}/api/gmail/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, subject, body, contactId, isHtml }),
+  })
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    return { success: false, error: data.error || "Failed to send email" }
+  }
+
+  return { success: true, messageId: data.messageId }
+}
+
 export const getSequenceStatusLabel = (status: string) => {
   switch (status) {
     case "active":

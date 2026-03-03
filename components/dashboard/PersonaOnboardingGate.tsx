@@ -1,27 +1,20 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { PersonaOnboardingModal } from "@/components/dashboard/PersonaOnboardingModal"
 import { usePersona } from "@/context/PersonaContext"
 
 export function PersonaOnboardingGate() {
-  const { isLoading, refreshOnboardingSteps } = usePersona()
-  const [show, setShow] = useState(false)
+  const { isLoading, onboardingStepsCompleted, refreshOnboardingSteps } = usePersona()
+  // Local dismissed flag ensures the modal hides immediately on close,
+  // even before the API call that marks persona_selected has resolved.
+  const [dismissed, setDismissed] = useState(false)
 
-  useEffect(() => {
-    if (isLoading) return
-    try {
-      const alreadyOnboarded = localStorage.getItem("ellyn_persona_onboarded")
-      if (!alreadyOnboarded) {
-        setShow(true)
-      }
-    } catch {
-      // localStorage unavailable — skip modal
-    }
-  }, [isLoading])
+  const personaSelected = onboardingStepsCompleted.includes("persona_selected")
+  const show = !isLoading && !dismissed && !personaSelected
 
   const handleClose = () => {
-    setShow(false)
+    setDismissed(true)
     refreshOnboardingSteps()
   }
 

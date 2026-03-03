@@ -1,283 +1,265 @@
 /**
  * Gmail API Helper Functions
- * Handles OAuth, token refresh, and email formatting
+ * Handles OAuth, AES-256-GCM token encryption, token refresh, and email formatting
  */
 
-export interface GmailCredentials {
-  clientId: string;
-  clientSecret: string;
-  accessToken?: string;
-  refreshToken?: string;
-}
+import { randomBytes, createCipheriv, createDecipheriv } from 'crypto'
 
 export interface TokenResponse {
-  access_token: string;
-  refresh_token?: string;
-  expires_in: number;
-  token_type: string;
+  access_token: string
+  refresh_token?: string
+  expires_in: number
+  token_type: string
+}
+
+// ---------------------------------------------------------------------------
+// AES-256-GCM token encryption
+// ---------------------------------------------------------------------------
+
+function getEncryptionKey(): Buffer {
+  const hex = process.env.GMAIL_TOKEN_ENCRYPTION_KEY
+  if (!hex || hex.length !== 64) {
+    throw new Error(
+      'GMAIL_TOKEN_ENCRYPTION_KEY must be a 64-character hex string (32 bytes). Generate with: openssl rand -hex 32'
+    )
+  }
+  return Buffer.from(hex, 'hex')
 }
 
 /**
- * Generate Google OAuth authorization URL
- * @param clientId - OAuth client ID
- * @param redirectUri - Callback URL after authorization
- * @returns Authorization URL to redirect user to
+ * Encrypt a token with AES-256-GCM.
+ * Output format: `iv:tag:ciphertext` (all base64, colon-separated).
  */
-export function getAuthUrl(clientId: string, redirectUri: string): string {
+export function encryptToken(value: string | null | undefined): string {
+  if (!value) return ''
+
+  const key = getEncryptionKey()
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', key, iv)
+
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
+  const tag = cipher.getAuthTag()
+
+  return [iv.toString('base64'), tag.toString('base64'), encrypted.toString('base64')].join(':')
+}
+
+/**
+ * Decrypt a token. Detects legacy base64-only format (no `:`) and falls back.
+ */
+export function decryptToken(encrypted: string | null | undefined): string {
+  if (!encrypted) return ''
+
+  // Legacy base64 fallback: if there are no colons, treat as plain base64
+  if (!encrypted.includes(':')) {
+    return Buffer.from(encrypted, 'base64').toString('utf-8')
+  }
+
+  const parts = encrypted.split(':')
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
+    throw new Error('Invalid encrypted token format')
+  }
+
+  const key = getEncryptionKey()
+  const iv = Buffer.from(parts[0], 'base64')
+  const tag = Buffer.from(parts[1], 'base64')
+  const ciphertext = Buffer.from(parts[2], 'base64')
+
+  const decipher = createDecipheriv('aes-256-gcm', key, iv)
+  decipher.setAuthTag(tag)
+
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
+}
+
+// ---------------------------------------------------------------------------
+// OAuth helpers — read client credentials from env vars
+// ---------------------------------------------------------------------------
+
+function getClientId(): string {
+  const id = process.env.GOOGLE_CLIENT_ID?.trim()
+  if (!id) throw new Error('GOOGLE_CLIENT_ID env var is not set')
+  return id
+}
+
+function getClientSecret(): string {
+  const secret = process.env.GOOGLE_CLIENT_SECRET?.trim()
+  if (!secret) throw new Error('GOOGLE_CLIENT_SECRET env var is not set')
+  return secret
+}
+
+/**
+ * Generate Google OAuth authorization URL using app-level credentials.
+ */
+export function getAuthUrl(redirectUri: string, state?: string): string {
   const scope = [
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/userinfo.email',
-  ].join(' ');
+  ].join(' ')
 
   const params = new URLSearchParams({
-    client_id: clientId,
+    client_id: getClientId(),
     redirect_uri: redirectUri,
     response_type: 'code',
     scope,
-    access_type: 'offline', // Get refresh token
-    prompt: 'consent', // Force consent screen to get refresh token
-  });
+    access_type: 'offline',
+    prompt: 'consent',
+  })
 
-  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  if (state) {
+    params.set('state', state)
+  }
+
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
 }
 
 /**
- * Exchange authorization code for tokens
- * @param code - Authorization code from Google
- * @param clientId - OAuth client ID
- * @param clientSecret - OAuth client secret
- * @param redirectUri - Same redirect URI used in authorization
- * @returns Token response with access and refresh tokens
+ * Exchange authorization code for tokens using app-level credentials.
  */
 export async function exchangeCodeForTokens(
   code: string,
-  clientId: string,
-  clientSecret: string,
   redirectUri: string
 ): Promise<TokenResponse> {
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       code,
-      client_id: clientId,
-      client_secret: clientSecret,
+      client_id: getClientId(),
+      client_secret: getClientSecret(),
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
     }),
-  });
+  })
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to exchange code for tokens: ${error}`);
+    const error = await response.text()
+    throw new Error(`Failed to exchange code for tokens: ${error}`)
   }
 
-  return response.json();
+  return response.json()
 }
 
 /**
- * Refresh access token using refresh token
- * @param refreshToken - Refresh token
- * @param clientId - OAuth client ID
- * @param clientSecret - OAuth client secret
- * @returns New access token
+ * Refresh access token using app-level credentials.
+ * Returns `{ access_token, expires_in }`.
  */
 export async function refreshAccessToken(
-  refreshToken: string,
-  clientId: string,
-  clientSecret: string
-): Promise<string> {
+  refreshToken: string
+): Promise<{ access_token: string; expires_in: number }> {
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       refresh_token: refreshToken,
-      client_id: clientId,
-      client_secret: clientSecret,
+      client_id: getClientId(),
+      client_secret: getClientSecret(),
       grant_type: 'refresh_token',
     }),
-  });
+  })
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to refresh access token: ${error}`);
+    const error = await response.text()
+    throw new Error(`Failed to refresh access token: ${error}`)
   }
 
-  const data: TokenResponse = await response.json();
-  return data.access_token;
+  const data: TokenResponse = await response.json()
+  return { access_token: data.access_token, expires_in: data.expires_in }
 }
 
+// ---------------------------------------------------------------------------
+// Email formatting & sending
+// ---------------------------------------------------------------------------
+
 /**
- * Format email for Gmail API (RFC 2822 format)
- * @param to - Recipient email address
- * @param subject - Email subject
- * @param body - Email body (plain text or HTML)
- * @param isHtml - Whether body is HTML (default: false)
- * @returns Base64url encoded email
+ * Format email for Gmail API (RFC 2822 format).
  */
 export function formatEmail(
   to: string,
   subject: string,
   body: string,
+  from?: string,
   isHtml: boolean = false
 ): string {
-  const contentType = isHtml ? 'text/html' : 'text/plain';
+  const contentType = isHtml ? 'text/html' : 'text/plain'
 
-  const email = [
+  const headers = [
     `To: ${to}`,
     `Subject: ${subject}`,
     `Content-Type: ${contentType}; charset=utf-8`,
-    '',
-    body,
-  ].join('\r\n');
+  ]
 
-  // Base64url encode (URL-safe base64)
-  const base64 = Buffer.from(email).toString('base64');
-  return base64
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-/**
- * Send email via Gmail API
- * @param accessToken - Valid Gmail API access token
- * @param encodedMessage - Base64url encoded message
- * @returns Gmail message ID
- */
-export async function sendEmail(
-  accessToken: string,
-  encodedMessage: string
-): Promise<string> {
-  const response = await fetch(
-    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        raw: encodedMessage,
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to send email: ${error}`);
+  if (from) {
+    headers.unshift(`From: ${from}`)
   }
 
-  const data = await response.json();
-  return data.id; // Gmail message ID
+  const email = [...headers, '', body].join('\r\n')
+
+  const base64 = Buffer.from(email).toString('base64')
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 /**
- * Get user's email address from Gmail API
- * @param accessToken - Valid Gmail API access token
- * @returns User's email address
+ * Send email via Gmail API.
+ */
+export async function sendEmail(accessToken: string, encodedMessage: string): Promise<string> {
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw: encodedMessage }),
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Failed to send email: ${error}`)
+  }
+
+  const data = await response.json()
+  return data.id
+}
+
+/**
+ * Get user's email address from Gmail API.
  */
 export async function getUserEmail(accessToken: string): Promise<string> {
-  const response = await fetch(
-    'https://gmail.googleapis.com/gmail/v1/users/me/profile',
-    {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-      },
-    }
-  );
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to get user email: ${error}`);
+    const error = await response.text()
+    throw new Error(`Failed to get user email: ${error}`)
   }
 
-  const data = await response.json();
-  return data.emailAddress;
+  const data = await response.json()
+  return data.emailAddress
 }
 
 /**
- * Replace template variables in email body
- * @param template - Email template with {{variables}}
- * @param variables - Object with variable values
- * @returns Processed email body
+ * Revoke a token at Google (best-effort).
+ */
+export async function revokeToken(token: string): Promise<void> {
+  await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  }).catch(() => {
+    // Best-effort; ignore errors
+  })
+}
+
+/**
+ * Replace template variables in email body.
  */
 export function replaceTemplateVariables(
   template: string,
   variables: Record<string, string>
 ): string {
-  let result = template;
-
+  let result = template
   Object.entries(variables).forEach(([key, value]) => {
-    const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-    result = result.replace(regex, value);
-  });
-
-  return result;
-}
-
-/**
- * Simple encryption for credentials (use proper encryption in production)
- * This is a placeholder - use proper encryption library in production
- */
-export function encryptCredential(value: string): string {
-  // WARNING: This is NOT secure encryption, just base64 encoding
-  // In production, use proper encryption like crypto-js or node's crypto module
-  return Buffer.from(value).toString('base64');
-}
-
-/**
- * Simple decryption for credentials (use proper encryption in production)
- */
-export function decryptCredential(encrypted: string): string {
-  // WARNING: This is NOT secure decryption, just base64 decoding
-  // In production, use proper decryption
-  return Buffer.from(encrypted, 'base64').toString('utf-8');
-}
-
-// Backward-compatible token helpers used by API routes
-/**
- * Encrypt token.
- * @param {string | null | undefined} value - Value input.
- * @returns {string} Computed string.
- * @example
- * encryptToken('value')
- */
-export function encryptToken(value: string | null | undefined): string {
-  if (!value) {
-    return "";
-  }
-  return encryptCredential(value);
-}
-
-/**
- * Decrypt token.
- * @param {string | null | undefined} encrypted - Encrypted input.
- * @returns {string} Computed string.
- * @example
- * decryptToken('encrypted')
- */
-export function decryptToken(encrypted: string | null | undefined): string {
-  if (!encrypted) {
-    return "";
-  }
-  return decryptCredential(encrypted);
-}
-
-/**
- * Validate Gmail credentials structure
- */
-export function validateGmailCredentials(credentials: any): boolean {
-  return (
-    credentials &&
-    typeof credentials.clientId === 'string' &&
-    credentials.clientId.length > 0 &&
-    typeof credentials.clientSecret === 'string' &&
-    credentials.clientSecret.length > 0
-  );
+    const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g')
+    result = result.replace(regex, value)
+  })
+  return result
 }

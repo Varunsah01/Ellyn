@@ -14,7 +14,7 @@ import {
   getProviderDisplayName,
 } from '@/lib/email-verification';
 import { getLearnedPatterns, applyLearnedBoosts } from '@/lib/pattern-learning';
-import { supabase } from '@/lib/supabase';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import { EmailGenerateSchema, formatZodError } from '@/lib/validation/schemas';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
 import { incrementEmailGeneration, QuotaExceededError } from '@/lib/quota';
@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
       }
       throw quotaErr;
     }
+
+    const supabase = await createServiceRoleClient();
 
     const parsed = EmailGenerateSchema.safeParse(await request.json());
     if (!parsed.success) {

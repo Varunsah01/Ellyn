@@ -33,7 +33,7 @@ import { Send, Loader2, FileText } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/useToast";
 import { replaceTemplateVariables } from "@/lib/gmail-helper";
-import type { Lead } from "@/lib/supabase";
+import type { Lead } from "@/lib/supabase/types";
 import { CsrfHiddenInput } from "@/components/CsrfHiddenInput";
 
 const formSchema = z.object({

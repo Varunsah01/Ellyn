@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
 import { LeadUpdateSchema, formatZodError } from '@/lib/validation/schemas';
 import { captureApiException } from '@/lib/monitoring/sentry';
@@ -23,6 +23,7 @@ export async function PATCH(
 ) {
   try {
     const user = await getAuthenticatedUser();
+    const supabase = await createServiceRoleClient();
     const { id } = params;
     const parsed = LeadUpdateSchema.safeParse(await request.json());
     if (!parsed.success) {
@@ -101,6 +102,7 @@ export async function DELETE(
 ) {
   try {
     const user = await getAuthenticatedUser();
+    const supabase = await createServiceRoleClient();
     const { id } = params;
 
     // Delete from database
@@ -161,6 +163,7 @@ export async function GET(
 ) {
   try {
     const user = await getAuthenticatedUser();
+    const supabase = await createServiceRoleClient();
     const { id } = params;
 
     const { data, error } = await supabase

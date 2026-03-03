@@ -44,6 +44,7 @@ type DashboardNavItem = {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  tourId?: string;
 };
 
 interface DashboardShellProps {
@@ -66,8 +67,8 @@ const SIDEBAR_LOGO_CDN =
 function getPersonaNav(persona: DashboardPersona): DashboardNavItem[] {
   const baseItems: DashboardNavItem[] = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Contacts", href: "/dashboard/contacts", icon: Users },
-    { label: "Sequences", href: "/dashboard/sequences", icon: GitBranch },
+    { label: "Contacts", href: "/dashboard/contacts", icon: Users, tourId: "contacts" },
+    { label: "Sequences", href: "/dashboard/sequences", icon: GitBranch, tourId: "sequences" },
     { label: "Templates", href: "/dashboard/templates", icon: FileText },
   ];
 
@@ -184,6 +185,7 @@ function DashboardChrome({ children }: { children: ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                data-tour={item.tourId}
                 className={cn(
                   "flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors",
                   active
@@ -196,6 +198,17 @@ function DashboardChrome({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+
+          <a
+            href="https://chromewebstore.google.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-tour="extension"
+            className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-sm font-medium text-[#605B83] transition-colors hover:bg-white hover:text-[#403B6C]"
+          >
+            <ExternalLink className="h-4 w-4" />
+            <span>Chrome Extension</span>
+          </a>
         </nav>
 
         <div className="border-t border-[#E9E7F5] px-3 py-4">
@@ -335,6 +348,7 @@ function DashboardChrome({ children }: { children: ReactNode }) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    data-tour={item.tourId}
                     onClick={() => setMobileSidebarOpen(false)}
                     className={cn(
                       "flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors",

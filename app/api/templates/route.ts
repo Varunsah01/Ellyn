@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getAuthenticatedUser } from '@/lib/auth/helpers';
 import { TemplateCreateSchema, formatZodError } from '@/lib/validation/schemas';
 import { captureApiException } from '@/lib/monitoring/sentry';
@@ -18,6 +18,7 @@ import { captureApiException } from '@/lib/monitoring/sentry';
 export async function GET() {
   try {
     const user = await getAuthenticatedUser();
+    const supabase = await createServiceRoleClient();
 
     // Fetch templates, ordering by is_default (defaults first) then created_at
     const { data, error } = await supabase
@@ -67,6 +68,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser();
+    const supabase = await createServiceRoleClient();
 
     const parsed = TemplateCreateSchema.safeParse(await request.json());
     if (!parsed.success) {

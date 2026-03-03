@@ -31,7 +31,7 @@ import {
   Inbox,
   RefreshCw,
 } from "lucide-react";
-import type { Lead } from "@/lib/supabase";
+import type { Lead } from "@/lib/supabase/types";
 import { EmailComposer } from "./EmailComposer";
 
 interface LeadsTableProps {

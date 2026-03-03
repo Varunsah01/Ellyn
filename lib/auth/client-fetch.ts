@@ -1,6 +1,5 @@
 import { withCsrfHeaders } from "@/lib/csrf";
 import { createClient } from "@/lib/supabase/client";
-import { supabase as legacySupabase } from "@/lib/supabase";
 
 function firstNonEmptyToken(candidates: unknown[]): string {
   for (const candidate of candidates) {
@@ -55,16 +54,6 @@ async function resolveAccessToken(): Promise<string> {
     if (token) return token;
   } catch {
     // Continue to fallbacks.
-  }
-
-  try {
-    const {
-      data: { session },
-    } = await legacySupabase.auth.getSession();
-    const token = firstNonEmptyToken([session?.access_token]);
-    if (token) return token;
-  } catch {
-    // Continue to localStorage fallback.
   }
 
   return readAccessTokenFromLocalStorage();

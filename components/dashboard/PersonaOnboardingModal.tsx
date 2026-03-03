@@ -12,11 +12,9 @@ import {
   DialogTitle,
 } from "@/components/ui/Dialog";
 import { usePersona } from "@/context/PersonaContext";
+import { setOnboardingState } from "@/lib/onboarding";
 import type { Persona } from "@/lib/persona-copy";
-import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-
-const ONBOARDING_DONE_KEY = "ellyn_onboarding_done";
 
 type PersonaCardConfig = {
   persona: Persona;
@@ -48,25 +46,6 @@ const PERSONA_CARDS: PersonaCardConfig[] = [
   },
 ];
 
-const TOUR_STEPS = [
-  "\uD83D\uDCE7 Use the Email Finder to discover professional emails",
-  "\uD83D\uDC65 Save contacts and manage your outreach in Contacts",
-  "\uD83D\uDE80 Build automated sequences in the Sequences section",
-];
-
-function wait(ms: number) {
-  return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
-async function runMiniTour() {
-  for (const step of TOUR_STEPS) {
-    showToast.info(step);
-    await wait(2000);
-  }
-}
-
 export function PersonaOnboardingModal({
   open,
   onOpenChange,
@@ -94,13 +73,21 @@ export function PersonaOnboardingModal({
     setIsSubmitting(true);
     try {
       await setPersona(selectedPersona);
-      try {
-        localStorage.setItem(ONBOARDING_DONE_KEY, "1");
-      } catch {
-        // localStorage unavailable
-      }
+
+      // Mark tour as pending so DashboardTour picks it up
+      setOnboardingState({ tourPending: true, tourCompleted: false, tourDismissed: false });
+
+      // Fire-and-forget: persist persona_selected milestone to DB
+      void fetch("/api/v1/user/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step: "persona_selected" }),
+      });
+
       closeModal();
-      void runMiniTour();
+
+      // Signal the DashboardTour to start immediately
+      window.dispatchEvent(new Event("ellyn:start-tour"));
     } catch {
       // Error toast is handled in PersonaContext.
     } finally {

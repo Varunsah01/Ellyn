@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 
 export interface PatternLearning {
   domain: string;
@@ -24,6 +24,7 @@ export async function recordPatternFeedback(
   worked: boolean
 ): Promise<void> {
   try {
+    const supabase = await createServiceRoleClient();
     // Check if record exists
     const { data: existing } = await supabase
       .from('pattern_learning')
@@ -76,6 +77,7 @@ export async function recordPatternFeedback(
  */
 export async function getLearnedPatterns(domain: string): Promise<PatternLearning[]> {
   try {
+    const supabase = await createServiceRoleClient();
     const { data, error } = await supabase
       .from('pattern_learning')
       .select('*')
@@ -148,6 +150,7 @@ export function applyLearning(
  */
 export async function getTopPerformingPatterns(limit: number = 10): Promise<PatternLearning[]> {
   try {
+    const supabase = await createServiceRoleClient();
     const { data, error } = await supabase
       .from('pattern_learning')
       .select('*')

@@ -1,29 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { subDays, format } from "date-fns";
 import { getAuthenticatedUser } from "@/lib/auth/helpers";
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 
-const rawSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || '';
-const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim() || '';
-
-const isValidSupabaseUrl = (() => {
-  if (!rawSupabaseUrl) return false;
-  try {
-    const parsed = new URL(rawSupabaseUrl);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
-})();
-
-const hasPlaceholderValues =
-  rawSupabaseUrl === "your-supabase-url" ||
-  supabaseKey === "your-supabase-anon-key";
-
-const supabase = isValidSupabaseUrl && supabaseKey && !hasPlaceholderValues
-  ? createClient(rawSupabaseUrl, supabaseKey)
-  : null;
+type SupabaseClient = Awaited<ReturnType<typeof createServiceRoleClient>>
 
 /**
  * Handle GET requests for `/api/analytics`.
@@ -36,15 +17,9 @@ const supabase = isValidSupabaseUrl && supabaseKey && !hasPlaceholderValues
  * fetch('/api/analytics')
  */
 export async function GET(request: NextRequest) {
-  if (!supabase) {
-    return NextResponse.json(
-      { error: "Supabase not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables." },
-      { status: 503 }
-    );
-  }
-
   try {
     const user = await getAuthenticatedUser();
+    const supabase = await createServiceRoleClient();
     const searchParams = request.nextUrl.searchParams;
     const metric = searchParams.get("metric");
     const startDate = searchParams.get("startDate");
@@ -57,28 +32,28 @@ export async function GET(request: NextRequest) {
 
     switch (metric) {
       case "overview":
-        return await getOverviewMetrics(start, end, compareWith === "previous_period", user.id);
+        return await getOverviewMetrics(supabase, start, end, compareWith === "previous_period", user.id);
 
       case "contacts_over_time":
-        return await getContactsOverTime(start, end, user.id);
+        return await getContactsOverTime(supabase, start, end, user.id);
 
       case "sequence_performance":
-        return await getSequencePerformance(start, end, user.id);
+        return await getSequencePerformance(supabase, start, end, user.id);
 
       case "contact_insights":
-        return await getContactInsights(start, end, user.id);
+        return await getContactInsights(supabase, start, end, user.id);
 
       case "email_patterns":
-        return await getEmailPatterns(start, end, user.id);
+        return await getEmailPatterns(supabase, start, end, user.id);
 
       case "activity_heatmap":
-        return await getActivityHeatmap(start, end, user.id);
+        return await getActivityHeatmap(supabase, start, end, user.id);
 
       case "tracker_performance":
-        return await getTrackerPerformance(start, end, user.id);
+        return await getTrackerPerformance(supabase, start, end, user.id);
 
       case "top_performing":
-        return await getTopPerforming(start, end, user.id);
+        return await getTopPerforming(supabase, start, end, user.id);
 
       default:
         return NextResponse.json(
@@ -101,15 +76,12 @@ export async function GET(request: NextRequest) {
 
 // Overview Metrics
 async function getOverviewMetrics(
+  supabase: SupabaseClient,
   start: Date,
   end: Date,
   withComparison: boolean,
   userId: string
 ): Promise<NextResponse> {
-  if (!supabase) {
-    throw new Error("Supabase not configured");
-  }
-
   const startStr = format(start, "yyyy-MM-dd");
   const endStr = format(end, "yyyy-MM-dd");
 
@@ -153,7 +125,7 @@ async function getOverviewMetrics(
   const replyRate = totalSent > 0 ? ((repliedCount / totalSent) * 100).toFixed(1) : null;
 
   // Best performing sequence
-  const sequencePerfResponse = await getSequencePerformance(start, end, userId);
+  const sequencePerfResponse = await getSequencePerformance(supabase, start, end, userId);
   const sequencePerfPayload = await sequencePerfResponse.json();
   const sequencePerf = Array.isArray(sequencePerfPayload?.data)
     ? sequencePerfPayload.data[0]
@@ -191,7 +163,7 @@ async function getOverviewMetrics(
     const prevStart = subDays(start, daysDiff);
     const prevEnd = subDays(end, daysDiff);
 
-    const prevMetrics = await getOverviewMetrics(prevStart, prevEnd, false, userId);
+    const prevMetrics = await getOverviewMetrics(supabase, prevStart, prevEnd, false, userId);
     const prevData = await prevMetrics.json();
 
     comparison = {
@@ -222,11 +194,7 @@ async function getOverviewMetrics(
 }
 
 // Contacts Over Time
-async function getContactsOverTime(start: Date, end: Date, userId: string) {
-  if (!supabase) {
-    throw new Error("Supabase not configured");
-  }
-
+async function getContactsOverTime(supabase: SupabaseClient, start: Date, end: Date, userId: string) {
   const { data, error } = await supabase
     .from("contacts")
     .select("created_at")
@@ -254,11 +222,7 @@ async function getContactsOverTime(start: Date, end: Date, userId: string) {
 }
 
 // Sequence Performance
-async function getSequencePerformance(start: Date, end: Date, userId: string) {
-  if (!supabase) {
-    throw new Error("Supabase not configured");
-  }
-
+async function getSequencePerformance(supabase: SupabaseClient, start: Date, end: Date, userId: string) {
   const { data: sequences } = await supabase
     .from("sequences")
     .select("id, name, status, created_at")
@@ -308,11 +272,7 @@ async function getSequencePerformance(start: Date, end: Date, userId: string) {
 }
 
 // Contact Insights
-async function getContactInsights(start: Date, end: Date, userId: string) {
-  if (!supabase) {
-    throw new Error("Supabase not configured");
-  }
-
+async function getContactInsights(supabase: SupabaseClient, start: Date, end: Date, userId: string) {
   // Top companies
   const { data: contacts } = await supabase
     .from("contacts")
@@ -383,11 +343,7 @@ async function getContactInsights(start: Date, end: Date, userId: string) {
 }
 
 // Email Patterns
-async function getEmailPatterns(start: Date, end: Date, userId: string) {
-  if (!supabase) {
-    throw new Error("Supabase not configured");
-  }
-
+async function getEmailPatterns(supabase: SupabaseClient, start: Date, end: Date, userId: string) {
   const { data: contacts } = await supabase
     .from("contacts")
     .select("confirmed_email, inferred_email, inference_pattern, confidence_score")
@@ -459,11 +415,7 @@ async function getEmailPatterns(start: Date, end: Date, userId: string) {
 }
 
 // Activity Heatmap
-async function getActivityHeatmap(start: Date, end: Date, userId: string) {
-  if (!supabase) {
-    throw new Error("Supabase not configured");
-  }
-
+async function getActivityHeatmap(supabase: SupabaseClient, start: Date, end: Date, userId: string) {
   const { data } = await supabase
     .from("outreach")
     .select("sent_at")
@@ -509,11 +461,7 @@ async function getActivityHeatmap(start: Date, end: Date, userId: string) {
 }
 
 // Top Performing (Best sequences, templates, etc.)
-async function getTopPerforming(start: Date, end: Date, userId: string) {
-  if (!supabase) {
-    throw new Error("Supabase not configured");
-  }
-
+async function getTopPerforming(supabase: SupabaseClient, start: Date, end: Date, userId: string) {
   // Get top 3 sequences by reply rate
   const { data: sequencePerf } = await supabase
     .from("sequences")
@@ -555,11 +503,7 @@ async function getTopPerforming(start: Date, end: Date, userId: string) {
   });
 }
 
-async function getTrackerPerformance(start: Date, end: Date, userId: string) {
-  if (!supabase) {
-    throw new Error("Supabase not configured");
-  }
-
+async function getTrackerPerformance(supabase: SupabaseClient, start: Date, end: Date, userId: string) {
   const { data: contacts, error } = await supabase
     .from("contacts")
     .select("id, company, status, created_at, updated_at, last_contacted_at")

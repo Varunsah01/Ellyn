@@ -27,6 +27,7 @@ type PersonaContextValue = {
   onboardingStepsCompleted: string[]
   onboardingCompleted: boolean
   refreshOnboardingSteps: () => void
+  markOnboardingStep: (step: string) => void
 }
 
 type PersonaApiResponse = {
@@ -49,6 +50,7 @@ const defaultValue: PersonaContextValue = {
   onboardingStepsCompleted: [],
   onboardingCompleted: false,
   refreshOnboardingSteps: () => {},
+  markOnboardingStep: () => {},
 }
 
 const PersonaContext = createContext<PersonaContextValue>(defaultValue)
@@ -84,16 +86,6 @@ function hasRecentExtensionHeartbeat(lastSeen: string | null | undefined): boole
   const timestamp = new Date(lastSeen).getTime()
   if (Number.isNaN(timestamp)) return false
   return Date.now() - timestamp <= EXTENSION_LOOKBACK_MS
-}
-
-function markOnboardingStep(step: string) {
-  void fetch(ONBOARDING_API_PATH, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ step }),
-  }).catch((error) => {
-    console.error('[PersonaContext] Failed to mark onboarding step', error)
-  })
 }
 
 function logPersonaChange(persona: Persona) {
@@ -146,7 +138,13 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
           hasRecentExtensionHeartbeat(data.extension_last_seen) &&
           !steps.includes(EXTENSION_INSTALLED_STEP)
         ) {
-          markOnboardingStep(EXTENSION_INSTALLED_STEP)
+          void fetch(ONBOARDING_API_PATH, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ step: EXTENSION_INSTALLED_STEP }),
+          }).catch((error) => {
+            console.error('[PersonaContext] Failed to mark extension_installed', error)
+          })
         }
       } catch (error) {
         console.error('[PersonaContext] Failed to fetch persona', error)
@@ -175,6 +173,21 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
         console.error('[PersonaContext] Failed to refresh onboarding steps', error)
       })
   }, [])
+
+  const markOnboardingStep = useCallback(
+    (step: string) => {
+      void fetch(ONBOARDING_API_PATH, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step }),
+      })
+        .then(() => refreshOnboardingSteps())
+        .catch((error) => {
+          console.error('[PersonaContext] Failed to mark onboarding step', error)
+        })
+    },
+    [refreshOnboardingSteps]
+  )
 
   const setPersona = useCallback(
     async (nextPersona: Persona) => {
@@ -220,6 +233,7 @@ export function PersonaProvider({ children }: { children: React.ReactNode }) {
         onboardingStepsCompleted,
         onboardingCompleted,
         refreshOnboardingSteps,
+        markOnboardingStep,
       }}
     >
       {children}

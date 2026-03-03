@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 
-import { createServiceClient } from '@/lib/supabase'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 import { resolvePlanTypeFromProductId } from '@/lib/pricing-config'
 
 type DodoEvent = {
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing event id or type' }, { status: 400 })
   }
 
-  const db = createServiceClient()
+  const db = await createServiceRoleClient()
 
   // 1. Store raw event for audit + idempotency.
   const { error: insertError } = await db.from('dodo_webhook_events').insert({

@@ -14,17 +14,33 @@ jest.mock('next/navigation', () => {
   }
 })
 
-jest.mock('@/lib/supabase', () => ({
+jest.mock('@/lib/supabase/config', () => ({
   isSupabaseConfigured: true,
-  supabase: {
-    auth: {
-      getSession: jest.fn(),
-      onAuthStateChange: jest.fn(),
-      signInWithPassword: jest.fn(),
-      signInWithOAuth: jest.fn(),
-    },
-  },
 }))
+
+jest.mock('@/lib/supabase/client', () => {
+  const mockGetSession = jest.fn()
+  const mockOnAuthStateChange = jest.fn()
+  const mockSignInWithPassword = jest.fn()
+  const mockSignInWithOAuth = jest.fn()
+
+  return {
+    createClient: jest.fn(() => ({
+      auth: {
+        getSession: mockGetSession,
+        onAuthStateChange: mockOnAuthStateChange,
+        signInWithPassword: mockSignInWithPassword,
+        signInWithOAuth: mockSignInWithOAuth,
+      },
+    })),
+    __mockAuth: {
+      getSession: mockGetSession,
+      onAuthStateChange: mockOnAuthStateChange,
+      signInWithPassword: mockSignInWithPassword,
+      signInWithOAuth: mockSignInWithOAuth,
+    },
+  }
+})
 
 jest.mock('@/lib/api-client', () => ({
   apiFetch: jest.fn(),
@@ -36,8 +52,16 @@ jest.mock('@/components/CsrfHiddenInput', () => ({
 
 import LoginPage from '@/app/auth/login/page'
 import SignupPage from '@/app/auth/signup/page'
-import { supabase } from '@/lib/supabase'
 import { apiFetch } from '@/lib/api-client'
+
+type MockAuthMethods = {
+  getSession: jest.Mock
+  onAuthStateChange: jest.Mock
+  signInWithPassword: jest.Mock
+  signInWithOAuth: jest.Mock
+}
+
+const supabase = (jest.requireMock('@/lib/supabase/client') as { __mockAuth: MockAuthMethods }).__mockAuth
 
 function getRouterReplaceMock(): jest.Mock {
   const navModule = jest.requireMock('next/navigation') as {
@@ -50,12 +74,12 @@ describe('Auth integration flows', () => {
   beforeEach(() => {
     jest.clearAllMocks()
 
-    ;(supabase.auth.getSession as jest.Mock).mockResolvedValue({
+    ;(supabase.getSession as jest.Mock).mockResolvedValue({
       data: { session: null },
       error: null,
     })
 
-    ;(supabase.auth.onAuthStateChange as jest.Mock).mockReturnValue({
+    ;(supabase.onAuthStateChange as jest.Mock).mockReturnValue({
       data: {
         subscription: {
           unsubscribe: jest.fn(),
@@ -140,7 +164,7 @@ describe('Auth integration flows', () => {
   })
 
   test('login signs in and redirects to dashboard', async () => {
-    ;(supabase.auth.signInWithPassword as jest.Mock).mockResolvedValue({
+    ;(supabase.signInWithPassword as jest.Mock).mockResolvedValue({
       data: {
         user: {
           id: 'user-1',
@@ -163,7 +187,7 @@ describe('Auth integration flows', () => {
     fireEvent.click(screen.getByRole('button', { name: /^sign in$/i }))
 
     await waitFor(() => {
-      expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      expect(supabase.signInWithPassword).toHaveBeenCalledWith({
         email: 'login@example.com',
         password: 'StrongPass1!',
       })
@@ -175,7 +199,7 @@ describe('Auth integration flows', () => {
   })
 
   test('login shows error when credentials are invalid', async () => {
-    ;(supabase.auth.signInWithPassword as jest.Mock).mockResolvedValue({
+    ;(supabase.signInWithPassword as jest.Mock).mockResolvedValue({
       data: { user: null },
       error: { message: 'Invalid login credentials' },
     })
