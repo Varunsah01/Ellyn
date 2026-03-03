@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -95,6 +96,7 @@ function clampPercent(used: number, limit: number): number {
 }
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
 
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
@@ -124,6 +126,17 @@ export default function SettingsPage() {
     aiDraftLimit,
     resetDate,
   } = useSubscription();
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "billing") {
+      setActiveTab("billing");
+      return;
+    }
+    if (tab === "account") {
+      setActiveTab("account");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;

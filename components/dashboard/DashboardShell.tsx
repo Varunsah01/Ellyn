@@ -6,12 +6,16 @@ import { ReactNode, useEffect, useMemo, useState } from "react";
 import {
   BarChart2,
   Briefcase,
+  CreditCard,
+  ExternalLink,
   FileText,
   GitBranch,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Menu,
   Settings,
+  Sparkles,
   Target,
   TrendingUp,
   Users,
@@ -20,7 +24,13 @@ import {
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar";
 import { BreadcrumbItem, Breadcrumbs } from "@/components/Breadcrumbs";
-import { Button } from "@/components/ui/Button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/DropdownMenu";
 import { PlanBadge } from "@/components/subscription/PlanBadge";
 import { QuotaWarningBanner } from "@/components/subscription/QuotaWarningBanner";
 import { usePersona } from "@/context/PersonaContext";
@@ -158,10 +168,10 @@ function DashboardChrome({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#FAFAFA] text-[#2D2B55]">
-      <aside className="hidden w-60 flex-shrink-0 flex-col bg-[#2E2B5F] text-[#F4F3FF] md:flex">
-        <div className="flex h-[70px] items-center border-b border-white/10 px-5">
+      <aside className="hidden w-60 flex-shrink-0 flex-col border-r border-[#E9E7F5] bg-[#F9F8FE] text-[#5D5A86] md:flex">
+        <div className="flex h-[72px] items-center border-b border-[#E9E7F5] px-5">
           <Link href="/dashboard" className="inline-flex items-center">
-            <img src={SIDEBAR_LOGO_CDN} alt="Ellyn" className="h-9 w-auto object-contain" />
+            <img src={SIDEBAR_LOGO_CDN} alt="Ellyn" className="h-10 w-auto object-contain" />
           </Link>
         </div>
 
@@ -175,8 +185,10 @@ function DashboardChrome({ children }: { children: ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                  active ? "bg-[#4D488A] text-white" : "text-[#E9E5FF] hover:bg-white/10 hover:text-white"
+                  "flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors",
+                  active
+                    ? "border-[#FFC2C2] bg-[#FFF0F2] text-[#F2616D]"
+                    : "border-transparent text-[#605B83] hover:bg-white hover:text-[#403B6C]"
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -186,8 +198,8 @@ function DashboardChrome({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="border-t border-white/10 px-3 py-4">
-          <p className="mb-2 px-2 text-xs uppercase tracking-wide text-[#D9D6FF]">Persona</p>
+        <div className="border-t border-[#E9E7F5] px-3 py-4">
+          <p className="mb-2 px-2 text-xs uppercase tracking-wide text-[#79759B]">Persona</p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -196,7 +208,7 @@ function DashboardChrome({ children }: { children: ReactNode }) {
                 "flex items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium transition-colors",
                 persona === "job_seeker"
                   ? "bg-[#FF6B6B] text-white"
-                  : "bg-[#4B4684] text-[#F4F3FF] hover:bg-[#575292]"
+                  : "bg-white text-[#625D86] hover:bg-[#F1EFFA]"
               )}
             >
               <Briefcase className="h-3.5 w-3.5" />
@@ -209,7 +221,7 @@ function DashboardChrome({ children }: { children: ReactNode }) {
                 "flex items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium transition-colors",
                 persona === "smb_sales"
                   ? "bg-[#FF6B6B] text-white"
-                  : "bg-[#4B4684] text-[#F4F3FF] hover:bg-[#575292]"
+                  : "bg-white text-[#625D86] hover:bg-[#F1EFFA]"
               )}
             >
               <TrendingUp className="h-3.5 w-3.5" />
@@ -218,36 +230,84 @@ function DashboardChrome({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <div className="border-t border-white/10 px-3 py-4">
-          <div className="flex items-center gap-3 px-2">
-            <Avatar className="h-10 w-10 border border-white/20">
-              <AvatarImage src={userInfo.avatarUrl || undefined} alt={userInfo.name} />
-              <AvatarFallback className="bg-white/15 text-white">
-                {toInitials(userInfo.name, "U")}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">{userInfo.name}</p>
-              <p className="truncate text-xs text-[#D9D6FF]">{userInfo.email || "No email"}</p>
-            </div>
-          </div>
+        <div className="border-t border-[#E9E7F5] px-3 py-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-white"
+              >
+                <Avatar className="h-10 w-10 border border-[#E1DEF2]">
+                  <AvatarImage src={userInfo.avatarUrl || undefined} alt={userInfo.name} />
+                  <AvatarFallback className="bg-[#EEECFA] text-[#413C69]">
+                    {toInitials(userInfo.name, "U")}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[#2D2B55]">{userInfo.name}</p>
+                  <p className="truncate text-xs text-[#706A97]">{userInfo.email || "No email"}</p>
+                </div>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="mb-2 w-64 border-[#E9E7F5] bg-white text-[#4B4673]"
+            >
+              <div className="px-2 py-1.5">
+                <p className="truncate text-sm font-semibold uppercase tracking-wide text-[#474270]">
+                  {userInfo.name}
+                </p>
+                <p className="truncate text-xs text-[#7A75A0]">{userInfo.email || "No email"}</p>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings" className="flex cursor-pointer items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings?tab=billing" className="flex cursor-pointer items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Billing
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/upgrade" className="flex cursor-pointer items-center gap-2">
+                  <Sparkles className="h-4 w-4" />
+                  Upgrade / Plan
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a
+                  href="https://ellyn.app/support"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  <LifeBuoy className="h-4 w-4" />
+                  Help &amp; Support
+                  <ExternalLink className="ml-auto h-3.5 w-3.5 text-[#9A96B7]" />
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => void handleSignOut()}
+                disabled={isSigningOut}
+                className="cursor-pointer text-[#4B4673] focus:text-[#4B4673]"
+              >
+                <LogOut className="h-4 w-4" />
+                {isSigningOut ? "Signing out..." : "Sign Out"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-          <div className="mt-3 flex items-center justify-between gap-2 px-2">
+          <div className="mt-3 flex items-center px-2">
             <PlanBadge
               plan={planType}
-              className={planType === "free" ? "bg-[#F5F4FB] text-[#2D2B55]" : undefined}
+              className={planType === "free" ? "bg-white text-[#2D2B55] ring-1 ring-[#DDD9F2]" : undefined}
             />
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => void handleSignOut()}
-              disabled={isSigningOut}
-              className="h-8 gap-1 rounded-lg px-2 text-[#F4F3FF] hover:bg-[#4B4684] hover:text-white"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="text-xs">{isSigningOut ? "Signing out" : "Sign out"}</span>
-            </Button>
           </div>
         </div>
       </aside>
@@ -255,14 +315,14 @@ function DashboardChrome({ children }: { children: ReactNode }) {
       {mobileSidebarOpen ? (
         <div className="fixed inset-0 z-40 bg-[#120f2fcc] md:hidden" onClick={() => setMobileSidebarOpen(false)}>
           <aside
-            className="h-full w-60 bg-[#2E2B5F] px-3 py-4 text-[#F4F3FF]"
+            className="h-full w-60 border-r border-[#E9E7F5] bg-[#F9F8FE] px-3 py-4 text-[#5D5A86]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between px-2">
               <Link href="/dashboard" className="inline-flex items-center">
-                <img src={SIDEBAR_LOGO_CDN} alt="Ellyn" className="h-9 w-auto object-contain" />
+                <img src={SIDEBAR_LOGO_CDN} alt="Ellyn" className="h-10 w-auto object-contain" />
               </Link>
-              <button type="button" onClick={() => setMobileSidebarOpen(false)} className="text-white">
+              <button type="button" onClick={() => setMobileSidebarOpen(false)} className="text-[#4A4576]">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -277,10 +337,10 @@ function DashboardChrome({ children }: { children: ReactNode }) {
                     href={item.href}
                     onClick={() => setMobileSidebarOpen(false)}
                     className={cn(
-                      "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                      "flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors",
                       active
-                        ? "bg-[#4D488A] text-white"
-                        : "text-[#E7E4FF] hover:bg-white/10 hover:text-white"
+                        ? "border-[#FFC2C2] bg-[#FFF0F2] text-[#F2616D]"
+                        : "border-transparent text-[#605B83] hover:bg-white hover:text-[#403B6C]"
                     )}
                   >
                     <Icon className="h-4 w-4" />
@@ -298,7 +358,7 @@ function DashboardChrome({ children }: { children: ReactNode }) {
           <button type="button" onClick={() => setMobileSidebarOpen(true)} className="text-[#2D2B55]">
             <Menu className="h-5 w-5" />
           </button>
-          <img src={SIDEBAR_LOGO_CDN} alt="Ellyn" className="ml-3 h-7 w-auto object-contain" />
+          <img src={SIDEBAR_LOGO_CDN} alt="Ellyn" className="ml-3 h-8 w-auto object-contain" />
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto">
           <QuotaWarningBanner />
