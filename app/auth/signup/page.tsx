@@ -144,7 +144,11 @@ export default function SignupPage() {
         typeof window !== "undefined"
           ? window.location.origin
           : process.env.NEXT_PUBLIC_APP_URL;
-      const redirectTo = origin ? `${origin}/dashboard` : undefined;
+      const callbackParams = new URLSearchParams();
+      callbackParams.set("next", "/dashboard");
+      const redirectTo = origin
+        ? `${origin}/auth/callback?${callbackParams.toString()}`
+        : undefined;
 
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithOAuth({

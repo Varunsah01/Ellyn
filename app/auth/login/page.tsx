@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -77,6 +77,13 @@ function LoginPageContent() {
     process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   );
 
+  useEffect(() => {
+    const oauthError = searchParams.get("oauth_error");
+    if (oauthError) {
+      form.setError("root", { message: decodeURIComponent(oauthError) });
+    }
+  }, [form, searchParams]);
+
   const onSubmit = async (values: LoginFormValues) => {
     setIsSubmitting(true);
     form.clearErrors("root");
@@ -113,22 +120,11 @@ function LoginPageContent() {
         typeof window !== "undefined"
           ? window.location.origin
           : process.env.NEXT_PUBLIC_APP_URL;
-
-      const params = new URLSearchParams();
-      const redirect = searchParams.get("redirect");
-      const source = searchParams.get("source");
-      const next = searchParams.get("next");
-      const extensionId = searchParams.get("extensionId");
-
-      if (redirect && redirect.startsWith("/") && !redirect.startsWith("//")) {
-        params.set("redirect", redirect);
-      }
-      if (source) params.set("source", source);
-      if (next) params.set("next", next);
-      if (extensionId) params.set("extensionId", extensionId);
-
-      const query = params.toString();
-      const redirectTo = origin ? `${origin}/auth/login${query ? `?${query}` : ""}` : undefined;
+      const callbackParams = new URLSearchParams();
+      callbackParams.set("next", redirectPath);
+      const redirectTo = origin
+        ? `${origin}/auth/callback?${callbackParams.toString()}`
+        : undefined;
 
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithOAuth({
