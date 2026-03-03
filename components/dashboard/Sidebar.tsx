@@ -60,7 +60,7 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const router = useRouter();
   const { stats } = useDashboardStats();
   const { stats: sequenceStats } = useSequenceStats();
-  const { plan_type } = useSubscription();
+  const { plan_type, quota } = useSubscription();
   const { persona, setPersona } = usePersona();
   const isPaidUser = plan_type === "pro";
   const personaCopy = useMemo(() => getPersonaCopy(persona), [persona]);
@@ -305,6 +305,44 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
           </AnimatePresence>
         </nav>
       </div>
+
+      {/* Usage Section */}
+      {!collapsed && (
+        <div className="border-t px-4 py-3 space-y-2">
+          <p className="text-xs font-semibold text-foreground">Usage</p>
+          <div className="space-y-1.5">
+            <div>
+              <div className="flex justify-between text-[11px] text-muted-foreground mb-0.5">
+                <span>Email Lookups</span>
+                <span>{quota.email.used} / {quota.email.limit}</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[#6366F1] transition-all duration-300"
+                  style={{ width: `${quota.email.limit > 0 ? Math.min(100, (quota.email.used / quota.email.limit) * 100) : 0}%` }}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between text-[11px] text-muted-foreground mb-0.5">
+                <span>AI Drafts</span>
+                <span>{quota.ai_draft.used} / {quota.ai_draft.limit}</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-[#6366F1] transition-all duration-300"
+                  style={{ width: `${quota.ai_draft.limit > 0 ? Math.min(100, (quota.ai_draft.used / quota.ai_draft.limit) * 100) : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+          {quota.reset_date && (
+            <p className="text-[10px] text-muted-foreground">
+              Resets {new Date(quota.reset_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Persona Toggle */}
       <div className="border-t px-3 py-2">
