@@ -28,7 +28,8 @@
       "Bash(test:*)",
       "Bash(git stash:*)",
       "Bash(ls:*)",
-      "Bash(grep -n \"incrementAIDraftGeneration\\\\|QuotaExceededError\" /c/Users/varun/Desktop/Coding/Ellyn/app/api/ai/*.ts)"
+      "Bash(grep -n \"incrementAIDraftGeneration\\\\|QuotaExceededError\" /c/Users/varun/Desktop/Coding/Ellyn/app/api/ai/*.ts)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
