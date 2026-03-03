@@ -119,8 +119,23 @@ async function getOverviewMetrics(
     .lte("sent_at", endStr)
     .not("sent_at", "is", null);
 
-  const totalSent = outreachData?.length || 0;
-  const repliedCount = outreachData?.filter((o) => o.status === "replied").length || 0;
+  const outreachTotalSent = outreachData?.length || 0;
+  const outreachReplied = outreachData?.filter((o) => o.status === "replied").length || 0;
+
+  // Check email_tracking_events for more accurate counts (preferred over outreach table)
+  const { data: trackingData } = await supabase
+    .from("email_tracking_events")
+    .select("event_type")
+    .eq("user_id", userId)
+    .gte("occurred_at", startStr)
+    .lte("occurred_at", endStr);
+
+  const trackingSent = trackingData?.filter((e) => e.event_type === "sent").length ?? 0;
+  const trackingReplied = trackingData?.filter((e) => e.event_type === "replied").length ?? 0;
+
+  // Use tracking events if available, outreach fallback otherwise
+  const totalSent = trackingSent > 0 ? trackingSent : outreachTotalSent;
+  const repliedCount = trackingSent > 0 ? trackingReplied : outreachReplied;
   // Return null when no emails sent so the UI can show "—" instead of "0%"
   const replyRate = totalSent > 0 ? ((repliedCount / totalSent) * 100).toFixed(1) : null;
 
@@ -169,7 +184,7 @@ async function getOverviewMetrics(
     comparison = {
       contacts: (totalContacts || 0) - (prevData.data.totalContacts || 0),
       drafts: (totalDrafts || 0) - (prevData.data.totalDrafts || 0),
-      emailsSent: (emailsSent || 0) - (prevData.data.emailsSent || 0),
+      emailsSent: totalSent - (prevData.data.emailsSent || 0),
       replyRate: parseFloat(replyRate || "0") - parseFloat(prevData.data.replyRate || "0"),
     };
   }
@@ -178,7 +193,7 @@ async function getOverviewMetrics(
     data: {
       totalContacts: totalContacts ?? 0,
       totalDrafts: totalDrafts ?? 0,
-      emailsSent: emailsSent ?? 0,
+      emailsSent: totalSent,
       // null signals "no data" — UI renders "—" instead of "0%" or fake rate
       replyRate,
       bestPerformingSequence: sequencePerf?.name ?? null,

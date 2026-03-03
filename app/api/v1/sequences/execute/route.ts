@@ -13,6 +13,7 @@ const ExecuteActionSchema = z.object({
 type SequenceEnrollmentRow = {
   id: string;
   sequence_id: string;
+  contact_id: string;
   status: "active" | "paused" | "completed" | "bounced" | null;
   current_step_index: number | null;
   next_step_at: string | null;
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     const { data: enrollment, error: enrollmentError } = await supabase
       .from("sequence_enrollments")
-      .select("id, sequence_id, status, current_step_index, next_step_at, completed_at")
+      .select("id, sequence_id, contact_id, status, current_step_index, next_step_at, completed_at")
       .eq("id", enrollmentId)
       .maybeSingle<SequenceEnrollmentRow>();
 
@@ -175,6 +176,25 @@ export async function POST(request: NextRequest) {
       if (updateStepError) {
         return NextResponse.json({ error: updateStepError.message || "Failed to mark step as sent" }, { status: 500 });
       }
+
+      // Log to email_tracking_events so analytics can count it
+      void supabase
+        .from("email_tracking_events")
+        .insert({
+          user_id: user.id,
+          contact_id: enrollment.contact_id,
+          sequence_id: enrollment.sequence_id,
+          event_type: "sent",
+          metadata: {
+            enrollment_id: enrollment.id,
+            enrollment_step_id: enrollmentStep.id,
+            step_id: currentSequenceStep.id,
+            source: "v1_execute",
+          },
+        })
+        .then(({ error: trackErr }) => {
+          if (trackErr) console.error("[v1/sequences/execute] Failed to log sent event:", trackErr);
+        });
     }
 
     if (action === "skip") {

@@ -335,7 +335,9 @@ export default function AnalyticsPage() {
           />
           <OverviewCard
             title="Emails Sent"
-            value={formatNumber(data?.overview.totalSent ?? 0)}
+            value={data?.overview.totalSent === 0 && !isLoading
+              ? "—"
+              : formatNumber(data?.overview.totalSent ?? 0)}
             icon={Mail}
             trend={sentTrend}
             empty={!hasData && !isLoading}
@@ -349,7 +351,9 @@ export default function AnalyticsPage() {
           />
           <OverviewCard
             title="Reply Rate"
-            value={formatPercent(data?.overview.replyRate ?? 0)}
+            value={data?.overview.totalSent === 0 && !isLoading
+              ? "—"
+              : formatPercent(data?.overview.replyRate ?? 0)}
             icon={Percent}
             trend={replyRateTrend}
             empty={!hasData && !isLoading}
@@ -531,7 +535,7 @@ export default function AnalyticsPage() {
                   ) : sortedSequences.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="py-8 text-center text-sm text-slate-500">
-                        No sequences yet.
+                        Send emails from a sequence to see performance data.
                       </TableCell>
                     </TableRow>
                   ) : (

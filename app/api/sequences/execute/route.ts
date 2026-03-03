@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
 import { getAuthenticatedServiceRoleClient } from '@/lib/auth/api-user'
+import { sendEmailViaGmail } from '@/lib/gmail-send'
 import { generateTrackingPixelUrl, injectTrackingPixel } from '@/lib/tracking'
 import { fillVariables } from '@/lib/template-variables'
 import { formatZodError } from '@/lib/validation/schemas'
@@ -58,6 +59,7 @@ type DueEnrollmentRow = EnrollmentRow & {
 
 const executeSchema = z.object({
   enrollmentId: z.string().uuid().optional(),
+  sendMode: z.enum(['compose', 'api']).default('compose'),
 })
 
 const legacyActionSchema = z
@@ -73,6 +75,7 @@ const legacyActionSchema = z
     ]),
     enrollmentId: z.string().uuid().optional(),
     enrollmentStepId: z.string().min(1).optional(),
+    sendMode: z.enum(['compose', 'api']).default('compose'),
   })
   .superRefine((value, ctx) => {
     if ((value.action === 'mark_sent' || value.action === 'skip_step') && !value.enrollmentStepId && !value.enrollmentId) {
@@ -289,8 +292,28 @@ function nextStepTimeFromNow(delayDays: number): string {
 async function executeEnrollment(
   supabase: Awaited<ReturnType<typeof getAuthenticatedServiceRoleClient>>['supabase'],
   userId: string,
-  enrollmentId: string
+  enrollmentId: string,
+  sendMode: 'compose' | 'api' = 'compose'
 ) {
+  // Early check for api mode: verify Gmail is connected before doing any work
+  if (sendMode === 'api') {
+    const { data: gmailCreds } = await supabase
+      .from('gmail_credentials')
+      .select('gmail_email')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (!gmailCreds) {
+      return NextResponse.json(
+        {
+          error: 'Gmail not connected. Connect Gmail in Settings to send directly.',
+          code: 'gmail_not_connected',
+        },
+        { status: 400 }
+      )
+    }
+  }
+
   const bundle = await fetchEnrollmentBundle(supabase, userId, enrollmentId)
   if (!bundle) {
     return NextResponse.json({ error: 'Enrollment not found' }, { status: 404 })
@@ -464,18 +487,95 @@ async function executeEnrollment(
     .eq('id', contact.id)
     .eq('user_id', userId)
 
-  await supabase.from('email_tracking_events').insert({
-    user_id: userId,
-    draft_id: draft.id,
-    contact_id: contact.id,
-    sequence_id: sequence.id,
-    event_type: 'sent',
-    metadata: {
-      enrollment_id: enrollment.id,
-      step_id: currentStep.id,
-      step_index: enrollment.current_step_index,
-    },
-  })
+  // In compose mode, log tracking event now; api mode logs after successful send
+  if (sendMode !== 'api') {
+    await supabase.from('email_tracking_events').insert({
+      user_id: userId,
+      draft_id: draft.id,
+      contact_id: contact.id,
+      sequence_id: sequence.id,
+      event_type: 'sent',
+      metadata: {
+        enrollment_id: enrollment.id,
+        step_id: currentStep.id,
+        step_index: enrollment.current_step_index,
+      },
+    })
+  }
+
+  if (sendMode === 'api') {
+    const sendResult = await sendEmailViaGmail({
+      userId,
+      to: email,
+      subject,
+      body: trackedBody,
+      contactId: contact.id,
+      isHtml: true,
+    })
+
+    if (!sendResult.success) {
+      if (sendResult.code === 'gmail_reauth_required' || sendResult.code === 'gmail_not_connected') {
+        return NextResponse.json(
+          { error: sendResult.error, code: sendResult.code },
+          { status: sendResult.code === 'gmail_not_connected' ? 400 : 401 }
+        )
+      }
+      return NextResponse.json(
+        { error: sendResult.error || 'Failed to send email via Gmail' },
+        { status: 500 }
+      )
+    }
+
+    void supabase
+      .from('email_tracking_events')
+      .insert({
+        user_id: userId,
+        draft_id: draft.id,
+        contact_id: contact.id,
+        sequence_id: sequence.id,
+        event_type: 'sent',
+        metadata: {
+          gmail_message_id: sendResult.messageId,
+          enrollment_id: enrollment.id,
+          step_index: enrollment.current_step_index,
+          send_mode: 'api',
+        },
+      })
+      .then(({ error: trackErr }) => {
+        if (trackErr) console.error('[sequences/execute] Failed to log sent event:', trackErr)
+      })
+
+    void supabase
+      .from('ai_drafts')
+      .update({ status: 'sent' })
+      .eq('id', draft.id)
+      .then(({ error: draftErr }) => {
+        if (draftErr) console.error('[sequences/execute] Failed to update draft status:', draftErr)
+      })
+
+    void supabase
+      .from('contacts')
+      .update({ status: 'sent', updated_at: new Date().toISOString() })
+      .eq('id', contact.id)
+      .eq('user_id', userId)
+      .in('status', ['discovered', 'new'])
+      .then(({ error: contactErr }) => {
+        if (contactErr) console.error('[sequences/execute] Failed to update contact status:', contactErr)
+      })
+
+    return NextResponse.json({
+      success: true,
+      sent: true,
+      messageId: sendResult.messageId,
+      gmailLink: null,
+      outlookLink: null,
+      subject,
+      body: trackedBody,
+      draft_id: draft.id,
+      enrollment_status: updatedEnrollment?.status ?? 'active',
+      enrollment: updatedEnrollment,
+    })
+  }
 
   return NextResponse.json({
     gmailLink: links.gmailLink,
@@ -704,7 +804,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'mark_sent') {
-      return executeEnrollment(supabase, user.id, targetEnrollmentId)
+      return executeEnrollment(supabase, user.id, targetEnrollmentId, parsedLegacy.data.sendMode)
     }
 
     if (action === 'skip_step') {
@@ -787,5 +887,5 @@ export async function POST(request: NextRequest) {
     return listDueSteps(supabase, user.id)
   }
 
-  return executeEnrollment(supabase, user.id, parsed.data.enrollmentId)
+  return executeEnrollment(supabase, user.id, parsed.data.enrollmentId, parsed.data.sendMode)
 }

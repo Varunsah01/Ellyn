@@ -10,11 +10,13 @@ import {
   Loader2,
   Mail,
   MessageSquare,
+  Send,
   Users,
 } from "lucide-react"
 import { Badge } from "@/components/ui/Badge"
 import { Card, CardContent } from "@/components/ui/Card"
 import { cn } from "@/lib/utils"
+import { showToast } from "@/lib/toast"
 import type {
   SequenceEnrollment,
   SequenceEnrollmentStep,
@@ -43,14 +45,21 @@ const STATUS_COLORS: Record<string, string> = {
   removed: "border-slate-200 bg-slate-100 text-slate-600",
 }
 
+type SendResult = { sent?: boolean; gmailLink?: string | null }
+
 // ── Contact card used in the kanban board ────────────────────────────────────
 function ContactCard({
   enrollment,
   enrollmentSteps,
+  gmailConnected,
+  onSendNow,
 }: {
   enrollment: SequenceEnrollment
   enrollmentSteps: SequenceEnrollmentStep[]
+  gmailConnected: boolean
+  onSendNow: (enrollmentId: string, sendMode: "api" | "compose") => Promise<SendResult>
 }) {
+  const [isSending, setIsSending] = useState(false)
   const contact = enrollment.contact
 
   const lastSent = enrollmentSteps
@@ -65,6 +74,22 @@ function ContactCard({
     .sort((a, b) => a.step_order - b.step_order)[0]
 
   const email = contact?.confirmed_email ?? contact?.inferred_email
+
+  const isActive = ["active", "in_progress", "not_started"].includes(enrollment.status)
+  const hasPendingStep = enrollmentSteps.some((s) => s.status === "pending")
+
+  const handleSend = async () => {
+    setIsSending(true)
+    try {
+      const sendMode = gmailConnected ? "api" : "compose"
+      const result = await onSendNow(enrollment.id, sendMode)
+      if (!gmailConnected && result.gmailLink) {
+        window.open(result.gmailLink, "_blank")
+      }
+    } finally {
+      setIsSending(false)
+    }
+  }
 
   return (
     <motion.div
@@ -132,6 +157,34 @@ function ContactCard({
           </span>
         )}
       </div>
+
+      {/* Send Now button — only for active enrollments with a pending step */}
+      {isActive && hasPendingStep && (
+        <div className="flex items-center justify-between border-t pt-2">
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                gmailConnected ? "bg-green-500" : "bg-gray-300"
+              )}
+            />
+            {gmailConnected ? "via Gmail" : "opens compose"}
+          </span>
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={isSending}
+            className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-50 transition-colors"
+          >
+            {isSending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Send className="h-3 w-3" />
+            )}
+            Send Now
+          </button>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -141,6 +194,14 @@ export function SequenceTracker({ sequenceId }: SequenceTrackerProps) {
   const [data, setData] = useState<TrackerData | null>(null)
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<"kanban" | "list">("kanban")
+  const [gmailConnected, setGmailConnected] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/gmail/status")
+      .then((res) => res.json())
+      .then((d) => setGmailConnected(d.connected === true))
+      .catch(() => setGmailConnected(false))
+  }, [])
 
   const fetchData = useCallback(async () => {
     try {
@@ -164,6 +225,43 @@ export function SequenceTracker({ sequenceId }: SequenceTrackerProps) {
     const interval = setInterval(() => void fetchData(), 30_000)
     return () => clearInterval(interval)
   }, [fetchData])
+
+  const sendNow = useCallback(
+    async (enrollmentId: string, sendMode: "api" | "compose"): Promise<SendResult> => {
+      try {
+        const res = await fetch("/api/sequences/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "mark_sent", enrollmentId, sendMode }),
+        })
+        const responseData = await res.json()
+
+        if (!res.ok) {
+          if (
+            responseData.code === "gmail_not_connected" ||
+            responseData.code === "gmail_reauth_required"
+          ) {
+            showToast("Gmail disconnected. Reconnect in Settings → Gmail.", "error")
+            setGmailConnected(false)
+          } else {
+            showToast(responseData.error || "Failed to send email", "error")
+          }
+          return {}
+        }
+
+        if (sendMode === "api" && responseData.sent) {
+          showToast("Email sent successfully", "success")
+          void fetchData()
+        }
+
+        return { sent: responseData.sent, gmailLink: responseData.gmailLink }
+      } catch {
+        showToast("Failed to send email", "error")
+        return {}
+      }
+    },
+    [fetchData]
+  )
 
   // ── Kanban column computation ─────────────────────────────────────────────
   const kanbanColumns = useMemo(() => {
@@ -375,6 +473,8 @@ export function SequenceTracker({ sequenceId }: SequenceTrackerProps) {
                       enrollmentSteps={data!.enrollmentSteps.filter(
                         (s) => s.enrollment_id === enrollment.id
                       )}
+                      gmailConnected={gmailConnected}
+                      onSendNow={sendNow}
                     />
                   ))}
                 </AnimatePresence>

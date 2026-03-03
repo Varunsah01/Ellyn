@@ -230,6 +230,41 @@ export async function GET(request: NextRequest) {
     const totalBounced = statusCounts.bounced ?? 0;
     const replyRate = calculateRate(totalReplied, totalSent);
 
+    // Augment with email_tracking_events (accurate) and email_history (Gmail sends) as fallbacks
+    let trackingQuery = supabase
+      .from("email_tracking_events")
+      .select("event_type")
+      .eq("user_id", user.id);
+
+    let historyQuery = supabase
+      .from("email_history")
+      .select("status")
+      .eq("user_id", user.id);
+
+    if (periodStart) {
+      trackingQuery = trackingQuery.gte("occurred_at", periodStart.toISOString());
+      historyQuery = historyQuery.gte("created_at", periodStart.toISOString());
+    }
+
+    const [{ data: trackingEventsData }, { data: emailHistoryData }] = await Promise.all([
+      trackingQuery,
+      historyQuery,
+    ]);
+
+    const trackingRows = (trackingEventsData ?? []) as Array<{ event_type: string }>;
+    const trackingSent = trackingRows.filter((r) => r.event_type === "sent").length;
+    const trackingReplied = trackingRows.filter((r) => r.event_type === "replied").length;
+    const trackingBounced = trackingRows.filter((r) => r.event_type === "bounced").length;
+
+    const historySent = ((emailHistoryData ?? []) as Array<{ status: string | null }>)
+      .filter((r) => r.status === "sent").length;
+
+    // Priority: email_tracking_events > email_history > contact status counts
+    const effectiveSent = trackingSent > 0 ? trackingSent : historySent > 0 ? historySent : totalSent;
+    const effectiveReplied = trackingSent > 0 ? trackingReplied : totalReplied;
+    const effectiveBounced = trackingSent > 0 ? trackingBounced : totalBounced;
+    const effectiveReplyRate = calculateRate(effectiveReplied, effectiveSent);
+
     const contactsByStatus = STATUS_ORDER.map((status) => ({
       status,
       count: statusCounts[status] ?? 0,
@@ -351,10 +386,10 @@ export async function GET(request: NextRequest) {
     const payload = {
       overview: {
         totalContacts,
-        totalSent,
-        totalReplied,
-        totalBounced,
-        replyRate,
+        totalSent: effectiveSent,
+        totalReplied: effectiveReplied,
+        totalBounced: effectiveBounced,
+        replyRate: effectiveReplyRate,
       },
       contactsByStatus,
       contactsOverTime,
@@ -364,9 +399,9 @@ export async function GET(request: NextRequest) {
 
       // Backward-compatible aliases
       totalContacts,
-      totalSent,
-      totalReplied,
-      replyRate,
+      totalSent: effectiveSent,
+      totalReplied: effectiveReplied,
+      replyRate: effectiveReplyRate,
       periodComparison: {
         contacts: calculatePercentChange(totalContacts, previousContacts),
         sent: calculatePercentChange(totalSent, previousSent),
