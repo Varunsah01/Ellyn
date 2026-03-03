@@ -50,6 +50,9 @@ type UserInfo = {
   avatarUrl: string;
 };
 
+const SIDEBAR_LOGO_CDN =
+  process.env.NEXT_PUBLIC_BRAND_LOGO_CDN?.trim() || "https://subsnacks.sirv.com/Ellyn_logo.png";
+
 function getPersonaNav(persona: DashboardPersona): DashboardNavItem[] {
   const baseItems: DashboardNavItem[] = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -155,14 +158,14 @@ function DashboardChrome({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#FAFAFA] text-[#2D2B55]">
-      <aside className="hidden w-60 flex-shrink-0 flex-col bg-[#2D2B55] text-[#F4F3FF] md:flex">
-        <div className="flex h-16 items-center border-b border-white/10 px-5">
-          <Link href="/dashboard" className="text-lg font-semibold tracking-wide text-white">
-            ELLYN
+      <aside className="hidden w-60 flex-shrink-0 flex-col bg-[#2E2B5F] text-[#F4F3FF] md:flex">
+        <div className="flex h-[70px] items-center border-b border-white/10 px-5">
+          <Link href="/dashboard" className="inline-flex items-center">
+            <img src={SIDEBAR_LOGO_CDN} alt="Ellyn" className="h-9 w-auto object-contain" />
           </Link>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+        <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-4">
           {navItems.map((item) => {
             const active = isNavActive(pathname, item.href);
             const Icon = item.icon;
@@ -172,8 +175,8 @@ function DashboardChrome({ children }: { children: ReactNode }) {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  active ? "bg-[#453F79] text-white" : "text-[#E7E4FF] hover:bg-white/10 hover:text-white"
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                  active ? "bg-[#4D488A] text-white" : "text-[#E9E5FF] hover:bg-white/10 hover:text-white"
                 )}
               >
                 <Icon className="h-4 w-4" />
@@ -184,16 +187,16 @@ function DashboardChrome({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="border-t border-white/10 px-3 py-4">
-          <p className="mb-2 px-2 text-xs uppercase tracking-wide text-[#CAC6F7]">Persona</p>
+          <p className="mb-2 px-2 text-xs uppercase tracking-wide text-[#D9D6FF]">Persona</p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => void setPersona("job_seeker")}
               className={cn(
-                "flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium transition-colors",
+                "flex items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium transition-colors",
                 persona === "job_seeker"
                   ? "bg-[#FF6B6B] text-white"
-                  : "bg-white/10 text-[#F4F3FF] hover:bg-white/15"
+                  : "bg-[#4B4684] text-[#F4F3FF] hover:bg-[#575292]"
               )}
             >
               <Briefcase className="h-3.5 w-3.5" />
@@ -203,10 +206,10 @@ function DashboardChrome({ children }: { children: ReactNode }) {
               type="button"
               onClick={() => void setPersona("smb_sales")}
               className={cn(
-                "flex items-center justify-center gap-1 rounded-md px-2 py-2 text-xs font-medium transition-colors",
+                "flex items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-medium transition-colors",
                 persona === "smb_sales"
                   ? "bg-[#FF6B6B] text-white"
-                  : "bg-white/10 text-[#F4F3FF] hover:bg-white/15"
+                  : "bg-[#4B4684] text-[#F4F3FF] hover:bg-[#575292]"
               )}
             >
               <TrendingUp className="h-3.5 w-3.5" />
@@ -230,14 +233,17 @@ function DashboardChrome({ children }: { children: ReactNode }) {
           </div>
 
           <div className="mt-3 flex items-center justify-between gap-2 px-2">
-            <PlanBadge plan={planType} />
+            <PlanBadge
+              plan={planType}
+              className={planType === "free" ? "bg-[#F5F4FB] text-[#2D2B55]" : undefined}
+            />
             <Button
               type="button"
               size="sm"
               variant="ghost"
               onClick={() => void handleSignOut()}
               disabled={isSigningOut}
-              className="h-8 gap-1 px-2 text-[#F4F3FF] hover:bg-white/10 hover:text-white"
+              className="h-8 gap-1 rounded-lg px-2 text-[#F4F3FF] hover:bg-[#4B4684] hover:text-white"
             >
               <LogOut className="h-4 w-4" />
               <span className="text-xs">{isSigningOut ? "Signing out" : "Sign out"}</span>
@@ -249,12 +255,12 @@ function DashboardChrome({ children }: { children: ReactNode }) {
       {mobileSidebarOpen ? (
         <div className="fixed inset-0 z-40 bg-[#120f2fcc] md:hidden" onClick={() => setMobileSidebarOpen(false)}>
           <aside
-            className="h-full w-60 bg-[#2D2B55] px-3 py-4 text-[#F4F3FF]"
+            className="h-full w-60 bg-[#2E2B5F] px-3 py-4 text-[#F4F3FF]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between px-2">
-              <Link href="/dashboard" className="text-lg font-semibold text-white">
-                ELLYN
+              <Link href="/dashboard" className="inline-flex items-center">
+                <img src={SIDEBAR_LOGO_CDN} alt="Ellyn" className="h-9 w-auto object-contain" />
               </Link>
               <button type="button" onClick={() => setMobileSidebarOpen(false)} className="text-white">
                 <X className="h-5 w-5" />
@@ -271,9 +277,9 @@ function DashboardChrome({ children }: { children: ReactNode }) {
                     href={item.href}
                     onClick={() => setMobileSidebarOpen(false)}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                       active
-                        ? "bg-[#453F79] text-white"
+                        ? "bg-[#4D488A] text-white"
                         : "text-[#E7E4FF] hover:bg-white/10 hover:text-white"
                     )}
                   >
@@ -292,7 +298,7 @@ function DashboardChrome({ children }: { children: ReactNode }) {
           <button type="button" onClick={() => setMobileSidebarOpen(true)} className="text-[#2D2B55]">
             <Menu className="h-5 w-5" />
           </button>
-          <span className="ml-3 text-sm font-semibold tracking-wide text-[#2D2B55]">ELLYN</span>
+          <img src={SIDEBAR_LOGO_CDN} alt="Ellyn" className="ml-3 h-7 w-auto object-contain" />
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto">
           <QuotaWarningBanner />
