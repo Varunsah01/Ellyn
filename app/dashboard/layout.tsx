@@ -4,8 +4,7 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PersonaOnboardingGate } from "@/components/dashboard/PersonaOnboardingGate";
 import { OnboardingChecklist } from "@/components/dashboard/OnboardingChecklist";
 import { DashboardTour } from "@/components/DashboardTour";
-import { PersonaProvider } from "@/context/PersonaContext";
-import { SubscriptionProvider } from "@/context/SubscriptionContext";
+import { DashboardProviders } from "@/components/dashboard/DashboardProviders";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({
@@ -24,13 +23,11 @@ export default async function DashboardLayout({
   }
 
   return (
-    <SubscriptionProvider>
-      <PersonaProvider>
-        <DashboardShell withChrome>{children}</DashboardShell>
-        <PersonaOnboardingGate />
-        <DashboardTour />
-        <OnboardingChecklist />
-      </PersonaProvider>
-    </SubscriptionProvider>
+    <DashboardProviders>
+      <DashboardShell withChrome>{children}</DashboardShell>
+      <PersonaOnboardingGate />
+      <DashboardTour />
+      <OnboardingChecklist />
+    </DashboardProviders>
   );
 }

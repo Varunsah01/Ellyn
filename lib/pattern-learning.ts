@@ -13,6 +13,7 @@ export interface LearnedPattern {
   success_count: number;
   failure_count: number;
   confidence_boost: number; // How much to boost this pattern for this company
+  injected: boolean; // True if seeded via admin injection (higher ceiling)
   last_verified: string;
   created_at: string;
   updated_at: string;
@@ -167,12 +168,22 @@ export function applyLearnedBoosts(
     boostMap.set(lp.pattern, lp.confidence_boost);
   });
 
+  // Build injected lookup
+  const injectedSet = new Set<string>();
+  learnedPatterns.forEach(lp => {
+    if (lp.injected) injectedSet.add(lp.pattern);
+  });
+
   // Apply boosts and mark learned patterns
+  // Injected patterns get a higher confidence ceiling (98 vs 95)
   const boostedPatterns = patterns.map(p => {
     const boost = boostMap.get(p.pattern) || 0;
+    const isInjected = injectedSet.has(p.pattern);
+    const ceiling = isInjected ? 98 : 95;
+    const effectiveBoost = isInjected ? Math.round(boost * 1.2) : boost;
     return {
       ...p,
-      confidence: Math.min(95, Math.max(5, p.confidence + boost)),
+      confidence: Math.min(ceiling, Math.max(5, p.confidence + effectiveBoost)),
       learned: boost !== 0,
     };
   });

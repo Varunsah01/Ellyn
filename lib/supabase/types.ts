@@ -31,7 +31,8 @@ export interface Database {
       // Compatibility tables still used by active routes during migration.
       leads: TableDef<Lead, LeadInsert, Partial<LeadInsert>>
       drafts: TableDef<Draft, DraftInsert, Partial<DraftInsert>>
-      pattern_learning: TableDef<PatternLearning, PatternLearningInsert, Partial<PatternLearningInsert>>
+      learned_patterns: TableDef<LearnedPatternRow, LearnedPatternInsert, Partial<LearnedPatternInsert>>
+      pattern_feedback_log: TableDef<PatternFeedbackLogRow, PatternFeedbackLogInsert, Partial<PatternFeedbackLogInsert>>
       domain_cache: TableDef<DomainCache, DomainCacheInsert, Partial<DomainCacheInsert>>
     }
     Views: Record<string, never>
@@ -259,19 +260,32 @@ export interface Draft {
 
 export type DraftInsert = Omit<Draft, 'id' | 'created_at' | 'updated_at'>
 
-export interface PatternLearning {
+export interface LearnedPatternRow {
   id: string
-  domain: string
+  company_domain: string
   pattern: string
   success_count: number
-  total_attempts: number
-  success_rate: number
-  last_success_at: string | null
+  failure_count: number
+  confidence_boost: number
+  injected: boolean
+  last_verified: string
   created_at: string
   updated_at: string
 }
 
-export type PatternLearningInsert = Omit<PatternLearning, 'id' | 'created_at' | 'updated_at'>
+export type LearnedPatternInsert = Omit<LearnedPatternRow, 'id' | 'created_at' | 'updated_at'>
+
+export interface PatternFeedbackLogRow {
+  id: string
+  email: string | null
+  pattern: string
+  company_domain: string
+  worked: boolean
+  contact_id: string | null
+  created_at: string
+}
+
+export type PatternFeedbackLogInsert = Omit<PatternFeedbackLogRow, 'id' | 'created_at'>
 
 export interface DomainCache {
   company_name: string

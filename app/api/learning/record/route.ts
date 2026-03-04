@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { invalidateEmailPatternCache } from '@/lib/cache/tags'
-import { recordPatternFeedback } from '@/lib/learning-system';
+import { recordPatternFeedback } from '@/lib/pattern-learning';
 import { LearningRecordSchema, formatZodError } from '@/lib/validation/schemas';
 import { captureApiException } from '@/lib/monitoring/sentry'
 
@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
     }
     const { domain, pattern, worked } = parsed.data;
 
-    // Record feedback
-    await recordPatternFeedback(domain, pattern, worked);
+    // Record feedback via learned_patterns table
+    await recordPatternFeedback({ company_domain: domain, pattern, worked, email: '' });
     try {
       await invalidateEmailPatternCache(domain)
     } catch (invalidateError) {
