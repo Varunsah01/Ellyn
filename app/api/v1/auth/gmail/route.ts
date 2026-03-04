@@ -9,6 +9,13 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
+    // Validate env vars early — surface misconfiguration gracefully
+    if (!process.env.GOOGLE_CLIENT_ID?.trim() || !process.env.GOOGLE_CLIENT_SECRET?.trim()) {
+      return NextResponse.redirect(
+        new URL('/dashboard/settings?tab=account&gmail=error&reason=misconfigured', request.url)
+      )
+    }
+
     // Auth guard
     const supabase = await createClient()
     const {

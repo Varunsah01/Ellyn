@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 
+import { EmailIntegrationCard } from "@/components/settings/EmailIntegrationCard";
+import { AdminAccessLink } from "@/components/settings/AdminAccessLink";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar";
@@ -23,6 +25,7 @@ import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Progress } from "@/components/ui/Progress";
 import { useSubscription } from "@/context/SubscriptionContext";
+import { useEmailIntegrations } from "@/hooks/useEmailIntegrations";
 import { createClient } from "@/lib/supabase/client";
 import { showToast } from "@/lib/toast";
 
@@ -96,6 +99,7 @@ function clampPercent(used: number, limit: number): number {
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
 
@@ -117,13 +121,8 @@ export default function SettingsPage() {
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
-  const [gmailStatus, setGmailStatus] = useState<{
-    connected: boolean;
-    gmailEmail: string | null;
-    connectedAt: string | null;
-  } | null>(null);
-  const [isLoadingGmail, setIsLoadingGmail] = useState(true);
-  const [isDisconnectingGmail, setIsDisconnectingGmail] = useState(false);
+  const { gmail, outlook, disconnectGmail, disconnectOutlook, refetch } =
+    useEmailIntegrations();
 
   const {
     planType,
@@ -204,45 +203,30 @@ export default function SettingsPage() {
     };
   }, []);
 
-  // Gmail status fetch
+  // OAuth callback toasts + URL cleanup — run once on mount
   useEffect(() => {
-    let cancelled = false;
+    const gmailParam = searchParams.get("gmail");
+    const outlookParam = searchParams.get("outlook");
 
-    const loadGmailStatus = async () => {
-      setIsLoadingGmail(true);
-      try {
-        const response = await fetch("/api/gmail/status", { cache: "no-store" });
-        if (response.ok) {
-          const data = await response.json();
-          if (!cancelled) setGmailStatus(data);
-        }
-      } catch {
-        // Silently fail — badge stays at loading/disconnected
-      } finally {
-        if (!cancelled) setIsLoadingGmail(false);
-      }
-    };
-
-    void loadGmailStatus();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Gmail OAuth callback toasts
-  useEffect(() => {
-    const gmailResult = searchParams.get("gmail");
-    if (gmailResult === "success") {
+    if (gmailParam === "success") {
       showToast.success("Gmail connected successfully");
-      // Refresh gmail status
-      void fetch("/api/gmail/status", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((data) => setGmailStatus(data))
-        .catch(() => {});
-    } else if (gmailResult === "cancelled") {
-      showToast.error("Gmail connection cancelled");
-    } else if (gmailResult === "error") {
+      void refetch();
+    } else if (gmailParam === "error") {
       showToast.error("Failed to connect Gmail. Please try again.");
     }
-  }, [searchParams]);
+
+    if (outlookParam === "success") {
+      showToast.success("Outlook connected successfully");
+      void refetch();
+    } else if (outlookParam === "error") {
+      showToast.error("Failed to connect Outlook. Please try again.");
+    }
+
+    if (gmailParam || outlookParam) {
+      router.replace("/dashboard/settings?tab=account");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (activeTab !== "billing" || hasLoadedInvoices) {
@@ -376,21 +360,6 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDisconnectGmail = async () => {
-    setIsDisconnectingGmail(true);
-    try {
-      const response = await fetch("/api/gmail/disconnect", { method: "POST" });
-      if (!response.ok) {
-        throw new Error("Failed to disconnect Gmail");
-      }
-      setGmailStatus({ connected: false, gmailEmail: null, connectedAt: null });
-      showToast.success("Gmail disconnected");
-    } catch (err) {
-      showToast.error(err instanceof Error ? err.message : "Failed to disconnect Gmail");
-    } finally {
-      setIsDisconnectingGmail(false);
-    }
-  };
 
   return (
     <DashboardShell className="px-4 py-6 md:px-8">
@@ -519,55 +488,30 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-[#E6E4F2] bg-white">
-              <CardHeader>
-                <CardTitle>Connected Integrations</CardTitle>
-                <CardDescription>Connect mailbox providers for outreach automation.</CardDescription>
-              </CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-lg border border-[#E6E4F2] p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="font-medium text-[#2D2B55]">Gmail</p>
-                    {isLoadingGmail ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
-                    ) : gmailStatus?.connected ? (
-                      <Badge variant="outline" className="border-green-300 text-green-700">Connected</Badge>
-                    ) : (
-                      <Badge variant="outline">Not connected</Badge>
-                    )}
-                  </div>
-                  {gmailStatus?.connected && gmailStatus.gmailEmail && (
-                    <p className="mb-3 text-sm text-slate-600">{gmailStatus.gmailEmail}</p>
-                  )}
-                  {gmailStatus?.connected ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => void handleDisconnectGmail()}
-                      disabled={isDisconnectingGmail}
-                    >
-                      {isDisconnectingGmail ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                      Disconnect Gmail
-                    </Button>
-                  ) : (
-                    <Button asChild variant="outline" className="w-full">
-                      <Link href="/api/v1/auth/gmail">Connect Gmail</Link>
-                    </Button>
-                  )}
-                </div>
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[#2D2B55]">Email Integrations</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Connect an email account to send outreach directly from Ellyn.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <EmailIntegrationCard
+                  provider="gmail"
+                  status={gmail}
+                  onConnect={() => { window.location.href = '/api/v1/auth/gmail' }}
+                  onDisconnect={disconnectGmail}
+                />
+                <EmailIntegrationCard
+                  provider="outlook"
+                  status={outlook}
+                  onConnect={() => { window.location.href = '/api/v1/auth/outlook' }}
+                  onDisconnect={disconnectOutlook}
+                />
+              </div>
+            </div>
 
-                <div className="rounded-lg border border-[#E6E4F2] p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="font-medium text-[#2D2B55]">Outlook</p>
-                    <Badge variant="outline">Not connected</Badge>
-                  </div>
-                  <Button asChild variant="outline" className="w-full">
-                    <Link href="/api/v1/auth/outlook">Connect Outlook</Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <AdminAccessLink />
           </div>
         )}
 

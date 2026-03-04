@@ -1,84 +1,56 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { AdminLogoutButton } from '@/components/admin/AdminLogoutButton'
 
-/**
- * Server-side layout that gates all /admin/* pages.
- *
- * Auth rules (applied in order):
- *  1. Must be signed in — redirects to /auth/login if not.
- *  2. If ADMIN_EMAILS env var is set (comma-separated list), the user's email
- *     must appear in that list — redirects to /dashboard if not.
- *  3. If ADMIN_EMAILS is empty/unset, any authenticated user is treated as
- *     admin (useful for single-owner deployments).
- */
-export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const cookieStore = await cookies()
+export const metadata = { title: 'Ellyn Admin', robots: 'noindex' }
 
-  const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    redirect('/dashboard')
-  }
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll()
-      },
-      // Server components cannot mutate cookies — no-op is intentional
-      setAll() {},
-    },
-  })
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/auth/login?next=/admin')
-  }
-
-  const adminEmails = (process.env.ADMIN_EMAILS ?? '')
-    .split(',')
-    .map(e => e.trim().toLowerCase())
-    .filter(Boolean)
-
-  if (adminEmails.length > 0 && !adminEmails.includes((user.email ?? '').toLowerCase())) {
-    redirect('/dashboard')
-  }
-
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-12 flex items-center gap-6">
-          <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Admin
+    <div className="min-h-screen bg-gray-950 text-white">
+      <nav className="border-b border-gray-800 bg-gray-950/95 backdrop-blur sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-12 flex items-center gap-1">
+          <span className="text-xs font-bold text-violet-400 uppercase tracking-widest mr-4">
+            Ellyn Admin
           </span>
-          <a
-            href="/admin/domain-accuracy"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
+
+          <Link href="/admin/dashboard"
+            className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5
+                       rounded-md hover:bg-gray-800">
+            Dashboard
+          </Link>
+          <Link href="/admin/dashboard/users"
+            className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5
+                       rounded-md hover:bg-gray-800">
+            Users
+          </Link>
+          <Link href="/admin/dashboard/integrations"
+            className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5
+                       rounded-md hover:bg-gray-800">
+            Integrations
+          </Link>
+          <Link href="/admin/dashboard/domain-accuracy"
+            className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5
+                       rounded-md hover:bg-gray-800">
             Domain Accuracy
-          </a>
-          <a
-            href="/admin/verification-stats"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Verification Stats
-          </a>
-          <div className="ml-auto">
-            <a
-              href="/dashboard"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
+          </Link>
+          <Link href="/admin/dashboard/verification"
+            className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5
+                       rounded-md hover:bg-gray-800">
+            Verification
+          </Link>
+
+          <div className="ml-auto flex items-center gap-3">
+            <Link href="/dashboard"
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
               ← Back to app
-            </a>
+            </Link>
+            <AdminLogoutButton />
           </div>
         </div>
       </nav>
-      {children}
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {children}
+      </main>
     </div>
   )
 }

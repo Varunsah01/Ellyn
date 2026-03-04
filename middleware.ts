@@ -1,5 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getAdminSessionFromRequest } from "@/lib/auth/admin-session";
 
 const PUBLIC_PATHS = ["/", "/auth", "/api/v1/auth", "/api/v1/pricing-region"] as const;
 
@@ -16,15 +17,36 @@ function isProtectedPath(pathname: string): boolean {
     pathname === "/dashboard" ||
     pathname.startsWith("/dashboard/") ||
     pathname === "/tracker" ||
-    pathname.startsWith("/tracker/") ||
-    pathname === "/admin" ||
-    pathname.startsWith("/admin/")
+    pathname.startsWith("/tracker/")
   );
 }
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
+  // ── Admin route protection (self-contained, no Supabase) ────────────────
+  if (pathname.startsWith("/admin")) {
+    if (pathname === "/admin/login") {
+      // Already logged in → redirect to dashboard
+      const session = getAdminSessionFromRequest(request);
+      if (session) {
+        return NextResponse.redirect(new URL("/admin/dashboard", request.url));
+      }
+      return NextResponse.next();
+    }
+
+    // All other /admin/* routes require a valid session
+    const session = getAdminSessionFromRequest(request);
+    if (!session) {
+      const loginUrl = new URL("/admin/login", request.url);
+      loginUrl.searchParams.set("next", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    return NextResponse.next();
+  }
+
+  // ── Regular app route protection (Supabase) ─────────────────────────────
   if (isPublicPath(pathname) || !isProtectedPath(pathname)) {
     return NextResponse.next();
   }

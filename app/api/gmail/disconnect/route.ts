@@ -4,6 +4,8 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { decryptToken, revokeToken } from '@/lib/gmail-helper'
 import { captureApiException } from '@/lib/monitoring/sentry'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request)

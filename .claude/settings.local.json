@@ -32,7 +32,8 @@
       "Bash(curl:*)",
       "Bash(grep:*)",
       "Bash(rm:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(__NEW_LINE_fba01307c3ac736e__ echo:*)"
     ],
     "deny": [],
     "ask": []

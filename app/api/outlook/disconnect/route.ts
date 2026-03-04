@@ -1,33 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { captureApiException } from '@/lib/monitoring/sentry'
 
 export const dynamic = 'force-dynamic'
+import { captureApiException } from '@/lib/monitoring/sentry'
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request)
     const supabase = await createServiceRoleClient()
 
-    const { data: credentials } = await supabase
-      .from('gmail_credentials')
-      .select('gmail_email, created_at')
-      .eq('user_id', user.id)
-      .maybeSingle()
+    // Delete the credentials row (Microsoft has no standard token revocation endpoint)
+    await supabase.from('outlook_credentials').delete().eq('user_id', user.id)
 
-    const connected = !!(credentials?.gmail_email)
-
-    return NextResponse.json({
-      connected,
-      gmailEmail: credentials?.gmail_email ?? null,
-      connectedAt: credentials?.created_at ?? null,
-    })
+    return NextResponse.json({ success: true, message: 'Outlook disconnected' })
   } catch (err) {
     if (err instanceof Error && err.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    captureApiException(err, { route: '/api/gmail/status', method: 'GET' })
+    captureApiException(err, { route: '/api/outlook/disconnect', method: 'POST' })
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
