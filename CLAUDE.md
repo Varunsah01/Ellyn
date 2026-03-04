@@ -11,12 +11,13 @@
 | File | When to use it |
 |------|---------------|
 | [`docs/email-finder.md`](docs/email-finder.md) | Working on email lookup, domain resolution, pattern generation, ZeroBounce verification, pattern learning |
-| [`docs/dashboard-webapp.md`](docs/dashboard-webapp.md) | Working on dashboard pages, persona system, contacts, settings, AI drafting, templates, analytics, landing page |
+| [`docs/dashboard-webapp.md`](docs/dashboard-webapp.md) | Working on dashboard pages, persona system, contacts, leads, pipeline, tracker, analytics, settings, AI drafting, templates, landing page |
 | [`docs/dashboard-architecture.md`](docs/dashboard-architecture.md) | Understanding HOW the dashboard works: provider tree, auth gate, sidebar nav, data loading, all major user flows step by step |
 | [`docs/sequences.md`](docs/sequences.md) | Working on outreach sequences: builder, enrollment, tracker, step types, API routes |
-| [`docs/billing-auth.md`](docs/billing-auth.md) | Working on DodoPayments, subscription flow, quota system, auth strategy, security |
+| [`docs/billing-auth.md`](docs/billing-auth.md) | Working on DodoPayments, subscription flow, quota system, auth strategy, SMTP probe, security |
 | [`docs/database-infra.md`](docs/database-infra.md) | Working on DB schema, migrations, Redis caching, env vars, deployment |
-| [`docs/extension.md`](docs/extension.md) | Working on the Chrome Extension: sidepanel, auth bridge, message contracts, layout rules |
+| [`docs/extension.md`](docs/extension.md) | Working on the Chrome Extension: sidepanel, content scripts, background service worker, auth bridge, message contracts |
+| [`docs/email-sending.md`](docs/email-sending.md) | Working on Gmail or Outlook OAuth integration, token encryption, send routes, email_history logging |
 
 ---
 

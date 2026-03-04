@@ -1,6 +1,6 @@
 ﻿# Email Finder
 
-Last updated: 2026-03-02
+Last updated: 2026-03-04
 
 The enrich pipeline is implemented in `app/api/enrich/route.ts` and runs with graceful degradation when optional providers are unavailable.
 
@@ -17,12 +17,30 @@ The enrich pipeline is implemented in `app/api/enrich/route.ts` and runs with gr
 
 ## API Routes
 
+All routes have both a legacy (`/api/`) and versioned (`/api/v1/`) form.
+
 | Route | Status | Purpose |
 | --- | --- | --- |
-| `POST /api/enrich` | ✅ | End-to-end domain + pattern + verification pipeline. |
-| `POST /api/predict-patterns` | ✅ | Pattern-only candidate prediction endpoint. |
-| `POST /api/predict-email` | ✅ | Extended AI-assisted prediction endpoint. |
-| `POST /api/resolve-domain` | ✅ | Domain-only lookup route. |
+| `POST /api/v1/enrich` | ✅ | End-to-end domain + pattern + verification pipeline. |
+| `POST /api/v1/predict-patterns` | ✅ | Pattern-only candidate prediction endpoint. |
+| `POST /api/v1/predict-email` | ✅ | Extended AI-assisted prediction endpoint. |
+| `POST /api/v1/resolve-domain` | ✅ | Domain-only lookup route. |
+| `POST /api/v1/resolve-domain-v2` | ✅ | Improved domain resolution (v2 cascade). |
+| `POST /api/v1/verify-email` | ✅ | Standalone email verification (ZeroBounce or MX). |
+| `POST /api/v1/zerobounce-verify` | ✅ | ZeroBounce-only verification endpoint. |
+| `POST /api/v1/confirm-domain` | ✅ | Confirm/lock a domain association to a company. |
+| `POST /api/v1/learning/record` | ✅ | Record outcome of email prediction (success/failure) for pattern learning. |
+| `POST /api/v1/pattern-feedback` | ✅ | User feedback on suggested email patterns. |
+| `POST /api/v1/email-feedback` | ✅ | User feedback on a predicted email address. |
+| `POST /api/v1/ai/infer-domain` | ✅ | AI-assisted company domain inference from name/context. |
+| `POST /api/v1/ai/company-brief` | ✅ | AI-generated company research brief. |
+| `POST /api/v1/smtp-probe` | ✅ | Direct SMTP handshake verification (non-Google/MS domains). |
+
+## Pattern Learning System
+
+- `lib/pattern-learning.ts` and `lib/learning-system.ts` — record successes/failures per domain to improve future predictions.
+- Learning data stored in `pattern_learning` table.
+- Feedback routes (`pattern-feedback`, `email-feedback`) allow explicit user corrections.
 
 ## Graceful Fallback Rules
 

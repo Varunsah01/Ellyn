@@ -1,6 +1,6 @@
 ﻿# Database and Infrastructure
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 
 ## Database Foundation
 
@@ -56,6 +56,9 @@ Signup automation status:
 - ✅ `drafts` — email drafts (separate from ai_drafts; used by /api/drafts/)
 - ✅ `outreach` — per-contact outreach events (analytics, /api/contacts/ enrichment)
 
+### Tables Added by Migration 031
+- ✅ `outlook_credentials` — Outlook OAuth token storage (AES-256-GCM encrypted; `user_id`, `access_token`, `refresh_token`, `outlook_email`, `token_expires_at`)
+
 ### contacts Table — Column Notes
 Two generations of schema coexist (both supported after migration 025):
 
@@ -110,8 +113,13 @@ Two generations of schema coexist (both supported after migration 025):
 | `022_lead_score_cache.sql` | ✅ present |
 | `023_sequence_tracker_columns.sql` | ✅ present |
 | `024_application_tracker.sql` | ✅ present |
-| `025_complete_missing_tables.sql` | ✅ present — **run this** |
+| `025_complete_missing_tables.sql` | ✅ present |
+| `026_restore_contacts_columns.sql` | ✅ present — restores any dropped contact columns |
 | `027_gmail_production.sql` | ✅ present — adds `gmail_email`, `token_expires_at`, `encrypted_version` to `gmail_credentials`; adds `user_id`, `contact_id`, `from_email` to `email_history`; adds RLS + index |
+| `028_migration_tracking.sql` | ✅ present — migration audit/tracking table |
+| `029_rls_hardening.sql` | ✅ present — tightens row-level security policies across all core tables |
+| `030_sequence_performance_stats.sql` | ✅ present — adds performance stat columns/functions for sequence analytics |
+| `031_outlook_credentials.sql` | ✅ present — `outlook_credentials` table for Outlook OAuth tokens; **run before using Outlook features** |
 
 ## Environment Variables
 
@@ -155,6 +163,9 @@ Two generations of schema coexist (both supported after migration 025):
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GMAIL_TOKEN_ENCRYPTION_KEY`
+- `MICROSOFT_CLIENT_ID`
+- `MICROSOFT_CLIENT_SECRET`
+- `OUTLOOK_TOKEN_ENCRYPTION_KEY`
 - `ENABLE_DEBUG_ENDPOINTS`
 - `SECRET_ADMIN_TOKEN`
 - `ADMIN_IP_WHITELIST`

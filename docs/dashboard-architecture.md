@@ -1,6 +1,6 @@
 ﻿# Dashboard Architecture
 
-Last updated: 2026-03-02
+Last updated: 2026-03-04
 
 ## Auth and Routing Flow
 
@@ -59,3 +59,49 @@ Last updated: 2026-03-02
 
 - ✅ `app/dashboard/error.tsx` handles dashboard route errors.
 - ✅ `app/dashboard/loading.tsx` provides global dashboard loading skeletons.
+
+## Middleware
+
+`middleware.ts` runs on all requests:
+- Protects `/dashboard/**`, `/tracker/**`, and `/admin/**`.
+- Public allowlist: `/`, `/auth/**`, `/api/v1/auth/**`, `/api/v1/pricing-region`, `/api/webhooks/**`, `/api/track/**`.
+- No session → redirects to `/auth/login?redirect=<path>`.
+- Rate limiting middleware in `middleware/rate-limit.ts`.
+
+## Onboarding Flow
+
+- `lib/onboarding.ts` tracks onboarding step completion.
+- `components/dashboard/OnboardingChecklist.tsx` surfaces next steps in the dashboard home.
+- `components/dashboard/PersonaOnboardingModal.tsx` prompts new users to choose `job_seeker` or `smb_sales` persona.
+- `components/dashboard/PersonaOnboardingGate.tsx` blocks access to persona-gated features until selection is made.
+- `GET/PATCH /api/v1/user/onboarding` persists onboarding progress server-side (migration 016).
+
+## Admin Dashboard
+
+Routes under `app/admin/` — protected by `lib/auth/admin-endpoint-guard.ts` (checks `SECRET_ADMIN_TOKEN` header + optional IP whitelist):
+
+| Page | Purpose |
+|------|---------|
+| `/admin/dashboard` | Admin home |
+| `/admin/dashboard/users` | User management |
+| `/admin/dashboard/integrations` | Integration health monitoring |
+| `/admin/dashboard/verification` | Email verification statistics |
+| `/admin/dashboard/domain-accuracy` | Domain resolution accuracy charts |
+| `/admin/login` | Admin login page |
+
+Admin API routes live under `app/api/admin/`:
+- `domain-accuracy`, `verification-cache`, `verification-stats`, `seed-templates`, `quota/reset`, `refresh-lead-scores`
+
+## Key Hooks
+
+| Hook | Purpose |
+|------|---------|
+| `hooks/useEmailIntegrations.ts` | Fetches Gmail + Outlook status in parallel; handles connect/disconnect |
+| `hooks/useQuotaGate.ts` | Checks quota before performing a billable action |
+| `hooks/useRealtimeContacts.ts` | Supabase realtime subscription for contacts table |
+| `hooks/useRealtimeManager.ts` | Generic realtime subscription manager |
+| `hooks/useKeyboardShortcuts.ts` | Keyboard shortcut registration |
+| `lib/hooks/useContacts.ts` | Contact CRUD + filtering state |
+| `lib/hooks/useSequences.ts` | Sequence CRUD + state |
+| `lib/hooks/useTracker.ts` | Job application tracker state |
+| `lib/hooks/useDashboardMetrics.ts` | Dashboard home stats |

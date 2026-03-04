@@ -1,6 +1,6 @@
-# Email Sending (Gmail Integration)
+# Email Sending (Gmail + Outlook Integration)
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 
 ## Architecture Overview
 
@@ -101,3 +101,102 @@ Logs all sent emails. Key columns:
 ## Sequence Engine Integration
 
 `lib/sequence-engine.ts` exports `sendViaGmailApi()` which makes an internal fetch to `/api/gmail/send`. This is a thin integration point; full server-to-server refactor is planned for a follow-up PR.
+
+---
+
+## Outlook Integration
+
+### Architecture Overview
+
+Uses **Microsoft Graph API** with delegated OAuth 2.0 (app-owned Azure AD credentials). Mirrors the Gmail integration pattern.
+
+### OAuth Flow
+
+```
+User clicks "Connect Outlook" (Settings page)
+  → GET /api/v1/auth/outlook
+    → Auth guard (cookie-based session)
+    → Generate CSRF state token → store in HTTP-only cookie
+    → Redirect to Microsoft OAuth consent screen
+  → Microsoft redirects to /api/outlook/oauth?code=...&state=...
+    → Validate CSRF state against cookie
+    → Exchange code for tokens
+    → Fetch Outlook email via /me (Graph API)
+    → Encrypt tokens with AES-256-GCM
+    → Upsert into outlook_credentials (scoped to user_id)
+    → Redirect to /dashboard/settings?tab=account&outlook=success
+```
+
+### Core Files
+
+- `lib/outlook-helper.ts` — AES-256-GCM encryption; exports `encryptToken`, `decryptToken`, `getMicrosoftClientId`, `getMicrosoftClientSecret`, `getAuthUrl`, `exchangeCodeForTokens`, `refreshAccessToken`, `getOutlookEmail`, `sendEmail` / `OutlookSendOptions`
+- `lib/types/integrations.ts` — `GmailStatus`, `OutlookStatus`, `EmailIntegrationStatus` types
+
+### Token Security
+
+- Same AES-256-GCM pattern as Gmail (`iv:tag:ciphertext`, colon-separated, all base64)
+- Key: `OUTLOOK_TOKEN_ENCRYPTION_KEY` env var (64-char hex = 32 bytes; generate with `openssl rand -hex 32`)
+
+### Proactive Token Refresh
+
+Send route performs proactive refresh before each send. On 401, retries once. If refresh fails, returns `outlook_reauth_required`.
+
+Note: Microsoft has no token revocation endpoint; disconnect simply deletes the DB row.
+
+### Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `MICROSOFT_CLIENT_ID` | Azure AD Application (client) ID |
+| `MICROSOFT_CLIENT_SECRET` | Azure AD client secret |
+| `OUTLOOK_TOKEN_ENCRYPTION_KEY` | 64-char hex for AES-256-GCM (`openssl rand -hex 32`) |
+
+Azure redirect URI: `https://www.useellyn.com/api/outlook/oauth`
+Required scopes (delegated): `Mail.Send`, `Mail.Read`, `User.Read`, `offline_access`
+
+### API Routes
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/v1/auth/outlook` | GET | Initiate OAuth flow (redirects to Microsoft) |
+| `/api/outlook/oauth` | GET | OAuth callback (exchanges code, stores tokens) |
+| `/api/outlook/send` | POST | Send email via Graph API |
+| `/api/outlook/status` | GET | Check Outlook connection status |
+| `/api/outlook/disconnect` | DELETE | Delete credentials row (no MS revocation) |
+
+V1 wrappers exist for status, send, disconnect via re-export under `app/api/v1/outlook/`.
+
+### POST /api/outlook/send — Request Body
+
+Same shape as Gmail send. `OutlookSendOptions` from `lib/outlook-helper.ts`.
+
+### GET /api/outlook/status — Response
+
+```json
+{
+  "connected": true,
+  "outlookEmail": "user@outlook.com",
+  "connectedAt": "2026-03-01T12:00:00Z"
+}
+```
+
+### Database Table
+
+**`outlook_credentials`** (migration `031_outlook_credentials.sql`)
+
+- `user_id` (PK, FK to auth.users)
+- `access_token`, `refresh_token` — AES-256-GCM encrypted
+- `outlook_email` — connected address
+- `token_expires_at`
+
+### Required Migration
+
+Run `lib/db/migrations/031_outlook_credentials.sql` in Supabase SQL editor before using Outlook features.
+
+---
+
+## Shared UI
+
+- `hooks/useEmailIntegrations.ts` — fetches both Gmail and Outlook statuses in parallel; exposes `disconnectGmail`, `disconnectOutlook`, `refreshGmail`, `refreshOutlook`
+- `components/settings/EmailIntegrationCard.tsx` — skeleton loading, connected/disconnected state, AlertDialog disconnect confirmation for both providers
+- `app/dashboard/settings/page.tsx` — uses hook + component; cleans up OAuth query params via `router.replace` after showing toast

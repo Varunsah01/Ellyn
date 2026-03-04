@@ -1,6 +1,6 @@
 ﻿# Sequences
 
-Last updated: 2026-03-02
+Last updated: 2026-03-04
 
 ## Implementation Status
 
@@ -10,22 +10,26 @@ Last updated: 2026-03-02
 | --- | --- | --- |
 | `GET /api/v1/sequences` | ✅ | Returns user-owned sequences with step/enrollment counts. |
 | `POST /api/v1/sequences` | ✅ | Creates sequence + bulk inserts steps. |
-| `GET /api/v1/sequences/[id]` | ✅ | Returns `sequence`, `steps`, `enrollments`, and aggregate stats. |
+| `GET /api/v1/sequences/[id]` | ✅ | Returns `sequence`, `steps`, `enrollments`, `enrollmentSteps`, and aggregate stats. |
 | `PATCH /api/v1/sequences/[id]` | ✅ | Updates metadata/status and can replace all steps. |
 | `DELETE /api/v1/sequences/[id]` | ✅ | Ownership-checked delete, cascades via FK. |
-| `POST /api/v1/sequences/[id]/enroll` | ✅ | Enrolls contacts, skips duplicates, creates enrollment steps. |
+| `POST /api/v1/sequences/[id]/enroll` | ✅ | Enrolls contacts, skips duplicates, creates enrollment steps. Body: `{ contactIds, startDate, overrides, metadata? }` |
+| `GET /api/v1/sequences/[id]/stats` | ✅ | Returns aggregate performance stats for a sequence (opens, replies, bounces). |
 | `POST /api/v1/sequences/execute` | ✅ | Handles `send`, `skip`, and `pause` actions. |
+| `POST /api/v1/sequences/reply` | ✅ | Handles inbound reply events for sequence enrollments. |
 | `PATCH /api/v1/sequences/[id]/enrollments/[enrollmentId]` | ✅ | Pause/resume individual enrollment actions. |
-| `DELETE /api/v1/sequences/[id]/enrollments/[enrollmentId]` | ✅ | Removes enrollment record. |
+| `DELETE /api/v1/sequences/[id]/enrollments/[enrollmentId]/remove` | ✅ | Removes enrollment record. |
 
 ### Pages
 
 | Route | Status | Notes |
 | --- | --- | --- |
 | `/dashboard/sequences` | ✅ | Grid of sequences with status badges, counts, edit/delete actions. |
-| `/dashboard/sequences/new` | ✅ | Template gallery + visual builder flow. |
+| `/dashboard/sequences/new` | ✅ | Template gallery → visual builder flow (two-state). |
+| `/dashboard/sequences/create` | ✅ | Alternate direct sequence creation route. |
 | `/dashboard/sequences/[id]` | ✅ | Overview and Contacts tabs with stats and management actions. |
-| `/dashboard/sequences/[id]/enroll` | ✅ | 3-step enrollment wizard. |
+| `/dashboard/sequences/[id]/edit` | ✅ | Edit existing sequence steps and metadata. |
+| `/dashboard/sequences/[id]/enroll` | ✅ | 3-step enrollment wizard (Select → Preview/Customize → Confirm). |
 
 ### Components
 

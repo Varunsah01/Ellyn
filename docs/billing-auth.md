@@ -1,6 +1,6 @@
 ﻿# Billing and Authentication
 
-Last updated: 2026-03-02
+Last updated: 2026-03-04
 
 ## Provider
 
@@ -15,8 +15,15 @@ Payments are integrated with **DodoPayments** (not Stripe).
 | --- | --- | --- |
 | `POST /api/v1/auth/signup` | ✅ | Creates auth user via service role admin API and returns `{ success, user }`. |
 | `POST /api/v1/auth/change-password` | ✅ | Auth-required password update route. |
-| `GET /api/v1/auth/gmail` | ✅ | Connect button target/placeholder route. |
-| `POST /api/v1/auth/outlook` | ✅ | Connect button target/placeholder route. |
+| `POST /api/v1/auth/validate-password` | ✅ | Validates password against policy without changing it. |
+| `GET /api/v1/auth/gmail` | ✅ | Initiates Google OAuth flow (CSRF state + redirect). |
+| `GET /api/v1/auth/outlook` | ✅ | Initiates Microsoft OAuth flow (CSRF state + redirect). |
+| `GET /api/admin-auth/login` | ✅ | Admin login (guarded by `lib/auth/admin-endpoint-guard.ts`). |
+| `POST /api/admin-auth/logout` | ✅ | Admin logout. |
+
+## Email Integration Auth
+
+Both Gmail and Outlook OAuth live in `docs/email-sending.md`. Admin protection for all `/app/api/admin/` routes uses `lib/auth/admin-endpoint-guard.ts`, which checks `SECRET_ADMIN_TOKEN` and optional `ADMIN_IP_WHITELIST`.
 
 ## Subscription/Billing Routes
 
@@ -59,8 +66,23 @@ Plan limits:
 - Starter: email `500`, AI draft `150`
 - Pro: email `1500`, AI draft `500`
 
+## Quota Routes
+
+| Route | Status | Notes |
+| --- | --- | --- |
+| `GET /api/v1/quota/status` | ✅ | Returns `{ email, ai_draft, reset_date, plan_type }` usage breakdown. |
+| `POST /api/v1/quota/check` | ✅ | Checks if a quota action is allowed before performing it. |
+| `POST /api/v1/quota/rollback` | ✅ | Rolls back a quota increment on failed operations. |
+
+## SMTP Probe
+
+- `POST /api/v1/smtp-probe` — performs a direct SMTP handshake to confirm inbox existence for non-Google/Microsoft domains.
+- `GET /api/v1/smtp-probe/health` — health check for the SMTP probe service.
+- `POST /api/v1/settings/test-smtp` — tests a custom SMTP configuration.
+
 ## Upgrade UX
 
 - ✅ `/dashboard/upgrade` has monthly/quarterly/yearly selector and plan cards.
+- ✅ `/dashboard/billing/upgrade` is an alternate upgrade entry point.
 - ✅ Checkout buttons call `POST /api/v1/subscription/checkout`.
 - ✅ On return with `?upgraded=true`, success state is shown and subscription context refreshes usage data.
