@@ -102,7 +102,7 @@ async function getOverviewMetrics(
     .lte("created_at", endStr);
 
   // Emails sent (from outreach table)
-  const { count: emailsSent } = await supabase
+  const { count: _emailsSent } = await supabase
     .from("outreach")
     .select("*", { count: "exact", head: true })
     .eq("user_id", userId)
