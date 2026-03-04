@@ -8,6 +8,17 @@ export const dynamic = 'force-dynamic'
 const attempts = new Map<string, { count: number; resetAt: number }>()
 
 export async function POST(request: NextRequest) {
+  if (
+    !process.env.ADMIN_USERNAME ||
+    !process.env.ADMIN_PASSWORD ||
+    !process.env.ADMIN_SESSION_SECRET
+  ) {
+    return NextResponse.json(
+      { error: 'Admin auth is not configured. Set ADMIN_USERNAME, ADMIN_PASSWORD, and ADMIN_SESSION_SECRET in environment variables.' },
+      { status: 503 }
+    )
+  }
+
   const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown'
   const now = Date.now()
   const record = attempts.get(ip)
@@ -47,7 +58,7 @@ export async function POST(request: NextRequest) {
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: SESSION_DURATION_MS / 1000,
-    path: '/admin',
+    path: '/',
   })
 
   return response

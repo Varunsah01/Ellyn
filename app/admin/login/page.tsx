@@ -25,12 +25,22 @@ function AdminLoginForm() {
         body: JSON.stringify({ username: username.trim(), password }),
       })
 
+      let body: { error?: string; success?: boolean } = {}
+      try {
+        body = await res.json()
+      } catch {
+        setError(`Server error (${res.status}). Check that ADMIN_USERNAME, ADMIN_PASSWORD, and ADMIN_SESSION_SECRET are set in Vercel environment variables.`)
+        return
+      }
+
+      if (res.status === 503) {
+        setError('Admin auth not configured. Set ADMIN_USERNAME, ADMIN_PASSWORD, and ADMIN_SESSION_SECRET in Vercel environment variables.')
+        return
+      }
       if (res.status === 429) {
         setError('Too many attempts. Try again in 15 minutes.')
         return
       }
-
-      const body = await res.json()
       if (!res.ok) {
         setError(body.error ?? 'Invalid credentials')
         return
@@ -38,7 +48,7 @@ function AdminLoginForm() {
 
       router.push(next)
     } catch {
-      setError('Network error. Try again.')
+      setError('Network error — could not reach the server. Check your connection.')
     } finally {
       setLoading(false)
     }
