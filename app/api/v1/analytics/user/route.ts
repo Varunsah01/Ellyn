@@ -228,7 +228,7 @@ export async function GET(request: NextRequest) {
     const totalSent = statusCounts.sent ?? 0;
     const totalReplied = statusCounts.replied ?? 0;
     const totalBounced = statusCounts.bounced ?? 0;
-    const replyRate = calculateRate(totalReplied, totalSent);
+    const _replyRate = calculateRate(totalReplied, totalSent);
 
     // Augment with email_tracking_events (accurate) and email_history (Gmail sends) as fallbacks
     let trackingQuery = supabase
