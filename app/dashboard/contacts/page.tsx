@@ -91,6 +91,8 @@ type Contact = {
   linkedin_url: string | null;
   created_at: string | null;
   updated_at: string | null;
+  lead_score_cache: number | null;
+  lead_score_grade: "hot" | "warm" | "cold" | null;
 };
 
 type ContactsResponse = {
@@ -161,6 +163,12 @@ function formatDate(value: string | null): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function gradeClassName(grade: "hot" | "warm" | "cold"): string {
+  if (grade === "hot") return "border-red-200 bg-red-50 text-red-700";
+  if (grade === "warm") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-slate-200 bg-slate-100 text-slate-600";
 }
 
 function normalizeSource(value: string | null): string {
@@ -647,6 +655,7 @@ export default function ContactsPage() {
                   <TableHead>Company</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Score</TableHead>
                   <TableHead>Discovery Source</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="w-[56px] text-right">Actions</TableHead>
@@ -702,6 +711,15 @@ export default function ContactsPage() {
                         >
                           {toStatusLabel(contact.status)}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {contact.lead_score_grade ? (
+                          <span className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium ${gradeClassName(contact.lead_score_grade)}`}>
+                            {contact.lead_score_grade.charAt(0).toUpperCase() + contact.lead_score_grade.slice(1)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
                       </TableCell>
                       <TableCell>{normalizeSource(contact.discovery_source)}</TableCell>
                       <TableCell>{formatDate(contact.created_at)}</TableCell>

@@ -21,36 +21,81 @@ export async function GET(request: Request) {
   try {
     const supabase = await createServiceRoleClient()
 
-    const { count } = await supabase
-      .from('email_tracking_events')
-      .select('*', { count: 'exact', head: true })
-      .eq('draft_id', decoded.draftId)
-      .eq('event_type', 'opened')
+    const forwarded = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? ''
+    const ip = forwarded.split(',')[0]?.trim() || ''
+    const metadata = {
+      user_agent: request.headers.get('user-agent'),
+      ip_hash: hashIp(ip),
+    }
 
-    if ((count ?? 0) === 0) {
-      const forwarded = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? ''
-      const ip = forwarded.split(',')[0]?.trim() || ''
+    // Determine idempotency key and context based on token type
+    if (decoded.enrollmentStepId) {
+      // Sequence email open
+      const idempotencyKey = `open:step:${decoded.enrollmentStepId}`
 
       void (async () => {
+        await supabase.from('email_tracking_events').upsert(
+          {
+            user_id: decoded.userId,
+            draft_id: null,
+            contact_id: decoded.contactId ?? null,
+            sequence_id: decoded.sequenceId ?? null,
+            event_type: 'opened',
+            metadata,
+            idempotency_key: idempotencyKey,
+          },
+          { onConflict: 'idempotency_key', ignoreDuplicates: true }
+        )
+      })().catch(console.error)
+
+      // Update sequence_enrollment_steps.opened_at
+      void (async () => {
         await supabase
-          .from('email_tracking_events')
-          .insert({
+          .from('sequence_enrollment_steps')
+          .update({ opened_at: new Date().toISOString() })
+          .eq('id', decoded.enrollmentStepId!)
+          .is('opened_at', null)
+      })().catch(console.error)
+    } else if (decoded.trackingId) {
+      // Direct send open
+      const idempotencyKey = `open:direct:${decoded.trackingId}`
+
+      void (async () => {
+        await supabase.from('email_tracking_events').upsert(
+          {
+            user_id: decoded.userId,
+            draft_id: null,
+            contact_id: decoded.contactId ?? null,
+            event_type: 'opened',
+            metadata,
+            idempotency_key: idempotencyKey,
+          },
+          { onConflict: 'idempotency_key', ignoreDuplicates: true }
+        )
+      })().catch(console.error)
+    } else if (decoded.draftId) {
+      // Draft email open (legacy path)
+      const idempotencyKey = `open:draft:${decoded.draftId}`
+
+      void (async () => {
+        await supabase.from('email_tracking_events').upsert(
+          {
             user_id: decoded.userId,
             draft_id: decoded.draftId,
             contact_id: decoded.contactId ?? null,
             event_type: 'opened',
-            metadata: {
-              user_agent: request.headers.get('user-agent'),
-              ip_hash: hashIp(ip),
-            },
-          })
+            metadata,
+            idempotency_key: idempotencyKey,
+          },
+          { onConflict: 'idempotency_key', ignoreDuplicates: true }
+        )
       })().catch(console.error)
 
       void (async () => {
         await supabase
           .from('ai_drafts')
           .update({ status: 'sent' })
-          .eq('id', decoded.draftId)
+          .eq('id', decoded.draftId!)
           .eq('status', 'scheduled')
       })().catch(console.error)
     }

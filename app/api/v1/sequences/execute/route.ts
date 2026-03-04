@@ -3,6 +3,10 @@ import { z } from "zod";
 
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { sendEmailViaGmail } from "@/lib/gmail-send";
+import { sendEmailViaOutlook } from "@/lib/outlook-send";
+import { replaceTemplateVariables } from "@/lib/gmail-helper";
+import { generateSequenceTrackingPixelUrl } from "@/lib/tracking";
 
 const ExecuteActionSchema = z.object({
   action: z.enum(["send", "skip", "pause"]),
@@ -30,6 +34,8 @@ type SequenceStepRow = {
   sequence_id: string;
   step_order: number | null;
   delay_days: number | null;
+  subject: string | null;
+  body: string | null;
 };
 
 type SequenceEnrollmentStepRow = {
@@ -107,7 +113,7 @@ export async function POST(request: NextRequest) {
 
     const { data: sequenceSteps, error: stepsError } = await supabase
       .from("sequence_steps")
-      .select("id, sequence_id, step_order, delay_days")
+      .select("id, sequence_id, step_order, delay_days, subject, body")
       .eq("sequence_id", sequence.id)
       .order("step_order", { ascending: true });
 
@@ -164,6 +170,82 @@ export async function POST(request: NextRequest) {
     const nowIso = now.toISOString();
 
     if (action === "send") {
+      // Fetch contact email and name for delivery + variable substitution
+      const { data: contact } = await supabase
+        .from("contacts")
+        .select("email, inferred_email, full_name, first_name, last_name, company_name, company")
+        .eq("id", enrollment.contact_id)
+        .maybeSingle();
+
+      const recipientEmail = contact?.email ?? contact?.inferred_email ?? null;
+      if (!recipientEmail) {
+        return NextResponse.json({ error: "Contact has no email address" }, { status: 422 });
+      }
+
+      // Substitute template variables
+      const variables = {
+        firstName: contact?.first_name ?? contact?.full_name?.split(" ")[0] ?? "",
+        lastName: contact?.last_name ?? "",
+        fullName: contact?.full_name ?? "",
+        company: (contact as { company?: string } | null)?.company ?? contact?.company_name ?? "",
+      };
+      const resolvedSubject = replaceTemplateVariables(currentSequenceStep.subject ?? "", variables);
+      const resolvedBody = replaceTemplateVariables(currentSequenceStep.body ?? "", variables);
+
+      // Generate tracking pixel for this sequence step
+      const pixelUrl = generateSequenceTrackingPixelUrl({
+        enrollmentStepId: enrollmentStep.id,
+        enrollmentId: enrollment.id,
+        sequenceId: enrollment.sequence_id,
+        userId: user.id,
+        contactId: enrollment.contact_id,
+      });
+
+      // Try Gmail first, then Outlook
+      let sendResult = await sendEmailViaGmail({
+        userId: user.id,
+        to: recipientEmail,
+        subject: resolvedSubject,
+        body: resolvedBody,
+        contactId: enrollment.contact_id,
+        isHtml: true,
+        trackingPixelUrl: pixelUrl,
+        sequenceEnrollmentId: enrollment.id,
+      });
+
+      if (!sendResult.success && sendResult.code === "gmail_not_connected") {
+        sendResult = await sendEmailViaOutlook({
+          userId: user.id,
+          to: recipientEmail,
+          subject: resolvedSubject,
+          body: resolvedBody,
+          contactId: enrollment.contact_id,
+          isHtml: true,
+          trackingPixelUrl: pixelUrl,
+          sequenceEnrollmentId: enrollment.id,
+        });
+      }
+
+      if (!sendResult.success) {
+        if (sendResult.code === "gmail_reauth_required" || sendResult.code === "outlook_reauth_required") {
+          return NextResponse.json(
+            { error: "Email account needs to be reconnected. Go to Settings → Integrations.", code: sendResult.code },
+            { status: 422 }
+          );
+        }
+        if (sendResult.code === "gmail_not_connected" || sendResult.code === "outlook_not_connected") {
+          return NextResponse.json(
+            { error: "No email account connected. Connect Gmail or Outlook in Settings.", code: "no_email_provider" },
+            { status: 422 }
+          );
+        }
+        return NextResponse.json(
+          { error: sendResult.error ?? "Failed to send email" },
+          { status: 500 }
+        );
+      }
+
+      // Mark step as sent only after successful delivery
       const { error: updateStepError } = await supabase
         .from("sequence_enrollment_steps")
         .update({
@@ -176,6 +258,8 @@ export async function POST(request: NextRequest) {
       if (updateStepError) {
         return NextResponse.json({ error: updateStepError.message || "Failed to mark step as sent" }, { status: 500 });
       }
+
+      const provider = "messageId" in sendResult ? "gmail" : "outlook";
 
       // Log to email_tracking_events so analytics can count it
       void supabase
@@ -190,6 +274,9 @@ export async function POST(request: NextRequest) {
             enrollment_step_id: enrollmentStep.id,
             step_id: currentSequenceStep.id,
             source: "v1_execute",
+            provider,
+            message_id: (sendResult as { messageId?: string }).messageId ?? null,
+            tracking_pixel_injected: true,
           },
         })
         .then(({ error: trackErr }) => {

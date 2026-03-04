@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { err, unauthorized, notFound, validationError } from "@/lib/api/response";
+import { checkApiRateLimit, rateLimitExceeded } from "@/lib/rate-limit";
 
 const CONTACT_STATUSES = ["discovered", "sent", "bounced", "replied"] as const;
 const ContactStatusSchema = z.enum(CONTACT_STATUSES);
@@ -109,6 +111,9 @@ type ContactRow = {
   notes: string | null;
   created_at: string | null;
   updated_at: string | null;
+  lead_score_cache: number | null;
+  lead_score_grade: "hot" | "warm" | "cold" | null;
+  lead_score_computed_at: string | null;
 };
 
 type RouteContext = {
@@ -122,7 +127,7 @@ async function getOwnedContact(contactId: string, userId: string) {
   const query = await supabase
     .from("contacts")
     .select(
-      "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at"
+      "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at, lead_score_cache, lead_score_grade, lead_score_computed_at"
     )
     .eq("id", contactId)
     .eq("user_id", userId)
@@ -136,47 +141,30 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     const user = await getAuthenticatedUserFromRequest(request);
     const { data, error } = await getOwnedContact(params.id, user.id);
 
-    if (error) {
-      return NextResponse.json({ error: error.message || "Failed to fetch contact" }, { status: 500 });
-    }
-
-    if (!data) {
-      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
-    }
+    if (error) return err(error.message || "Failed to fetch contact", 500);
+    if (!data) return notFound("Contact");
 
     return NextResponse.json({ contact: data });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch contact" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to fetch contact", 500);
   }
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
+
+    const rl = await checkApiRateLimit(`contact-patch:${user.id}`, 30, 300);
+    if (!rl.allowed) return rateLimitExceeded(rl.resetAt);
+
     const owned = await getOwnedContact(params.id, user.id);
-    if (owned.error) {
-      return NextResponse.json({ error: owned.error.message || "Failed to fetch contact" }, { status: 500 });
-    }
-    if (!owned.data) {
-      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
-    }
+    if (owned.error) return err(owned.error.message || "Failed to fetch contact", 500);
+    if (!owned.data) return notFound("Contact");
 
     const parsed = ContactPatchSchema.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json(
-        {
-          error: parsed.error.issues[0]?.message ?? "Invalid contact payload",
-          details: parsed.error.issues,
-        },
-        { status: 400 }
-      );
+      return validationError(parsed.error.issues);
     }
 
     const { data, error } = await owned.supabase
@@ -188,37 +176,29 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       .eq("id", params.id)
       .eq("user_id", user.id)
       .select(
-        "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at"
+        "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at, lead_score_cache, lead_score_grade, lead_score_computed_at"
       )
       .single<ContactRow>();
 
-    if (error) {
-      return NextResponse.json({ error: error.message || "Failed to update contact" }, { status: 500 });
-    }
+    if (error) return err(error.message || "Failed to update contact", 500);
 
     return NextResponse.json({ contact: data });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update contact" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to update contact", 500);
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
+
+    const rl = await checkApiRateLimit(`contact-delete:${user.id}`, 10, 300);
+    if (!rl.allowed) return rateLimitExceeded(rl.resetAt);
+
     const owned = await getOwnedContact(params.id, user.id);
-    if (owned.error) {
-      return NextResponse.json({ error: owned.error.message || "Failed to fetch contact" }, { status: 500 });
-    }
-    if (!owned.data) {
-      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
-    }
+    if (owned.error) return err(owned.error.message || "Failed to fetch contact", 500);
+    if (!owned.data) return notFound("Contact");
 
     const { error } = await owned.supabase
       .from("contacts")
@@ -226,19 +206,11 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       .eq("id", params.id)
       .eq("user_id", user.id);
 
-    if (error) {
-      return NextResponse.json({ error: error.message || "Failed to delete contact" }, { status: 500 });
-    }
+    if (error) return err(error.message || "Failed to delete contact", 500);
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete contact" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to delete contact", 500);
   }
 }

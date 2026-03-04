@@ -18,8 +18,9 @@ export async function GET(request: Request) {
         const supabase = await createServiceRoleClient()
         await supabase.from('email_tracking_events').insert({
           user_id: decoded.userId,
-          draft_id: decoded.draftId,
+          draft_id: decoded.draftId ?? null,
           contact_id: decoded.contactId ?? null,
+          sequence_id: decoded.sequenceId ?? null,
           event_type: 'clicked',
           metadata: { destination },
         })

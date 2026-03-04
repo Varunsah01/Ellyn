@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { getAuthUser } from '@/lib/api/auth'
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { captureApiException } from '@/lib/monitoring/sentry'
 import {
   getPerformanceSnapshot,
   recordWebVitalMetric,
 } from '@/lib/monitoring/performance'
+import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 
 type WebVitalName = 'CLS' | 'FID' | 'FCP' | 'LCP' | 'TTFB'
 
@@ -70,6 +72,15 @@ function toMetricList(payload: unknown): unknown[] {
  */
 export async function POST(request: NextRequest) {
   try {
+    const auth = await getAuthUser()
+    if (!auth.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    const user = auth.user
+
+    const rl = await checkApiRateLimit(`perf:${user.id}`, 60, 3600)
+    if (!rl.allowed) return rateLimitExceeded(rl.resetAt)
+
     let body: unknown
     try {
       body = await request.json()

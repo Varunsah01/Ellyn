@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { err, unauthorized, validationError } from "@/lib/api/response";
 
 const PersonaSchema = z.object({
   persona: z.enum(["job_seeker", "smb_sales"]),
@@ -21,23 +22,15 @@ export async function GET(request: NextRequest) {
       .eq("id", user.id)
       .maybeSingle<{ persona: PersonaValue | null }>();
 
-    if (error) {
-      return NextResponse.json({ error: error.message || "Failed to fetch persona" }, { status: 500 });
-    }
+    if (error) return err(error.message || "Failed to fetch persona", 500);
 
     return NextResponse.json({
       persona: data?.persona ?? "job_seeker",
       profile_persona: data?.persona ?? null,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch persona" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to fetch persona", 500);
   }
 }
 
@@ -47,10 +40,7 @@ export async function PATCH(request: NextRequest) {
 
     const parsed = PersonaSchema.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? "Invalid persona value" },
-        { status: 400 }
-      );
+      return validationError(parsed.error.issues);
     }
 
     const supabase = await createServiceRoleClient();
@@ -67,19 +57,11 @@ export async function PATCH(request: NextRequest) {
       .select("persona")
       .single<{ persona: PersonaValue | null }>();
 
-    if (error) {
-      return NextResponse.json({ error: error.message || "Failed to update persona" }, { status: 500 });
-    }
+    if (error) return err(error.message || "Failed to update persona", 500);
 
     return NextResponse.json({ persona: data?.persona ?? parsed.data.persona });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update persona" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to update persona", 500);
   }
 }

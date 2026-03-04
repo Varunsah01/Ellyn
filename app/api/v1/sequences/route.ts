@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { err, unauthorized, validationError } from "@/lib/api/response";
 
 const StepTypeSchema = z.enum(["email", "wait", "condition", "task"]);
 
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (sequenceError) {
-      return NextResponse.json({ error: sequenceError.message || "Failed to fetch sequences" }, { status: 500 });
+      return err(sequenceError.message || "Failed to fetch sequences", 500);
     }
 
     const sequences = (sequenceData ?? []) as SequenceRow[];
@@ -93,14 +94,11 @@ export async function GET(request: NextRequest) {
     ]);
 
     if (stepsResult.error) {
-      return NextResponse.json({ error: stepsResult.error.message || "Failed to fetch sequence steps" }, { status: 500 });
+      return err(stepsResult.error.message || "Failed to fetch sequence steps", 500);
     }
 
     if (enrollmentsResult.error) {
-      return NextResponse.json(
-        { error: enrollmentsResult.error.message || "Failed to fetch sequence enrollments" },
-        { status: 500 }
-      );
+      return err(enrollmentsResult.error.message || "Failed to fetch sequence enrollments", 500);
     }
 
     const stepCounts = new Map<string, number>();
@@ -125,14 +123,8 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch sequences" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to fetch sequences", 500);
   }
 }
 
@@ -143,13 +135,7 @@ export async function POST(request: NextRequest) {
 
     const parsed = SequenceCreateSchema.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json(
-        {
-          error: parsed.error.issues[0]?.message ?? "Invalid sequence payload",
-          details: parsed.error.issues,
-        },
-        { status: 400 }
-      );
+      return validationError(parsed.error.issues);
     }
 
     const { data: sequenceData, error: sequenceError } = await supabase
@@ -164,7 +150,7 @@ export async function POST(request: NextRequest) {
       .single<SequenceRow>();
 
     if (sequenceError || !sequenceData) {
-      return NextResponse.json({ error: sequenceError?.message || "Failed to create sequence" }, { status: 500 });
+      return err(sequenceError?.message || "Failed to create sequence", 500);
     }
 
     const nowIso = new Date().toISOString();
@@ -194,7 +180,7 @@ export async function POST(request: NextRequest) {
 
     if (stepsError) {
       await supabase.from("sequences").delete().eq("id", sequenceData.id).eq("user_id", user.id);
-      return NextResponse.json({ error: stepsError.message || "Failed to create sequence steps" }, { status: 500 });
+      return err(stepsError.message || "Failed to create sequence steps", 500);
     }
 
     return NextResponse.json(
@@ -205,13 +191,7 @@ export async function POST(request: NextRequest) {
       { status: 201 }
     );
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create sequence" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to create sequence", 500);
   }
 }

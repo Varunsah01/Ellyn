@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { invalidateUserAnalyticsCache } from '@/lib/cache/tags'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { formatZodError } from '@/lib/validation/schemas'
 
@@ -21,6 +22,9 @@ const trackEmailEventSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request)
+    const rl = await checkApiRateLimit(`track-email:${user.id}`, 200, 3600)
+    if (!rl.allowed) return rateLimitExceeded(rl.resetAt)
+
     const supabase = await createServiceRoleClient()
 
     let rawBody: unknown

@@ -12,6 +12,7 @@ import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { GmailSendSchema, formatZodError } from '@/lib/validation/schemas'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { generateDirectTrackingPixelUrl, injectTrackingPixel } from '@/lib/tracking'
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +26,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { leadId, contactId, to, subject, body: emailBody, isHtml = true } = parsed.data
+    const { leadId, contactId, to, subject, body: rawEmailBody, isHtml = true } = parsed.data
+
+    // Inject direct tracking pixel when HTML and contactId available
+    let emailBody = rawEmailBody
+    let trackingId: string | undefined
+    if (isHtml && contactId) {
+      trackingId = crypto.randomUUID()
+      const pixelUrl = generateDirectTrackingPixelUrl({ trackingId, userId: user.id, contactId })
+      emailBody = injectTrackingPixel(emailBody, pixelUrl)
+    }
 
     const supabase = await createServiceRoleClient()
     const { data: credentials, error: credError } = await supabase
@@ -77,8 +87,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Try sending email
+    let messageId = ''
+    let conversationId = ''
+
     try {
-      await sendEmail(accessToken, { to, subject, body: emailBody, isHtml })
+      const result = await sendEmail(accessToken, { to, subject, body: emailBody, isHtml })
+      messageId = result.messageId
+      conversationId = result.conversationId
     } catch (sendErr: unknown) {
       // On OUTLOOK_REAUTH_REQUIRED or 401 — attempt one token refresh and retry
       if (sendErr instanceof Error && (
@@ -102,7 +117,9 @@ export async function POST(request: NextRequest) {
               if (updateErr) console.error('Error updating refreshed Outlook token:', updateErr)
             })
 
-          await sendEmail(accessToken, { to, subject, body: emailBody, isHtml })
+          const result = await sendEmail(accessToken, { to, subject, body: emailBody, isHtml })
+          messageId = result.messageId
+          conversationId = result.conversationId
         } catch {
           return NextResponse.json(
             { error: 'Outlook authorization expired. Please reconnect Outlook.', code: 'outlook_reauth_required' },
@@ -125,10 +142,29 @@ export async function POST(request: NextRequest) {
         from_email: outlookEmail || null,
         subject,
         body: emailBody,
+        provider_thread_id: conversationId || null,
         status: 'sent',
       })
       .then(({ error: histErr }) => {
         if (histErr) console.error('Error logging Outlook email history:', histErr)
+      })
+
+    // Fire-and-forget: log sent event
+    void supabase
+      .from('email_tracking_events')
+      .insert({
+        user_id: user.id,
+        contact_id: contactId ?? null,
+        event_type: 'sent',
+        metadata: {
+          source: 'outlook_send_route',
+          message_id: messageId || null,
+          conversation_id: conversationId || null,
+          tracking_id: trackingId ?? null,
+        },
+      })
+      .then(({ error: evtErr }) => {
+        if (evtErr) console.error('Error logging Outlook tracking sent event:', evtErr)
       })
 
     // Fire-and-forget: update lead status if leadId provided

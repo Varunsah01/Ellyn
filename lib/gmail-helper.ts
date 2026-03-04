@@ -201,7 +201,10 @@ export function formatEmail(
 /**
  * Send email via Gmail API.
  */
-export async function sendEmail(accessToken: string, encodedMessage: string): Promise<string> {
+export async function sendEmail(
+  accessToken: string,
+  encodedMessage: string
+): Promise<{ messageId: string; threadId: string }> {
   const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
     method: 'POST',
     headers: {
@@ -217,7 +220,7 @@ export async function sendEmail(accessToken: string, encodedMessage: string): Pr
   }
 
   const data = await response.json()
-  return data.id
+  return { messageId: data.id as string, threadId: (data.threadId ?? data.id) as string }
 }
 
 /**

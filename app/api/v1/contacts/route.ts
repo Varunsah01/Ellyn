@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { computeLeadScore } from "@/lib/lead-scoring";
+import { err, unauthorized, validationError } from "@/lib/api/response";
 
 const CONTACT_STATUSES = ["discovered", "sent", "bounced", "replied"] as const;
 const SORT_FIELDS = [
@@ -132,6 +134,8 @@ type ContactRow = {
   notes: string | null;
   created_at: string | null;
   updated_at: string | null;
+  lead_score_cache: number | null;
+  lead_score_grade: "hot" | "warm" | "cold" | null;
 };
 
 export async function GET(request: NextRequest) {
@@ -150,7 +154,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("contacts")
       .select(
-        "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at",
+        "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at, lead_score_cache, lead_score_grade",
         { count: "exact" }
       )
       .eq("user_id", user.id);
@@ -170,7 +174,7 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (error) {
-      return NextResponse.json({ error: error.message || "Failed to fetch contacts" }, { status: 500 });
+      return err(error.message || "Failed to fetch contacts", 500);
     }
 
     const contacts = Array.isArray(data) ? (data as ContactRow[]) : [];
@@ -182,14 +186,8 @@ export async function GET(request: NextRequest) {
       hasMore: offset + contacts.length < total,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch contacts" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to fetch contacts", 500);
   }
 }
 
@@ -200,13 +198,7 @@ export async function POST(request: NextRequest) {
 
     const parsed = ContactCreateSchema.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json(
-        {
-          error: parsed.error.issues[0]?.message ?? "Invalid contact payload",
-          details: parsed.error.issues,
-        },
-        { status: 400 }
-      );
+      return validationError(parsed.error.issues);
     }
 
     const now = new Date().toISOString();
@@ -221,23 +213,28 @@ export async function POST(request: NextRequest) {
         updated_at: now,
       })
       .select(
-        "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at"
+        "id, user_id, first_name, last_name, email, company_name, role, linkedin_url, phone, discovery_source, status, notes, created_at, updated_at, lead_score_cache, lead_score_grade"
       )
       .single<ContactRow>();
 
     if (error) {
-      return NextResponse.json({ error: error.message || "Failed to create contact" }, { status: 500 });
+      return err(error.message || "Failed to create contact", 500);
     }
+
+    // Fire-and-forget: compute and persist lead score
+    const scoreResult = computeLeadScore(
+      { email_verified: null, email_confidence: null, linkedin_url: parsed.data.linkedin_url ?? null },
+      []
+    )
+    void supabase
+      .from("contacts")
+      .update({ lead_score_cache: scoreResult.score, lead_score_grade: scoreResult.grade, lead_score_computed_at: new Date().toISOString() })
+      .eq("id", data!.id)
+      .then(({ error: e }) => { if (e) console.error("[contacts POST] score:", e) })
 
     return NextResponse.json({ contact: data }, { status: 201 });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create contact" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to create contact", 500);
   }
 }

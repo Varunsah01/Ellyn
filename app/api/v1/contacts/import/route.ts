@@ -6,6 +6,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { captureApiException } from '@/lib/monitoring/sentry'
 import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 import { checkPlanLimit } from '@/lib/plan-limits'
+import { computeLeadScore } from '@/lib/lead-scoring'
 
 // ─── Zod schemas ─────────────────────────────────────────────────────────────
 
@@ -136,11 +137,11 @@ export async function POST(request: NextRequest) {
         // Row-by-row fallback to collect individual errors
         for (let j = 0; j < chunk.length; j++) {
           const row = chunk[j]!
-          const { error: rowError } = await supabase
+          const { error: rowError, data: rowData } = await supabase
             .from('contacts')
             .insert(row)
             .select('id')
-            .single()
+            .single<{ id: string }>()
 
           if (rowError) {
             if (
@@ -154,12 +155,27 @@ export async function POST(request: NextRequest) {
             }
           } else {
             result.imported++
+            if (rowData?.id) {
+              const s = computeLeadScore({ email_verified: false, email_confidence: row.email_confidence ?? null, linkedin_url: row.linkedin_url ?? null }, [])
+              void supabase.from('contacts').update({ lead_score_cache: s.score, lead_score_grade: s.grade, lead_score_computed_at: new Date().toISOString() }).eq('id', rowData.id).then(({ error: e }) => { if (e) console.error('[import] score:', e) })
+            }
           }
         }
       } else {
         const inserted = data?.length ?? 0
         result.imported += inserted
         result.skipped += chunk.length - inserted
+        // Fire-and-forget batch scores for inserted rows
+        if (data && data.length > 0) {
+          for (let k = 0; k < chunk.length && k < data.length; k++) {
+            const row = chunk[k]!
+            const insertedRow = data[k] as { id: string } | undefined
+            if (insertedRow?.id) {
+              const s = computeLeadScore({ email_verified: false, email_confidence: row.email_confidence ?? null, linkedin_url: row.linkedin_url ?? null }, [])
+              void supabase.from('contacts').update({ lead_score_cache: s.score, lead_score_grade: s.grade, lead_score_computed_at: new Date().toISOString() }).eq('id', insertedRow.id).then(({ error: e }) => { if (e) console.error('[import] score:', e) })
+            }
+          }
+        }
       }
     }
 

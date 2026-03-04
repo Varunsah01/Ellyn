@@ -1,20 +1,18 @@
 /**
- * Server-side Gmail send helper.
- * Preferred over calling /api/gmail/send internally — skips the HTTP roundtrip
- * and avoids auth-forwarding complexity.
+ * Server-side Outlook send helper.
+ * Mirrors lib/gmail-send.ts — skips the HTTP roundtrip to /api/outlook/send.
  */
 
 import {
   decryptToken,
   refreshAccessToken,
   encryptToken,
-  formatEmail,
   sendEmail,
-} from '@/lib/gmail-helper'
+} from '@/lib/outlook-helper'
 import { injectTrackingPixel } from '@/lib/tracking'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
-export async function sendEmailViaGmail({
+export async function sendEmailViaOutlook({
   userId,
   to,
   subject,
@@ -32,22 +30,22 @@ export async function sendEmailViaGmail({
   isHtml?: boolean
   trackingPixelUrl?: string
   sequenceEnrollmentId?: string
-}): Promise<{ success: boolean; messageId?: string; error?: string; code?: string }> {
+}): Promise<{ success: boolean; error?: string; code?: string }> {
   const supabase = await createServiceRoleClient()
 
   const { data: credentials, error: credError } = await supabase
-    .from('gmail_credentials')
-    .select('access_token, refresh_token, gmail_email, token_expires_at')
+    .from('outlook_credentials')
+    .select('access_token, refresh_token, outlook_email, token_expires_at')
     .eq('user_id', userId)
     .maybeSingle()
 
   if (credError || !credentials) {
-    return { success: false, error: 'Gmail not connected', code: 'gmail_not_connected' }
+    return { success: false, error: 'Outlook not connected', code: 'outlook_not_connected' }
   }
 
   let accessToken = decryptToken(credentials.access_token)
   const refreshToken = decryptToken(credentials.refresh_token)
-  const gmailFrom: string | undefined = credentials.gmail_email || undefined
+  const outlookFrom: string | undefined = credentials.outlook_email || undefined
 
   // Proactive refresh if token expires within 5 minutes
   const expiresAt = credentials.token_expires_at
@@ -58,36 +56,35 @@ export async function sendEmailViaGmail({
       const refreshed = await refreshAccessToken(refreshToken)
       accessToken = refreshed.access_token
       void supabase
-        .from('gmail_credentials')
+        .from('outlook_credentials')
         .update({
           access_token: encryptToken(accessToken),
           token_expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
         })
         .eq('user_id', userId)
     } catch {
-      return { success: false, error: 'Gmail token expired', code: 'gmail_reauth_required' }
+      return { success: false, error: 'Outlook token expired', code: 'outlook_reauth_required' }
     }
   }
 
   const finalBody = trackingPixelUrl ? injectTrackingPixel(body, trackingPixelUrl) : body
 
-  function insertHistory(messageId: string, threadId: string) {
+  function insertHistory(messageId: string, conversationId: string) {
     void supabase
       .from('email_history')
       .insert({
         user_id: userId,
         contact_id: contactId ?? null,
         to_email: to,
-        from_email: gmailFrom ?? null,
+        from_email: outlookFrom ?? null,
         subject,
         body: finalBody,
-        gmail_message_id: messageId,
         status: 'sent',
         sequence_enrollment_id: sequenceEnrollmentId ?? null,
-        provider_thread_id: threadId,
+        provider_thread_id: conversationId,
       })
       .then(({ error: histErr }) => {
-        if (histErr) console.error('[gmail-send] email_history insert failed:', histErr)
+        if (histErr) console.error('[outlook-send] email_history insert failed:', histErr)
       })
 
     void supabase
@@ -97,46 +94,53 @@ export async function sendEmailViaGmail({
         contact_id: contactId ?? null,
         event_type: 'sent',
         metadata: {
-          source: 'gmail_send',
+          source: 'outlook_send',
           message_id: messageId,
-          thread_id: threadId,
+          conversation_id: conversationId,
         },
       })
       .then(({ error: evtErr }) => {
-        if (evtErr) console.error('[gmail-send] tracking event insert failed:', evtErr)
+        if (evtErr) console.error('[outlook-send] tracking event insert failed:', evtErr)
       })
   }
 
   try {
-    const encodedMessage = formatEmail(to, subject, finalBody, gmailFrom, isHtml)
-    const { messageId, threadId } = await sendEmail(accessToken, encodedMessage)
+    const { messageId, conversationId } = await sendEmail(accessToken, {
+      to,
+      subject,
+      body: finalBody,
+      isHtml,
+      from: outlookFrom,
+    })
 
-    insertHistory(messageId, threadId)
-    return { success: true, messageId }
+    insertHistory(messageId, conversationId)
+    return { success: true }
   } catch (sendErr: unknown) {
-    // Retry on 401 / invalid_grant
-    if (
-      sendErr instanceof Error &&
-      (sendErr.message.includes('401') || sendErr.message.includes('invalid_grant'))
-    ) {
+    // Retry on OUTLOOK_REAUTH_REQUIRED (401)
+    if (sendErr instanceof Error && sendErr.message === 'OUTLOOK_REAUTH_REQUIRED') {
       try {
         const refreshed = await refreshAccessToken(refreshToken)
         accessToken = refreshed.access_token
         void supabase
-          .from('gmail_credentials')
+          .from('outlook_credentials')
           .update({
             access_token: encryptToken(accessToken),
             token_expires_at: new Date(Date.now() + refreshed.expires_in * 1000).toISOString(),
           })
           .eq('user_id', userId)
 
-        const encodedMessage = formatEmail(to, subject, finalBody, gmailFrom, isHtml)
-        const { messageId, threadId } = await sendEmail(accessToken, encodedMessage)
+        const { messageId, conversationId } = await sendEmail(accessToken, {
+          to,
+          subject,
+          body: finalBody,
+          isHtml,
+          from: outlookFrom,
+        })
 
-        insertHistory(messageId, threadId)
-        return { success: true, messageId }
+        insertHistory(messageId, conversationId)
+        return { success: true }
       } catch {
-        return { success: false, error: 'Gmail auth expired', code: 'gmail_reauth_required' }
+        return { success: false, error: 'Outlook auth expired', code: 'outlook_reauth_required' }
       }
     }
 

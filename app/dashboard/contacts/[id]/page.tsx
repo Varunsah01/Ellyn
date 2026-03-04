@@ -67,6 +67,9 @@ interface ApiContact {
   status: "new" | "contacted" | "replied" | "no_response";
   created_at: string;
   updated_at: string;
+  lead_score_cache: number | null;
+  lead_score_grade: "hot" | "warm" | "cold" | null;
+  lead_score_computed_at: string | null;
 }
 
 interface EditForm {
@@ -109,6 +112,12 @@ function contactToForm(c: ApiContact): EditForm {
     linkedinUrl: c.linkedin_url ?? "",
     tags: (c.tags ?? []).join(", "),
   };
+}
+
+function gradeClassName(grade: "hot" | "warm" | "cold"): string {
+  if (grade === "hot") return "border-red-200 bg-red-50 text-red-700";
+  if (grade === "warm") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-slate-200 bg-slate-100 text-slate-600";
 }
 
 function getInitials(name: string) {
@@ -212,6 +221,8 @@ export default function ContactDetailPage() {
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const [scoreLoading, setScoreLoading] = useState(false);
 
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [sequences, setSequences] = useState<Array<{ id: string; name: string }>>([]);
@@ -336,6 +347,23 @@ export default function ContactDetailPage() {
         });
     }, 400);
   };
+
+  // ─── Lead score refresh ───────────────────────────────────────────────────
+
+  const handleRefreshScore = async () => {
+    setScoreLoading(true)
+    try {
+      const res = await supabaseAuthedFetch(`/api/v1/contacts/${id}/lead-score`, { method: 'POST' })
+      if (!res.ok) throw new Error('Failed')
+      const data = await res.json() as { score: number; grade: string; computed_at: string }
+      setContact(prev => prev ? { ...prev, lead_score_cache: data.score, lead_score_grade: data.grade as "hot" | "warm" | "cold", lead_score_computed_at: data.computed_at } : prev)
+      showToast.success('Lead score updated')
+    } catch {
+      showToast.error('Failed to refresh score')
+    } finally {
+      setScoreLoading(false)
+    }
+  }
 
   // ─── Delete ───────────────────────────────────────────────────────────────
 
@@ -807,6 +835,21 @@ export default function ContactDetailPage() {
                       day: "numeric",
                     })}
                   </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Lead Score</span>
+                  <div className="flex items-center gap-2">
+                    {contact.lead_score_grade ? (
+                      <span className={`inline-flex rounded border px-1.5 py-0.5 text-xs font-medium ${gradeClassName(contact.lead_score_grade)}`}>
+                        {contact.lead_score_grade.charAt(0).toUpperCase() + contact.lead_score_grade.slice(1)}
+                        {contact.lead_score_cache != null ? ` · ${contact.lead_score_cache}` : ''}
+                      </span>
+                    ) : <span className="text-muted-foreground">—</span>}
+                    <button type="button" onClick={() => void handleRefreshScore()} disabled={scoreLoading}
+                      className="text-xs text-primary hover:underline disabled:opacity-50">
+                      {scoreLoading ? 'Computing…' : 'Refresh'}
+                    </button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

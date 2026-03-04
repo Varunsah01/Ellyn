@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { invalidateUserAnalyticsCache } from '@/lib/cache/tags'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { TrackLookupSchema, formatZodError } from '@/lib/validation/schemas'
 
@@ -22,6 +23,9 @@ import { isMissingDbObjectError, roundTo, sanitizeErrorForLog } from '../_helper
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request)
+    const rl = await checkApiRateLimit(`track-lookup:${user.id}`, 200, 3600)
+    if (!rl.allowed) return rateLimitExceeded(rl.resetAt)
+
     const parsed = TrackLookupSchema.safeParse(await request.json())
     if (!parsed.success) {
       return NextResponse.json(

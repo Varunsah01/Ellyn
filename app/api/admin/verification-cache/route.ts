@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { clear } from '@/lib/cache/redis'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
   }
+
+  const rl = await checkApiRateLimit('admin:cache-purge', 10, 3600)
+  if (!rl.allowed) return rateLimitExceeded(rl.resetAt)
 
   const scope = request.nextUrl.searchParams.get('scope') ?? 'email'
 

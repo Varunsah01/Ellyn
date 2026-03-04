@@ -212,46 +212,60 @@ export interface OutlookSendOptions {
 }
 
 /**
- * Send an email via the Microsoft Graph sendMail endpoint.
+ * Send an email via Microsoft Graph using the two-step draft pattern
+ * (POST /me/messages → POST /me/messages/{id}/send) so we can capture
+ * the conversationId for reply tracking.
+ *
+ * Returns { messageId, conversationId }.
  * Throws on non-2xx with the error message from the Graph API response body.
  */
 export async function sendEmail(
   accessToken: string,
   options: OutlookSendOptions
-): Promise<void> {
+): Promise<{ messageId: string; conversationId: string }> {
   const { to, subject, body, isHtml = true } = options
 
-  const response = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+  // Step 1: create the draft message
+  const createResponse = await fetch('https://graph.microsoft.com/v1.0/me/messages', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      message: {
-        subject,
-        body: {
-          contentType: isHtml ? 'HTML' : 'Text',
-          content: body,
-        },
-        toRecipients: [
-          {
-            emailAddress: { address: to },
-          },
-        ],
+      subject,
+      body: {
+        contentType: isHtml ? 'HTML' : 'Text',
+        content: body,
       },
-      saveToSentItems: true,
+      toRecipients: [{ emailAddress: { address: to } }],
     }),
   })
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('OUTLOOK_REAUTH_REQUIRED')
-    }
-    // Graph API returns 202 on success (no body) — only throw on other non-2xx
-    if (response.status !== 202) {
-      const errBody = await response.text().catch(() => response.statusText)
-      throw new Error(`Failed to send email via Outlook: ${errBody}`)
-    }
+  if (!createResponse.ok) {
+    if (createResponse.status === 401) throw new Error('OUTLOOK_REAUTH_REQUIRED')
+    const errBody = await createResponse.text().catch(() => createResponse.statusText)
+    throw new Error(`Failed to create Outlook draft: ${errBody}`)
   }
+
+  const draft = (await createResponse.json()) as { id: string; conversationId?: string }
+  const draftId = draft.id
+  const conversationId: string = draft.conversationId ?? draftId
+
+  // Step 2: send the draft
+  const sendResponse = await fetch(
+    `https://graph.microsoft.com/v1.0/me/messages/${draftId}/send`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }
+  )
+
+  if (!sendResponse.ok && sendResponse.status !== 202) {
+    if (sendResponse.status === 401) throw new Error('OUTLOOK_REAUTH_REQUIRED')
+    const errBody = await sendResponse.text().catch(() => sendResponse.statusText)
+    throw new Error(`Failed to send Outlook draft: ${errBody}`)
+  }
+
+  return { messageId: draftId, conversationId }
 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdminEndpointAccess } from '@/lib/auth/admin-endpoint-guard'
 import { getDomainResolutionStats } from '@/lib/domain-resolution-analytics'
 import { captureApiException } from '@/lib/monitoring/sentry'
 
@@ -11,6 +12,9 @@ export const dynamic = 'force-dynamic'
  *   days  – lookback window in days (default 30, max 365)
  */
 export async function GET(request: NextRequest) {
+  const guard = requireAdminEndpointAccess(request)
+  if (!guard.ok) return guard.response
+
   try {
     const { searchParams } = new URL(request.url)
     const days = Math.min(365, Math.max(1, Number(searchParams.get('days') ?? 30)))

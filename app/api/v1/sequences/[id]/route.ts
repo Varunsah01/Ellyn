@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { err, unauthorized, notFound, validationError } from "@/lib/api/response";
+import { checkApiRateLimit, rateLimitExceeded } from "@/lib/rate-limit";
 
 const StepTypeSchema = z.enum(["email", "wait", "condition", "task"]);
 const SequencePatchStatusSchema = z.enum(["draft", "active", "paused", "archived", "completed"]);
@@ -141,13 +143,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     const user = await getAuthenticatedUserFromRequest(request);
     const owned = await getOwnedSequence(params.id, user.id);
 
-    if (owned.error) {
-      return NextResponse.json({ error: owned.error.message || "Failed to fetch sequence" }, { status: 500 });
-    }
-
-    if (!owned.data) {
-      return NextResponse.json({ error: "Sequence not found" }, { status: 404 });
-    }
+    if (owned.error) return err(owned.error.message || "Failed to fetch sequence", 500);
+    if (!owned.data) return notFound("Sequence");
     const sequenceId = owned.data.id;
 
     const [stepsResult, enrollmentsResult] = await Promise.all([
@@ -161,16 +158,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         .order("started_at", { ascending: false }),
     ]);
 
-    if (stepsResult.error) {
-      return NextResponse.json({ error: stepsResult.error.message || "Failed to fetch sequence steps" }, { status: 500 });
-    }
-
-    if (enrollmentsResult.error) {
-      return NextResponse.json(
-        { error: enrollmentsResult.error.message || "Failed to fetch sequence enrollments" },
-        { status: 500 }
-      );
-    }
+    if (stepsResult.error) return err(stepsResult.error.message || "Failed to fetch sequence steps", 500);
+    if (enrollmentsResult.error) return err(enrollmentsResult.error.message || "Failed to fetch sequence enrollments", 500);
 
     const steps = (stepsResult.data ?? []) as SequenceStepRow[];
     const rawEnrollments = (enrollmentsResult.data ?? []) as SequenceEnrollmentRowWithJoin[];
@@ -186,40 +175,27 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       stats: buildStats(enrollments),
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch sequence" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to fetch sequence", 500);
   }
 }
 
 export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
+
+    const rl = await checkApiRateLimit(`sequence-patch:${user.id}`, 20, 300);
+    if (!rl.allowed) return rateLimitExceeded(rl.resetAt);
+
     const owned = await getOwnedSequence(params.id, user.id);
 
-    if (owned.error) {
-      return NextResponse.json({ error: owned.error.message || "Failed to fetch sequence" }, { status: 500 });
-    }
-
-    if (!owned.data) {
-      return NextResponse.json({ error: "Sequence not found" }, { status: 404 });
-    }
+    if (owned.error) return err(owned.error.message || "Failed to fetch sequence", 500);
+    if (!owned.data) return notFound("Sequence");
     const sequenceId = owned.data.id;
 
     const parsed = SequencePatchSchema.safeParse(await request.json());
     if (!parsed.success) {
-      return NextResponse.json(
-        {
-          error: parsed.error.issues[0]?.message ?? "Invalid update payload",
-          details: parsed.error.issues,
-        },
-        { status: 400 }
-      );
+      return validationError(parsed.error.issues);
     }
 
     let sequence = owned.data;
@@ -243,7 +219,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         .single<SequenceRow>();
 
       if (updateError || !updatedSequence) {
-        return NextResponse.json({ error: updateError?.message || "Failed to update sequence" }, { status: 500 });
+        return err(updateError?.message || "Failed to update sequence", 500);
       }
 
       sequence = updatedSequence;
@@ -256,7 +232,7 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
         .eq("sequence_id", sequenceId);
 
       if (deleteError) {
-        return NextResponse.json({ error: deleteError.message || "Failed to replace sequence steps" }, { status: 500 });
+        return err(deleteError.message || "Failed to replace sequence steps", 500);
       }
 
       const nowIso = new Date().toISOString();
@@ -278,13 +254,13 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
 
       const { error: insertError } = await owned.supabase.from("sequence_steps").insert(stepPayload);
       if (insertError) {
-        return NextResponse.json({ error: insertError.message || "Failed to insert sequence steps" }, { status: 500 });
+        return err(insertError.message || "Failed to insert sequence steps", 500);
       }
     }
 
     const { data: stepsData, error: stepsError } = await getSequenceSteps(owned.supabase, sequenceId);
     if (stepsError) {
-      return NextResponse.json({ error: stepsError.message || "Failed to fetch sequence steps" }, { status: 500 });
+      return err(stepsError.message || "Failed to fetch sequence steps", 500);
     }
 
     return NextResponse.json({
@@ -292,14 +268,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       steps: (stepsData ?? []) as SequenceStepRow[],
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update sequence" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to update sequence", 500);
   }
 }
 
@@ -308,28 +278,15 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
     const user = await getAuthenticatedUserFromRequest(request);
     const owned = await getOwnedSequence(params.id, user.id);
 
-    if (owned.error) {
-      return NextResponse.json({ error: owned.error.message || "Failed to fetch sequence" }, { status: 500 });
-    }
-
-    if (!owned.data) {
-      return NextResponse.json({ error: "Sequence not found" }, { status: 404 });
-    }
+    if (owned.error) return err(owned.error.message || "Failed to fetch sequence", 500);
+    if (!owned.data) return notFound("Sequence");
 
     const { error } = await owned.supabase.from("sequences").delete().eq("id", owned.data.id).eq("user_id", user.id);
-    if (error) {
-      return NextResponse.json({ error: error.message || "Failed to delete sequence" }, { status: 500 });
-    }
+    if (error) return err(error.message || "Failed to delete sequence", 500);
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete sequence" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to delete sequence", 500);
   }
 }

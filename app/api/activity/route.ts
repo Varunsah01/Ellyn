@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAuthenticatedUser } from '@/lib/auth/helpers'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 import { recordActivity } from '@/lib/utils/recordActivity'
 
 export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUser()
+
+    const rl = await checkApiRateLimit(`activity:${user.id}`, 120, 3600)
+    if (!rl.allowed) return rateLimitExceeded(rl.resetAt)
+
     const body = (await request.json()) as {
       type: string
       description: string

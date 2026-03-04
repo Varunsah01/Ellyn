@@ -10,6 +10,7 @@ import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { GmailSendSchema, formatZodError } from '@/lib/validation/schemas'
 import { captureApiException } from '@/lib/monitoring/sentry'
+import { generateDirectTrackingPixelUrl, injectTrackingPixel } from '@/lib/tracking'
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +25,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { leadId, contactId, to, subject, body: emailBody, isHtml = true } = parsed.data
+    const { leadId, contactId, to, subject, body: rawEmailBody, isHtml = true } = parsed.data
+
+    // Inject direct tracking pixel when HTML and contactId available
+    let emailBody = rawEmailBody
+    let trackingId: string | undefined
+    if (isHtml && contactId) {
+      trackingId = crypto.randomUUID()
+      const pixelUrl = generateDirectTrackingPixelUrl({ trackingId, userId: user.id, contactId })
+      emailBody = injectTrackingPixel(emailBody, pixelUrl)
+    }
 
     // Fetch credentials scoped to user_id
     const supabase = await createServiceRoleClient()
@@ -78,10 +88,13 @@ export async function POST(request: NextRequest) {
 
     // Try sending email
     let messageId = ''
+    let threadId = ''
 
     try {
       const encodedMessage = formatEmail(to, subject, emailBody, gmailFrom, isHtml)
-      messageId = await sendEmail(accessToken, encodedMessage)
+      const result = await sendEmail(accessToken, encodedMessage)
+      messageId = result.messageId
+      threadId = result.threadId
     } catch (sendErr: unknown) {
       // If 401/invalid_grant, try refreshing once
       if (sendErr instanceof Error && (sendErr.message.includes('401') || sendErr.message.includes('invalid_grant'))) {
@@ -102,7 +115,9 @@ export async function POST(request: NextRequest) {
             })
 
           const encodedMessage = formatEmail(to, subject, emailBody, gmailFrom, isHtml)
-          messageId = await sendEmail(accessToken, encodedMessage)
+          const result = await sendEmail(accessToken, encodedMessage)
+          messageId = result.messageId
+          threadId = result.threadId
         } catch {
           return NextResponse.json(
             { error: 'Gmail authorization expired. Please reconnect Gmail.', code: 'gmail_reauth_required' },
@@ -126,10 +141,29 @@ export async function POST(request: NextRequest) {
         subject,
         body: emailBody,
         gmail_message_id: messageId,
+        provider_thread_id: threadId || null,
         status: 'sent',
       })
       .then(({ error: histErr }) => {
         if (histErr) console.error('Error logging email history:', histErr)
+      })
+
+    // Fire-and-forget: log sent event
+    void supabase
+      .from('email_tracking_events')
+      .insert({
+        user_id: user.id,
+        contact_id: contactId ?? null,
+        event_type: 'sent',
+        metadata: {
+          source: 'gmail_send_route',
+          message_id: messageId,
+          thread_id: threadId || null,
+          tracking_id: trackingId ?? null,
+        },
+      })
+      .then(({ error: evtErr }) => {
+        if (evtErr) console.error('Error logging tracking sent event:', evtErr)
       })
 
     // Fire-and-forget: update lead status if leadId provided

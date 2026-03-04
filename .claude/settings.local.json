@@ -33,7 +33,14 @@
       "Bash(grep:*)",
       "Bash(rm:*)",
       "Bash(npx tsc:*)",
-      "Bash(__NEW_LINE_fba01307c3ac736e__ echo:*)"
+      "Bash(__NEW_LINE_fba01307c3ac736e__ echo:*)",
+      "Bash(openssl rand:*)",
+      "Bash(supabase:*)",
+      "Bash(winget install:*)",
+      "Bash(psql:*)",
+      "Bash(scoop install:*)",
+      "Bash(tar:*)",
+      "Bash(export:*)"
     ],
     "deny": [],
     "ask": []

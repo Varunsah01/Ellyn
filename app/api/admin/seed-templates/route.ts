@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (error) {
+      captureApiException(error, { route: '/api/admin/seed-templates', method: 'POST' })
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 

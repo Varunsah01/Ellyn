@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { err, unauthorized, validationError } from "@/lib/api/response";
 
 const ProfilePatchSchema = z.object({
   full_name: z.string().trim().min(1).max(120),
@@ -22,10 +23,7 @@ export async function PATCH(request: NextRequest) {
     const parsed = ProfilePatchSchema.safeParse(await request.json());
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? "Invalid profile payload" },
-        { status: 400 }
-      );
+      return validationError(parsed.error.issues);
     }
 
     const supabase = await createServiceRoleClient();
@@ -42,19 +40,11 @@ export async function PATCH(request: NextRequest) {
       .select("id, full_name, email, avatar_url, updated_at")
       .single<ProfileRow>();
 
-    if (error) {
-      return NextResponse.json({ error: error.message || "Failed to update profile" }, { status: 500 });
-    }
+    if (error) return err(error.message || "Failed to update profile", 500);
 
     return NextResponse.json({ profile: data });
   } catch (error) {
-    if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to update profile" },
-      { status: 500 }
-    );
+    if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
+    return err(error instanceof Error ? error.message : "Failed to update profile", 500);
   }
 }
