@@ -26,7 +26,7 @@ export default async function VerificationPage() {
           <p className="text-red-400 text-sm">{error ?? 'Failed to load verification stats'}</p>
         </div>
       ) : (
-        <VerificationCharts data={data} />
+        <VerificationCharts data={data as any} />
       )}
     </div>
   )
