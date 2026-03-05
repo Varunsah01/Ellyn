@@ -28,6 +28,51 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
+type SearchParamsLike = {
+  get(name: string): string | null;
+  toString(): string;
+};
+
+function sanitizeInternalRedirectPath(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/dashboard";
+  }
+  return value;
+}
+
+function ensureExtensionIdOnBridgePath(path: string, extensionId: string): string {
+  const normalizedExtensionId = String(extensionId || "").trim();
+  if (!normalizedExtensionId || !path.startsWith("/extension-auth")) {
+    return path;
+  }
+
+  try {
+    const parsed = new URL(path, "http://localhost");
+    if (!parsed.searchParams.get("extensionId")) {
+      parsed.searchParams.set("extensionId", normalizedExtensionId);
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return path;
+  }
+}
+
+function resolveRedirectPath(searchParams: SearchParamsLike, extensionId: string): string {
+  const rawPath = searchParams.get("redirect") || searchParams.get("next") || "/dashboard";
+  const sanitizedPath = sanitizeInternalRedirectPath(rawPath);
+  return ensureExtensionIdOnBridgePath(sanitizedPath, extensionId);
+}
+
+function buildAuthSwitchHref(
+  searchParams: SearchParamsLike,
+  targetPath: "/auth/signup" | "/auth/login"
+): string {
+  const params = new URLSearchParams(searchParams.toString());
+  params.delete("oauth_error");
+  const query = params.toString();
+  return query ? `${targetPath}?${query}` : targetPath;
+}
+
 function GoogleIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4">
@@ -57,13 +102,19 @@ function LoginPageContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
+  const extensionIdFromQuery = useMemo(
+    () => String(searchParams.get("extensionId") || "").trim(),
+    [searchParams]
+  );
+
   const redirectPath = useMemo(() => {
-    const redirect = searchParams.get("redirect");
-    if (!redirect || !redirect.startsWith("/") || redirect.startsWith("//")) {
-      return "/dashboard";
-    }
-    return redirect;
-  }, [searchParams]);
+    return resolveRedirectPath(searchParams, extensionIdFromQuery);
+  }, [extensionIdFromQuery, searchParams]);
+
+  const signupHref = useMemo(
+    () => buildAuthSwitchHref(searchParams, "/auth/signup"),
+    [searchParams]
+  );
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -244,7 +295,7 @@ function LoginPageContent() {
           </Link>
           <p>
             Don&apos;t have an account?{" "}
-            <Link href="/auth/signup" className="font-medium text-[#2D2B55] underline">
+            <Link href={signupHref} className="font-medium text-[#2D2B55] underline">
               Sign up
             </Link>
           </p>

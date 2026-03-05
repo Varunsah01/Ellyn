@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -38,6 +38,51 @@ const signupSchema = z
 
 type SignupFormValues = z.infer<typeof signupSchema>;
 
+type SearchParamsLike = {
+  get(name: string): string | null;
+  toString(): string;
+};
+
+function sanitizeInternalRedirectPath(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/dashboard";
+  }
+  return value;
+}
+
+function ensureExtensionIdOnBridgePath(path: string, extensionId: string): string {
+  const normalizedExtensionId = String(extensionId || "").trim();
+  if (!normalizedExtensionId || !path.startsWith("/extension-auth")) {
+    return path;
+  }
+
+  try {
+    const parsed = new URL(path, "http://localhost");
+    if (!parsed.searchParams.get("extensionId")) {
+      parsed.searchParams.set("extensionId", normalizedExtensionId);
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return path;
+  }
+}
+
+function resolveRedirectPath(searchParams: SearchParamsLike, extensionId: string): string {
+  const rawPath = searchParams.get("redirect") || searchParams.get("next") || "/dashboard";
+  const sanitizedPath = sanitizeInternalRedirectPath(rawPath);
+  return ensureExtensionIdOnBridgePath(sanitizedPath, extensionId);
+}
+
+function buildAuthSwitchHref(
+  searchParams: SearchParamsLike,
+  targetPath: "/auth/signup" | "/auth/login"
+): string {
+  const params = new URLSearchParams(searchParams.toString());
+  params.delete("oauth_error");
+  const query = params.toString();
+  return query ? `${targetPath}?${query}` : targetPath;
+}
+
 function GoogleIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-4 w-4">
@@ -63,6 +108,7 @@ function GoogleIcon() {
 
 export default function SignupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
@@ -84,6 +130,20 @@ export default function SignupPage() {
   const passwordStrength = useMemo(
     () => validatePasswordStrength(passwordValue ?? ""),
     [passwordValue]
+  );
+
+  const extensionIdFromQuery = useMemo(
+    () => String(searchParams.get("extensionId") || "").trim(),
+    [searchParams]
+  );
+
+  const redirectPath = useMemo(() => {
+    return resolveRedirectPath(searchParams, extensionIdFromQuery);
+  }, [extensionIdFromQuery, searchParams]);
+
+  const loginHref = useMemo(
+    () => buildAuthSwitchHref(searchParams, "/auth/login"),
+    [searchParams]
   );
 
   const onSubmit = async (values: SignupFormValues) => {
@@ -126,7 +186,7 @@ export default function SignupPage() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push(redirectPath);
       router.refresh();
     } catch (error) {
       showToast.error(error instanceof Error ? error.message : "Failed to create account");
@@ -145,7 +205,7 @@ export default function SignupPage() {
           ? window.location.origin
           : process.env.NEXT_PUBLIC_APP_URL;
       const callbackParams = new URLSearchParams();
-      callbackParams.set("next", "/dashboard");
+      callbackParams.set("next", redirectPath);
       const redirectTo = origin
         ? `${origin}/auth/callback?${callbackParams.toString()}`
         : undefined;
@@ -305,7 +365,7 @@ export default function SignupPage() {
 
         <p className="text-center font-dm-sans text-sm text-[#5E5B86]">
           Already have an account?{" "}
-          <Link href="/auth/login" className="font-medium text-[#2D2B55] underline">
+          <Link href={loginHref} className="font-medium text-[#2D2B55] underline">
             Log in
           </Link>
         </p>

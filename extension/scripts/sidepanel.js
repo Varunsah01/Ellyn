@@ -2232,10 +2232,12 @@ async function openAuth(mode, button) {
 
   try {
     const { authBaseUrl } = await resolveBaseUrls();
-    const authPath = mode === "signup" ? "/auth/signup" : "/auth/login";
-    const authUrl = new URL(authPath, `${authBaseUrl}/`);
+    const requestedMode = mode === "signup" ? "signup" : "login";
+    const authUrl = new URL("/extension-auth", `${authBaseUrl}/`);
     authUrl.searchParams.set("source", "extension");
     authUrl.searchParams.set("extensionId", chrome.runtime.id);
+    authUrl.searchParams.set("next", "/extension-auth");
+    authUrl.searchParams.set("mode", requestedMode);
 
     chrome.tabs.create({ url: authUrl.toString() }, () => {
       if (chrome.runtime.lastError) {

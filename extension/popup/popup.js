@@ -316,15 +316,23 @@ function bindStorageListeners() {
 
 function handleSignIn() {
   const authBase = String(CONFIG.AUTH_BASE_URL || '').replace(/\/+$/, '');
-  const authUrl = `${authBase}/auth/login?source=extension&extensionId=${chrome.runtime.id}`;
-  chrome.tabs.create({ url: authUrl });
+  const authUrl = new URL('/extension-auth', `${authBase}/`);
+  authUrl.searchParams.set('source', 'extension');
+  authUrl.searchParams.set('extensionId', chrome.runtime.id);
+  authUrl.searchParams.set('next', '/extension-auth');
+  authUrl.searchParams.set('mode', 'login');
+  chrome.tabs.create({ url: authUrl.toString() });
   window.close();
 }
 
 function handleConnectApp() {
   const authBase = String(CONFIG.AUTH_BASE_URL || '').replace(/\/+$/, '');
-  const url = `${authBase}/extension-auth?extensionId=${chrome.runtime.id}`;
-  chrome.tabs.create({ url });
+  const authUrl = new URL('/extension-auth', `${authBase}/`);
+  authUrl.searchParams.set('source', 'extension');
+  authUrl.searchParams.set('extensionId', chrome.runtime.id);
+  authUrl.searchParams.set('next', '/extension-auth');
+  authUrl.searchParams.set('mode', 'login');
+  chrome.tabs.create({ url: authUrl.toString() });
   window.close();
 }
 

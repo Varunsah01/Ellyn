@@ -1248,6 +1248,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   console.log('[Extension] Received message:', message.type);
 
+  if (message.type === 'ELLYN_PING') {
+    sendResponse?.({ success: true, version: '1.0.0' });
+    return false;
+  }
+
   if (message.type === 'FIND_EMAIL') {
     handleFindEmail(message.data, sender, sendResponse);
     return true; // Keep channel open for async response
@@ -1406,6 +1411,11 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
       ok: false,
       error: 'Origin not allowed',
     });
+    return false;
+  }
+
+  if (message.type === 'ELLYN_PING') {
+    sendResponse?.({ success: true, version: '1.0.0' });
     return false;
   }
 
