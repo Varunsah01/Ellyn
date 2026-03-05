@@ -1,4 +1,4 @@
-import { createClient, kv as defaultKv, type VercelKV } from '@vercel/kv'
+import { createClient, type VercelKV } from '@vercel/kv'
 
 type CacheEnvelope<T> = {
   value: T
@@ -80,6 +80,21 @@ const KEY_TAG_INDEX_PREFIX = 'cache:keytags:'
 const TAG_SET_EXTRA_TTL_SECONDS = 24 * 60 * 60
 
 let redisClient: VercelKV | null | undefined
+let cacheConfigWarningLogged = false
+
+function memoryFallbackEnabled(): boolean {
+  return process.env.NODE_ENV === 'test' || process.env.CACHE_ALLOW_MEMORY_FALLBACK === 'true'
+}
+
+function cacheBackendMode(): 'redis' | 'redis+memory' | 'memory' | 'none' {
+  const redis = Boolean(getRedisClient())
+  const memory = memoryFallbackEnabled()
+
+  if (redis && memory) return 'redis+memory'
+  if (redis) return 'redis'
+  if (memory) return 'memory'
+  return 'none'
+}
 
 function getGlobalState(): GlobalCacheState {
   return globalThis as GlobalCacheState
@@ -257,16 +272,19 @@ function getRedisClient(): VercelKV | null {
     return redisClient
   }
 
-  const primaryUrl = process.env.KV_REST_API_URL?.trim()
-  const primaryToken = process.env.KV_REST_API_TOKEN?.trim()
-
-  const fallbackUrl = process.env.UPSTASH_REDIS_REST_URL?.trim()
-  const fallbackToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim()
-
-  const url = primaryUrl || fallbackUrl
-  const token = primaryToken || fallbackToken
+  const url = process.env.KV_REST_API_URL?.trim()
+  const token = process.env.KV_REST_API_TOKEN?.trim()
 
   if (!url || !token) {
+    if (!cacheConfigWarningLogged) {
+      console.warn(
+        '[Cache] KV_REST_API_URL and KV_REST_API_TOKEN are required for persistent cache. ' +
+          (memoryFallbackEnabled()
+            ? 'Using in-memory fallback because CACHE_ALLOW_MEMORY_FALLBACK is enabled.'
+            : 'Caching is disabled until KV credentials are configured.')
+      )
+      cacheConfigWarningLogged = true
+    }
     redisClient = null
     return redisClient
   }
@@ -278,12 +296,8 @@ function getRedisClient(): VercelKV | null {
       automaticDeserialization: true,
     })
   } catch (error) {
-    console.warn('[Cache] Failed to initialize Redis client, using in-memory fallback:', compactError(error))
+    console.warn('[Cache] Failed to initialize Redis client:', compactError(error))
     redisClient = null
-  }
-
-  if (!redisClient && primaryUrl && primaryToken) {
-    redisClient = defaultKv
   }
 
   return redisClient
@@ -320,11 +334,15 @@ async function readFromCache<T>(key: string): Promise<ReadResult<T>> {
       }
     } catch (error) {
       incrementMetric('errors', key)
-      console.warn('[Cache] Redis get failed, falling back to memory:', {
+      console.warn('[Cache] Redis get failed:', {
         key,
         error: compactError(error),
       })
     }
+  }
+
+  if (!memoryFallbackEnabled()) {
+    return { hit: false, value: null }
   }
 
   return readFromMemory<T>(key)
@@ -362,6 +380,8 @@ async function getRemainingTtlSeconds(key: string): Promise<number | null> {
       })
     }
   }
+
+  if (!memoryFallbackEnabled()) return null
 
   const memoryEntry = getMemoryStore().get(key)
   if (!memoryEntry) return null
@@ -537,20 +557,31 @@ export async function set<T>(
   }
 
   const redis = getRedisClient()
+  let persisted = false
+
   if (redis) {
     try {
       await redis.set(cacheKey, envelope, { ex: ttl })
       await updateRedisTagIndexes(redis, cacheKey, tags, ttl)
+      persisted = true
     } catch (error) {
       incrementMetric('errors', cacheKey)
-      console.warn('[Cache] Redis set failed, using memory fallback:', {
+      console.warn('[Cache] Redis set failed:', {
         key: cacheKey,
         error: compactError(error),
       })
     }
   }
 
-  writeToMemory(cacheKey, envelope, ttl, tags)
+  if (memoryFallbackEnabled()) {
+    writeToMemory(cacheKey, envelope, ttl, tags)
+    persisted = true
+  }
+
+  if (!persisted) {
+    return false
+  }
+
   incrementMetric('sets', cacheKey)
   return true
 }
@@ -573,14 +604,17 @@ export async function deleteKey(key: string): Promise<boolean> {
       }
     } catch (error) {
       incrementMetric('errors', cacheKey)
-      console.warn('[Cache] Redis delete failed, continuing with memory fallback:', {
+      console.warn('[Cache] Redis delete failed:', {
         key: cacheKey,
         error: compactError(error),
       })
     }
   }
 
-  deleted = deleteFromMemoryOnly(cacheKey) || deleted
+  if (memoryFallbackEnabled()) {
+    deleted = deleteFromMemoryOnly(cacheKey) || deleted
+  }
+
   incrementMetric('deletes', cacheKey)
   return deleted
 }
@@ -615,12 +649,14 @@ export async function clear(pattern: string): Promise<number> {
     }
   }
 
-  const regex = globPatternToRegex(normalizedPattern)
-  const memoryKeys = [...getMemoryStore().keys()]
-  for (const key of memoryKeys) {
-    if (!regex.test(key)) continue
-    const deleted = deleteFromMemoryOnly(key)
-    if (deleted) deletedCount += 1
+  if (memoryFallbackEnabled()) {
+    const regex = globPatternToRegex(normalizedPattern)
+    const memoryKeys = [...getMemoryStore().keys()]
+    for (const key of memoryKeys) {
+      if (!regex.test(key)) continue
+      const deleted = deleteFromMemoryOnly(key)
+      if (deleted) deletedCount += 1
+    }
   }
 
   incrementMetric('clears', `cache:clear:${normalizedPattern}`)
@@ -656,14 +692,16 @@ export async function clearByTag(tag: string): Promise<number> {
     }
   }
 
-  const memoryTagIndex = getMemoryTagIndex()
-  const memoryKeys = memoryTagIndex.get(normalizedTag)
-  if (memoryKeys) {
-    for (const key of [...memoryKeys]) {
-      const deleted = deleteFromMemoryOnly(key)
-      if (deleted) deletedCount += 1
+  if (memoryFallbackEnabled()) {
+    const memoryTagIndex = getMemoryTagIndex()
+    const memoryKeys = memoryTagIndex.get(normalizedTag)
+    if (memoryKeys) {
+      for (const key of [...memoryKeys]) {
+        const deleted = deleteFromMemoryOnly(key)
+        if (deleted) deletedCount += 1
+      }
+      memoryTagIndex.delete(normalizedTag)
     }
-    memoryTagIndex.delete(normalizedTag)
   }
 
   incrementMetric('clears', `cache:tag:${normalizedTag}`)
@@ -727,7 +765,7 @@ export function getCacheMetrics() {
     namespaces,
     updatedAt: new Date(store.updatedAt).toISOString(),
     redisConfigured: Boolean(getRedisClient()),
-    fallback: 'memory',
+    fallback: cacheBackendMode(),
   }
 }
 

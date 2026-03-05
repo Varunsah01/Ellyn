@@ -37,6 +37,7 @@ DECLARE
     'email_history',
     'drafts',
     'outreach',
+    'sequence_events',
     'schema_migrations'
   ];
 BEGIN
@@ -215,7 +216,7 @@ BEGIN
   IF to_regclass('public.schema_migrations') IS NOT NULL THEN
     SELECT ARRAY(
       SELECT version FROM unnest(ARRAY[
-        '000','001','004','016','017','019','025','026','027','028','029'
+        '000','001','004','016','017','019','025','026','027','028','029','030','035','036','037','038'
       ]) AS t(version)
       WHERE NOT EXISTS (
         SELECT 1 FROM public.schema_migrations sm WHERE sm.version = t.version

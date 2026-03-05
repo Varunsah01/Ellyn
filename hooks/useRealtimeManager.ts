@@ -18,33 +18,45 @@ export function useRealtimeManager(userId: string) {
     if (!userId) return
 
     const channel = supabase.channel(`user-${userId}-all`)
+    const triggerScopedRefresh = (
+      scope: "contacts" | "sequences" | "deals" | "stages" | "leads"
+    ) => {
+      triggerRefresh([scope, "analytics"])
+    }
 
     // Contacts changes
     channel.on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'contacts', filter: `user_id=eq.${userId}` },
-      () => triggerRefresh('contacts')
+      () => triggerScopedRefresh('contacts')
     )
 
     // Sequence enrollment changes
     channel.on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'sequence_enrollments', filter: `user_id=eq.${userId}` },
-      () => triggerRefresh('sequences')
+      () => triggerScopedRefresh('sequences')
+    )
+
+    // Lead changes
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'leads', filter: `user_id=eq.${userId}` },
+      () => triggerScopedRefresh('leads')
     )
 
     // Deal pipeline changes (SMB persona)
     channel.on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'deals', filter: `user_id=eq.${userId}` },
-      () => triggerRefresh('deals')
+      () => triggerScopedRefresh('deals')
     )
 
     // Application stage changes (Job Seeker persona)
     channel.on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'application_stages', filter: `user_id=eq.${userId}` },
-      () => triggerRefresh('stages')
+      () => triggerScopedRefresh('stages')
     )
 
     channelRef.current = channel

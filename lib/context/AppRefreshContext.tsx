@@ -5,127 +5,203 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react"
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+export type RefreshScope =
+  | "contacts"
+  | "leads"
+  | "deals"
+  | "stages"
+  | "analytics"
+  | "sequences"
 
-export type RefreshScope = "contacts" | "sequences" | "stats" | "deals" | "stages" | "all"
-
+type LegacyScope = "stats" | "all"
+type ScopeInput = RefreshScope | LegacyScope
+type ListenerScope = RefreshScope | "all"
 type Listener = () => void
 
-interface AppRefreshContextValue {
-  triggerRefresh: (scope: RefreshScope) => void
-  subscribe: (scope: RefreshScope, cb: Listener) => void
-  unsubscribe: (scope: RefreshScope, cb: Listener) => void
+export type LastRefreshMap = Record<RefreshScope, number>
+
+const REFRESH_SCOPES: RefreshScope[] = [
+  "contacts",
+  "leads",
+  "deals",
+  "stages",
+  "analytics",
+  "sequences",
+]
+
+function buildInitialLastRefresh(): LastRefreshMap {
+  const now = Date.now()
+  return {
+    contacts: now,
+    leads: now,
+    deals: now,
+    stages: now,
+    analytics: now,
+    sequences: now,
+  }
 }
 
-// ─── Context ─────────────────────────────────────────────────────────────────
+function normalizeScopes(input: ScopeInput | ScopeInput[]): ListenerScope[] {
+  const values = Array.isArray(input) ? input : [input]
+  const scopes = new Set<ListenerScope>()
+
+  for (const rawScope of values) {
+    if (rawScope === "all") {
+      for (const scope of REFRESH_SCOPES) scopes.add(scope)
+      scopes.add("all")
+      continue
+    }
+
+    if (rawScope === "stats") {
+      scopes.add("analytics")
+      continue
+    }
+
+    scopes.add(rawScope)
+  }
+
+  return [...scopes]
+}
+
+interface AppRefreshContextValue {
+  triggerRefresh: (scope: ScopeInput | ScopeInput[]) => void
+  lastRefresh: LastRefreshMap
+  subscribe: (scope: ListenerScope, cb: Listener) => void
+  unsubscribe: (scope: ListenerScope, cb: Listener) => void
+}
 
 const AppRefreshContext = createContext<AppRefreshContextValue>({
   triggerRefresh: () => {},
+  lastRefresh: buildInitialLastRefresh(),
   subscribe: () => {},
   unsubscribe: () => {},
 })
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
 export function AppRefreshProvider({ children }: { children: ReactNode }) {
-  // Listener registry lives in a ref — subscribe/unsubscribe never re-render
-  const listenersRef = useRef<Map<RefreshScope, Set<Listener>>>(new Map())
+  const [lastRefresh, setLastRefresh] = useState<LastRefreshMap>(() =>
+    buildInitialLastRefresh()
+  )
+  const listenersRef = useRef<Map<ListenerScope, Set<Listener>>>(new Map())
 
-  const subscribe = useCallback((scope: RefreshScope, cb: Listener) => {
+  const subscribe = useCallback((scope: ListenerScope, cb: Listener) => {
     if (!listenersRef.current.has(scope)) {
       listenersRef.current.set(scope, new Set())
     }
-    listenersRef.current.get(scope)!.add(cb)
+    listenersRef.current.get(scope)?.add(cb)
   }, [])
 
-  const unsubscribe = useCallback((scope: RefreshScope, cb: Listener) => {
+  const unsubscribe = useCallback((scope: ListenerScope, cb: Listener) => {
     listenersRef.current.get(scope)?.delete(cb)
   }, [])
 
-  const triggerRefresh = useCallback((scope: RefreshScope) => {
-    const map = listenersRef.current
-    const fire = (s: RefreshScope) => map.get(s)?.forEach((cb) => cb())
+  const triggerRefresh = useCallback((scopeInput: ScopeInput | ScopeInput[]) => {
+    const resolvedScopes = normalizeScopes(scopeInput).filter(
+      (scope): scope is RefreshScope => scope !== "all"
+    )
 
-    if (scope === "all") {
-      fire("contacts")
-      fire("sequences")
-      fire("stats")
-      fire("deals")
-      fire("stages")
-    } else {
-      fire(scope)
+    if (resolvedScopes.length === 0) return
+
+    const now = Date.now()
+    setLastRefresh((previous) => {
+      const next: LastRefreshMap = { ...previous }
+      for (const scope of resolvedScopes) {
+        next[scope] = now
+      }
+      return next
+    })
+
+    const listeners = listenersRef.current
+    for (const scope of resolvedScopes) {
+      listeners.get(scope)?.forEach((listener) => listener())
     }
-    // 'all' listeners fire for every scope
-    fire("all")
+    listeners.get("all")?.forEach((listener) => listener())
   }, [])
 
-  // ── Global fetch interceptor ─────────────────────────────────────────────
-  // Reads X-Trigger-Refresh from every response — no call-site changes needed
   useEffect(() => {
     if (typeof window === "undefined") return
 
-    const original = window.fetch.bind(window)
+    const originalFetch = window.fetch.bind(window)
 
     window.fetch = async (...args) => {
-      const response = await original(...args)
+      const response = await originalFetch(...args)
       const header = response.headers.get("X-Trigger-Refresh")
+
       if (header) {
-        header
+        const scopes = header
           .split(",")
-          .map((s) => s.trim() as RefreshScope)
-          .forEach(triggerRefresh)
+          .map((value) => value.trim())
+          .filter(Boolean) as ScopeInput[]
+        if (scopes.length > 0) triggerRefresh(scopes)
       }
+
       return response
     }
 
     return () => {
-      window.fetch = original
+      window.fetch = originalFetch
     }
   }, [triggerRefresh])
 
+  const contextValue = useMemo<AppRefreshContextValue>(
+    () => ({
+      triggerRefresh,
+      lastRefresh,
+      subscribe,
+      unsubscribe,
+    }),
+    [lastRefresh, subscribe, triggerRefresh, unsubscribe]
+  )
+
   return (
-    <AppRefreshContext.Provider value={{ triggerRefresh, subscribe, unsubscribe }}>
+    <AppRefreshContext.Provider value={contextValue}>
       {children}
     </AppRefreshContext.Provider>
   )
 }
 
-// ─── Hooks ───────────────────────────────────────────────────────────────────
-
-/** Imperatively fire a refresh from anywhere in the tree. */
 export function useAppRefresh() {
   return useContext(AppRefreshContext).triggerRefresh
 }
 
-/**
- * Subscribe to one or more refresh scopes.
- * The callback is always called with its latest reference (no stale-closure risk).
- */
+export function useLastRefresh() {
+  return useContext(AppRefreshContext).lastRefresh
+}
+
 export function useRefreshListener(
-  scope: RefreshScope | RefreshScope[],
+  scope: ScopeInput | ScopeInput[],
   callback: () => void
 ) {
   const { subscribe, unsubscribe } = useContext(AppRefreshContext)
 
-  // Keep a stable ref to the latest callback
   const callbackRef = useRef(callback)
   useEffect(() => {
     callbackRef.current = callback
-  })
+  }, [callback])
 
-  // Stable wrapper so the Set identity stays the same across renders
   const stableCallback = useCallback(() => callbackRef.current(), [])
-
-  // Derive a stable string key to avoid array-reference churn in deps
-  const scopeKey = Array.isArray(scope) ? scope.join(",") : scope
+  const resolvedScopes = useMemo(() => normalizeScopes(scope), [scope])
+  const scopeKey = resolvedScopes.join(",")
 
   useEffect(() => {
-    const scopes = scopeKey.split(",") as RefreshScope[]
-    scopes.forEach((s) => subscribe(s, stableCallback))
-    return () => scopes.forEach((s) => unsubscribe(s, stableCallback))
-  }, [subscribe, unsubscribe, stableCallback, scopeKey])
+    const scopes = scopeKey
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean) as ListenerScope[]
+
+    for (const currentScope of scopes) {
+      subscribe(currentScope, stableCallback)
+    }
+
+    return () => {
+      for (const currentScope of scopes) {
+        unsubscribe(currentScope, stableCallback)
+      }
+    }
+  }, [scopeKey, stableCallback, subscribe, unsubscribe])
 }

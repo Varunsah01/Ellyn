@@ -221,6 +221,8 @@ export async function POST(request: NextRequest) {
         success: true,
         draft: data,
         message: 'Draft updated successfully',
+      }, {
+        headers: { 'X-Trigger-Refresh': 'sequences,analytics,contacts' },
       });
     } else {
       // Create new draft
@@ -248,7 +250,10 @@ export async function POST(request: NextRequest) {
         success: true,
         draft: data,
         message: 'Draft created successfully',
-      }, { status: 201 });
+      }, {
+        status: 201,
+        headers: { 'X-Trigger-Refresh': 'sequences,analytics,contacts' },
+      });
     }
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {

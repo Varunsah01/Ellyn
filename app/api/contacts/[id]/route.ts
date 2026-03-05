@@ -325,7 +325,7 @@ async function updateContact(
     if (contactForNoOp) {
       return NextResponse.json(
         { success: true, contact: contactForNoOp, message: "Contact updated successfully" },
-        { headers: { "X-Trigger-Refresh": "contacts,stats" } }
+        { headers: { "X-Trigger-Refresh": "contacts,analytics" } }
       );
     }
 
@@ -377,7 +377,7 @@ async function updateContact(
 
     return NextResponse.json(
       { success: true, contact, message: "Contact updated successfully" },
-      { headers: { "X-Trigger-Refresh": "contacts,stats" } }
+      { headers: { "X-Trigger-Refresh": "contacts,analytics" } }
     );
   } catch (error) {
     console.error("Update contact error:", error);
@@ -482,7 +482,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
 
     return NextResponse.json(
       { success: true, message: "Contact deleted successfully" },
-      { headers: { "X-Trigger-Refresh": "contacts,stats" } }
+      { headers: { "X-Trigger-Refresh": "contacts,analytics" } }
     );
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {

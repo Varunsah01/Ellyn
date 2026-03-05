@@ -161,8 +161,8 @@ export function useDashboardStats() {
     fetchStats();
   }, [fetchStats]);
 
-  // Re-fetch when contacts are mutated or stats are explicitly invalidated
-  useRefreshListener(['contacts', 'stats'], fetchStats);
+  // Re-fetch when contacts mutate or analytics are explicitly invalidated.
+  useRefreshListener(['contacts', 'analytics'], fetchStats);
 
   // Realtime — re-fetch immediately when a new contact is inserted
   useEffect(() => {
@@ -239,6 +239,8 @@ export function useRecentActivity(limit: number = 10) {
   useEffect(() => {
     fetchActivities();
   }, [fetchActivities]);
+
+  useRefreshListener(['contacts', 'leads', 'deals', 'sequences', 'analytics'], fetchActivities);
 
   return { activities, loading, error, refresh: fetchActivities };
 }
@@ -348,6 +350,8 @@ export function useAnalytics() {
   useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics]);
+
+  useRefreshListener(['contacts', 'leads', 'deals', 'sequences', 'analytics'], fetchAnalytics);
 
   return { analytics, loading, error, refresh: fetchAnalytics };
 }

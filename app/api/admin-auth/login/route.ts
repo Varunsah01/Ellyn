@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateAdminCredentials } from '@/lib/auth/admin-credentials'
+import { isAdminCredentialConfigValid, validateAdminCredentials } from '@/lib/auth/admin-credentials'
 import { createSessionToken, COOKIE_NAME, SESSION_DURATION_MS } from '@/lib/auth/admin-session'
 
 export const dynamic = 'force-dynamic'
@@ -10,11 +10,18 @@ const attempts = new Map<string, { count: number; resetAt: number }>()
 export async function POST(request: NextRequest) {
   if (
     !process.env.ADMIN_USERNAME ||
-    !process.env.ADMIN_PASSWORD ||
+    !process.env.ADMIN_PASSWORD_HASH ||
     !process.env.ADMIN_SESSION_SECRET
   ) {
     return NextResponse.json(
-      { error: 'Admin auth is not configured. Set ADMIN_USERNAME, ADMIN_PASSWORD, and ADMIN_SESSION_SECRET in environment variables.' },
+      { error: 'Admin auth is not configured. Set ADMIN_USERNAME, ADMIN_PASSWORD_HASH, and ADMIN_SESSION_SECRET in environment variables.' },
+      { status: 503 }
+    )
+  }
+
+  if (!isAdminCredentialConfigValid()) {
+    return NextResponse.json(
+      { error: 'Admin auth is not securely configured. Ensure ADMIN_PASSWORD_HASH is a valid bcrypt hash.' },
       { status: 503 }
     )
   }

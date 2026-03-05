@@ -343,7 +343,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { success: true, contact, message: 'Contact created successfully' },
-      { status: 201, headers: { 'X-Trigger-Refresh': 'contacts,stats' } }
+      { status: 201, headers: { 'X-Trigger-Refresh': 'contacts,analytics' } }
     );
 
   } catch (error) {
