@@ -31,250 +31,230 @@ function _ensureDvStyles() {
 
   const style = document.createElement("style");
   style.id = "ellyn-dv-styles";
-  style.textContent = `
-    /* ── Root layout ───────────────────────────────────────── */
+    style.textContent = `
     .dv-root {
+      --dv-shell-bg: #dfe3e8;
+      --dv-card-bg: #f7f7f8;
+      --dv-card-border: #d8dde5;
+      --dv-card-soft: #eceff3;
+      --dv-text-main: #0f172a;
+      --dv-text-muted: #556274;
+      --dv-brand-pink: #f65294;
+      --dv-brand-pink-dark: #e13a82;
+      --dv-focus: #334155;
       display: flex;
       flex-direction: column;
       min-height: 100%;
-      background: #f8fafc;
-      font-family: "Inter", "SF Pro Display", "Segoe UI", Arial, sans-serif;
-      color: #0f172a;
+      background: var(--dv-shell-bg);
+      font-family: "DM Sans", "Inter", "Segoe UI", Arial, sans-serif;
+      color: var(--dv-text-main);
     }
-
-    /* ── Header ────────────────────────────────────────────── */
     .dv-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 14px 16px 12px;
-      background: #ffffff;
-      border-bottom: 1px solid #e2e8f0;
+      padding: 12px 12px 10px;
+      background: var(--dv-shell-bg);
+      border-bottom: none;
       flex-shrink: 0;
     }
-
     .dv-header-left {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
     }
-
     .dv-brand {
       display: inline-flex;
       align-items: center;
       line-height: 1;
       user-select: none;
     }
-
     .dv-brand-logo {
-      height: 22px;
+      height: 20px;
       width: auto;
       display: block;
       object-fit: contain;
     }
-
     .dv-brand-fallback {
       font-size: 14px;
       font-weight: 800;
       letter-spacing: 0.08em;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
       display: none;
     }
-
     .dv-header-actions {
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 8px;
     }
-
     .dv-icon-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       width: 34px;
       height: 34px;
-      border: 1px solid #e2e8f0;
-      border-radius: 9px;
-      background: #ffffff;
-      color: #64748b;
+      border: 1.25px solid #cfd6df;
+      border-radius: 999px;
+      background: #e2e5ea;
+      color: #0f172a;
       cursor: pointer;
       transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
     }
-
     .dv-icon-btn:hover {
-      background: #f1f5f9;
-      color: #334155;
-      border-color: #cbd5e1;
+      background: #d7dce4;
+      color: #0f172a;
+      border-color: #bfc7d3;
     }
-
     .dv-icon-btn:focus-visible {
-      outline: 2px solid #667eea;
+      outline: 2px solid var(--dv-focus);
       outline-offset: 2px;
     }
-
     .dv-icon-btn svg {
       width: 15px;
       height: 15px;
       pointer-events: none;
     }
-
-    /* ── Main scroll area ──────────────────────────────────── */
     .dv-main {
       flex: 1;
       overflow-y: auto;
-      padding: 16px;
+      padding: 8px 12px 14px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
-
-    /* ── Section label ─────────────────────────────────────── */
     .dv-section-label {
       margin: 0;
       font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
+      font-weight: 700;
+      letter-spacing: 0.05em;
       text-transform: uppercase;
-      color: #94a3b8;
+      color: var(--dv-text-muted);
       padding: 0 2px;
     }
-
-    /* ── Card wrapper (shared surface for components) ──────── */
     .dv-card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
+      background: var(--dv-card-bg);
+      border: 1px solid var(--dv-card-border);
+      border-radius: 18px;
       padding: 14px;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      box-shadow: none;
+    }
+    .dv-type-card,
+    .dv-actions-card {
+      display: grid;
+      gap: 8px;
     }
 
-    /* ── Empty hint ────────────────────────────────────────── */
+    .dv-draft-title {
+      margin-bottom: 10px;
+    }
     .dv-empty-hint {
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 8px;
-      padding: 24px 16px;
-      border: 1.5px dashed #e2e8f0;
-      border-radius: 12px;
+      padding: 18px 14px;
+      border: 1px dashed var(--dv-card-border);
+      border-radius: 16px;
+      background: var(--dv-card-bg);
       text-align: center;
       transition: opacity 0.2s ease;
     }
-
     .dv-empty-hint-icon {
-      font-size: 28px;
+      font-size: 24px;
       line-height: 1;
     }
-
     .dv-empty-hint p {
       margin: 0;
       font-size: 13px;
-      color: #64748b;
-      line-height: 1.5;
+      color: var(--dv-text-muted);
+      line-height: 1.45;
     }
-
     .dv-empty-hint--hidden {
       display: none;
     }
-
-    /* ── Editor section (slides in on first draft) ─────────── */
     .dv-editor-section {
-      display: none;                /* removed from layout when hidden */
+      display: none;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
       opacity: 0;
       transform: translateY(8px);
       transition: opacity 0.25s ease, transform 0.25s ease;
     }
-
     .dv-editor-section--visible {
       opacity: 1;
       transform: translateY(0);
     }
-
-    /* ── Thin divider ──────────────────────────────────────── */
     .dv-divider {
       height: 1px;
-      background: #f1f5f9;
+      background: #d8dde5;
       border-radius: 1px;
     }
-
     .dv-ai-disclosure {
       margin: -4px 2px 0;
       font-size: 10px;
       line-height: 1.4;
-      color: #94a3b8;
+      color: #6b7280;
       text-align: center;
       letter-spacing: 0.01em;
       display: none;
     }
-
     .dv-ai-disclosure--visible {
       display: block;
     }
-
     .dv-ai-actions {
       display: grid;
       grid-template-columns: 1fr;
       gap: 8px;
     }
-
     .dv-ai-actions--two {
       grid-template-columns: 1fr auto;
       align-items: stretch;
     }
-
     .dv-ai-scratch-btn {
       display: none;
       align-items: center;
       justify-content: center;
-      border: 1px solid #dbe2ee;
-      border-radius: 10px;
-      background: #ffffff;
+      border: 1px solid #ccd4df;
+      border-radius: 12px;
+      background: #eef1f5;
       color: #334155;
       font-size: 12px;
       font-weight: 600;
       padding: 0 12px;
-      min-height: 44px;
+      min-height: 46px;
       cursor: pointer;
       transition: background-color 0.2s ease, border-color 0.2s ease;
     }
-
     .dv-ai-scratch-btn:hover {
-      background: #f8fafc;
-      border-color: #94a3b8;
+      background: #e5eaf0;
+      border-color: #a3adba;
     }
-
     .dv-ai-scratch-btn:disabled {
       opacity: 0.65;
       cursor: not-allowed;
     }
-
     .dv-ai-scratch-btn--visible {
       display: inline-flex;
     }
-
     .dv-ai-goal {
       display: none;
       align-items: center;
       gap: 8px;
       padding: 10px 12px;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      background: #ffffff;
+      border: 1px solid #ccd4df;
+      border-radius: 12px;
+      background: #eef1f5;
     }
-
     .dv-ai-goal--visible {
       display: flex;
     }
-
     .dv-ai-goal-input {
       flex: 1;
-      border: 1px solid #dbe2ee;
-      border-radius: 8px;
+      border: 1px solid #cfd7e2;
+      border-radius: 10px;
       height: 34px;
       padding: 0 10px;
       font-size: 12px;
@@ -282,64 +262,56 @@ function _ensureDvStyles() {
       background: #ffffff;
       outline: none;
     }
-
     .dv-ai-goal-input:focus {
-      border-color: #667eea;
-      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+      border-color: #64748b;
+      box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.15);
     }
-
     .dv-ai-goal-generate-btn {
       height: 34px;
-      border: 1px solid #667eea;
-      border-radius: 8px;
+      border: 1px solid var(--dv-brand-pink);
+      border-radius: 10px;
       background: #ffffff;
-      color: #4f46e5;
+      color: #be185d;
       font-size: 12px;
       font-weight: 600;
       padding: 0 10px;
       cursor: pointer;
     }
-
     .dv-ai-goal-generate-btn:disabled {
       opacity: 0.65;
       cursor: not-allowed;
     }
-
     .dv-tmpl-section {
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      background: #ffffff;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+      border: 1px solid var(--dv-card-border);
+      border-radius: 18px;
+      background: var(--dv-card-bg);
+      box-shadow: none;
       overflow: hidden;
     }
-
     .dv-tmpl-toggle {
       width: 100%;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      padding: 12px 14px;
+      padding: 13px 14px;
       border: none;
-      background: #ffffff;
+      background: var(--dv-card-bg);
       color: #0f172a;
       cursor: pointer;
       text-align: left;
       font-size: 13px;
       font-weight: 600;
     }
-
     .dv-tmpl-toggle:hover {
-      background: #f8fafc;
+      background: #eef1f5;
     }
-
     .dv-tmpl-toggle-left {
       display: inline-flex;
       align-items: center;
       gap: 8px;
       min-width: 0;
     }
-
     .dv-tmpl-count {
       display: inline-flex;
       align-items: center;
@@ -348,38 +320,33 @@ function _ensureDvStyles() {
       height: 18px;
       border-radius: 999px;
       padding: 0 6px;
-      background: #eef2ff;
-      color: #4338ca;
+      background: #e6eaf2;
+      color: #334155;
       font-size: 11px;
       font-weight: 700;
     }
-
     .dv-tmpl-chevron {
       color: #64748b;
       font-size: 11px;
       transition: transform 0.2s ease;
     }
-
     .dv-tmpl-section--expanded .dv-tmpl-chevron {
       transform: rotate(180deg);
     }
-
     .dv-tmpl-body {
       display: none;
       padding: 0 14px 14px;
-      border-top: 1px solid #f1f5f9;
+      border-top: 1px solid #d8dde5;
       gap: 10px;
       flex-direction: column;
     }
-
     .dv-tmpl-section--expanded .dv-tmpl-body {
       display: flex;
     }
-
     .dv-tmpl-search {
       width: 100%;
-      border: 1px solid #dbe2ee;
-      border-radius: 8px;
+      border: 1px solid #cfd7e2;
+      border-radius: 10px;
       height: 34px;
       padding: 0 10px;
       font-size: 12px;
@@ -387,49 +354,41 @@ function _ensureDvStyles() {
       background: #ffffff;
       outline: none;
     }
-
     .dv-tmpl-search:focus {
-      border-color: #667eea;
-      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+      border-color: #64748b;
+      box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.15);
     }
-
     .dv-tmpl-list {
       max-height: 220px;
       overflow-y: auto;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
+      border: 1px solid #d8dde5;
+      border-radius: 12px;
       background: #ffffff;
     }
-
     .dv-tmpl-row {
       display: grid;
       grid-template-columns: auto 1fr;
       gap: 8px;
       align-items: start;
       padding: 10px 12px;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid #e6eaf0;
       cursor: pointer;
     }
-
     .dv-tmpl-row:last-child {
       border-bottom: none;
     }
-
     .dv-tmpl-row:hover {
-      background: #f8fafc;
+      background: #f3f5f8;
     }
-
     .dv-tmpl-row input[type="radio"] {
       margin-top: 3px;
     }
-
     .dv-tmpl-name {
       font-size: 12px;
       font-weight: 600;
       color: #0f172a;
       line-height: 1.35;
     }
-
     .dv-tmpl-meta {
       margin-top: 4px;
       display: inline-flex;
@@ -439,11 +398,10 @@ function _ensureDvStyles() {
       font-size: 10px;
       color: #64748b;
     }
-
     .dv-tmpl-badge {
       display: inline-flex;
       align-items: center;
-      border: 1px solid #dbe2ee;
+      border: 1px solid #d3d9e3;
       border-radius: 999px;
       padding: 2px 6px;
       background: #f8fafc;
@@ -451,89 +409,76 @@ function _ensureDvStyles() {
       color: #475569;
       font-weight: 600;
     }
-
     .dv-tmpl-empty {
       margin: 0;
       font-size: 12px;
       line-height: 1.45;
-      color: #64748b;
+      color: #556274;
       padding: 10px 12px;
-      border: 1px dashed #dbe2ee;
+      border: 1px dashed #d3d9e3;
       border-radius: 10px;
       background: #f8fafc;
     }
-
     .dv-tmpl-empty-link {
       border: none;
       background: none;
       padding: 0;
-      color: #4f46e5;
+      color: #be185d;
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
       text-decoration: underline;
     }
-
     .dv-tmpl-actions {
       display: grid;
       grid-template-columns: 1fr;
       gap: 8px;
     }
-
     .dv-tmpl-apply-btn {
       width: 100%;
-      border: 1px solid #667eea;
-      border-radius: 8px;
-      background: #667eea;
+      border: 1px solid var(--dv-brand-pink);
+      border-radius: 12px;
+      background: var(--dv-brand-pink);
       color: #ffffff;
-      height: 36px;
+      height: 40px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
     }
-
     .dv-tmpl-apply-btn:disabled {
       opacity: 0.6;
       cursor: not-allowed;
     }
-
     .dv-tmpl-manage-btn {
       width: 100%;
-      border: 1px solid #dbe2ee;
-      border-radius: 8px;
-      background: #ffffff;
+      border: 1px solid #ccd4df;
+      border-radius: 12px;
+      background: #eef1f5;
       color: #334155;
-      height: 34px;
+      height: 38px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
     }
-
     .dv-tmpl-manage-btn:hover {
-      background: #f8fafc;
-      border-color: #94a3b8;
+      background: #e5eaf0;
+      border-color: #a3adba;
     }
-
-    /* ── Error banner ──────────────────────────────────────── */
     .dv-error-banner {
-      display: flex;
       align-items: flex-start;
       gap: 10px;
       padding: 10px 12px;
       background: #fef2f2;
       border: 1px solid #fecaca;
-      border-radius: 10px;
+      border-radius: 12px;
       font-size: 12px;
       color: #b91c1c;
       line-height: 1.45;
-      /* Hidden by default */
       display: none;
     }
-
     .dv-error-banner--visible {
       display: flex;
     }
-
     .dv-error-banner svg {
       width: 15px;
       height: 15px;
@@ -541,8 +486,6 @@ function _ensureDvStyles() {
       margin-top: 1px;
       color: #ef4444;
     }
-
-    /* ── Sent overlay badge on the editor section ──────────── */
     .dv-sent-badge {
       display: none;
       align-items: center;
@@ -550,14 +493,124 @@ function _ensureDvStyles() {
       padding: 8px 12px;
       background: #dcfce7;
       border: 1px solid #bbf7d0;
-      border-radius: 10px;
+      border-radius: 12px;
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       color: #166534;
     }
-
     .dv-sent-badge--visible {
       display: flex;
+    }
+    .dv-root .contact-card-root {
+      background: var(--dv-card-bg);
+      border-color: var(--dv-card-border);
+      border-radius: 18px;
+      box-shadow: none;
+      padding: 14px;
+    }
+    .dv-root .cc-identity {
+      gap: 14px;
+      margin-bottom: 10px;
+    }
+    .dv-root .cc-avatar {
+      width: 54px;
+      height: 54px;
+      border-radius: 999px;
+      border: none;
+      background: #d2d7df;
+    }
+    .dv-root .cc-avatar-initials {
+      color: #5d6673;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .dv-root .cc-name {
+      font-size: 17px;
+      line-height: 1.18;
+      color: var(--dv-text-main);
+    }
+    .dv-root .cc-subtitle {
+      font-size: 13px;
+      color: #334155;
+    }
+    .dv-root .contact-card-root .mb-3 {
+      margin-bottom: 9px;
+      color: #334155;
+    }
+    .dv-root .contact-card-root .text-base {
+      font-size: 14px;
+    }
+    .dv-root .contact-card-root .text-sm {
+      font-size: 13px;
+    }
+    .dv-root .contact-card-root .text-xs {
+      font-size: 12px;
+    }
+    .dv-root .contact-card-root .rounded-lg {
+      border-radius: 14px;
+    }
+    .dv-root .contact-card-root .border-slate-200 {
+      border-color: #d3d9e3;
+    }
+    .dv-root .contact-card-root .bg-slate-50 {
+      background: #eef1f5;
+    }
+    .dv-root .ets-toggle {
+      min-height: 46px;
+      border-radius: 12px;
+      border-color: #ccd4df;
+      background: #ffffff;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .dv-root .ets-toggle:hover {
+      border-color: #a8b2c1;
+      background: #f5f7fa;
+    }
+    .dv-root .ets-toggle[aria-expanded="true"] {
+      border-color: var(--dv-brand-pink);
+      box-shadow: 0 0 0 3px rgba(246, 82, 148, 0.13);
+    }
+    .dv-root .ets-menu {
+      border-color: #d8dde5;
+      border-radius: 14px;
+      box-shadow: 0 10px 26px rgba(15, 23, 42, 0.12);
+    }
+    .dv-root .ets-option[aria-selected="true"] {
+      background: #fce7f3;
+    }
+    .dv-root .ets-option[aria-selected="true"] .ets-option-label {
+      color: #be185d;
+    }
+    .dv-root .gdb-btn {
+      min-height: 46px;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      background: var(--dv-brand-pink);
+      background-image: none;
+      box-shadow: none;
+    }
+    .dv-root .gdb-btn:not(:disabled):hover {
+      transform: translateY(-1px);
+      background: var(--dv-brand-pink-dark);
+      box-shadow: none;
+    }
+    .dv-root .gdb-btn[data-state="success"] {
+      background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
+      box-shadow: none;
+    }
+    .dv-root .gab-btn {
+      min-height: 46px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #4f7cff 0%, #2663eb 100%);
+      box-shadow: none;
+    }
+    .dv-root .gab-btn:not(:disabled):hover {
+      transform: translateY(-1px);
+      box-shadow: none;
     }
   `;
   document.head.appendChild(style);
@@ -895,12 +948,12 @@ function renderDraftView(contact) {
     </div>
 
     <!-- Email type selector -->
-    <div>
-      <p class="dv-section-label" style="margin-bottom:8px">Email Type</p>
+    <section class="dv-card dv-type-card">
+      <p class="dv-section-label">Email Type</p>
       <div class="dv-type-selector-slot">
         ${typeSelectorHtml}
       </div>
-    </div>
+    </section>
 
     <!-- Saved templates -->
     <section class="dv-tmpl-section" aria-label="Saved templates">
@@ -941,24 +994,26 @@ function renderDraftView(contact) {
     </section>
 
     <!-- AI draft actions -->
-    <div class="dv-ai-actions">
-      <div class="dv-generate-btn-slot">
-        ${generateBtnHtml}
+    <section class="dv-card dv-actions-card">
+      <div class="dv-ai-actions">
+        <div class="dv-generate-btn-slot">
+          ${generateBtnHtml}
+        </div>
+        <button type="button" class="dv-ai-scratch-btn">Draft from Scratch</button>
       </div>
-      <button type="button" class="dv-ai-scratch-btn">Draft from Scratch</button>
-    </div>
-    <div class="dv-ai-goal">
-      <input
-        type="text"
-        class="dv-ai-goal-input"
-        placeholder="What's your goal for this email?"
-        aria-label="AI draft goal"
-      />
-      <button type="button" class="dv-ai-goal-generate-btn">Generate</button>
-    </div>
-    <p class="dv-ai-disclosure" aria-live="polite">
-      Email drafts are AI-generated
-    </p>
+      <div class="dv-ai-goal">
+        <input
+          type="text"
+          class="dv-ai-goal-input"
+          placeholder="What's your goal for this email?"
+          aria-label="AI draft goal"
+        />
+        <button type="button" class="dv-ai-goal-generate-btn">Generate</button>
+      </div>
+      <p class="dv-ai-disclosure" aria-live="polite">
+        Email drafts are AI-generated
+      </p>
+    </section>
 
     <!-- Error banner (hidden by default) -->
     <div class="dv-error-banner" role="alert" aria-live="assertive">
@@ -987,7 +1042,7 @@ function renderDraftView(contact) {
 
       <!-- Draft editor -->
       <div class="dv-card">
-        <p class="dv-section-label" style="margin-bottom:12px">Draft</p>
+        <p class="dv-section-label dv-draft-title">Draft</p>
         <div class="dv-editor-slot">
           ${draftEditorHtml}
         </div>
@@ -1648,3 +1703,4 @@ async function initDraftView(container, contact) {
 
   return { destroy };
 }
+

@@ -811,6 +811,27 @@ class LinkedInExtractor {
   async extractCompany() {
     this.log('=== COMPANY EXTRACTION START ===');
 
+    const currentExperienceEntry = this.extractCurrentExperienceEntry();
+    const currentExperienceCompany = this.cleanCompanyCandidate(currentExperienceEntry?.company || '');
+    const currentExperienceRole = this.cleanRoleCandidate(currentExperienceEntry?.title || '');
+
+    if (
+      currentExperienceCompany &&
+      this.isLikelyCompany(currentExperienceCompany) &&
+      (!currentExperienceRole ||
+        currentExperienceCompany.toLowerCase() !== currentExperienceRole.toLowerCase())
+    ) {
+      this.log('Company extracted from current Experience entry', {
+        company: currentExperienceCompany,
+        role: currentExperienceRole || null,
+      });
+      return {
+        name: currentExperienceCompany,
+        source: 'experience-current',
+        confidence: CONFIDENCE.company.experience,
+      };
+    }
+
     const candidates = [];
     const addCandidate = (rawName, source, confidence) => {
       const normalized = this.cleanCompanyCandidate(rawName);
@@ -2206,9 +2227,9 @@ class LinkedInExtractor {
 
   scoreCompanyCandidate(name, source) {
     const base = {
-      headline: 1.0,
+      headline: 0.72,
       'og-description': 0.97, // OG_DESC_PARSE_v1
-      'experience-current': 0.95,
+      'experience-current': 1.2,
       'top-card': 0.84,
       'json-ld': 0.62,
     };
@@ -2336,7 +2357,7 @@ class LinkedInExtractor {
     if (!text) return false;
 
     const roleKeywords =
-      /\b(co-?founder|founder|ceo|cto|cfo|coo|vp|vice president|president|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|executive|administrator|officer|head of|chief|investor|partner|principal|owner|entrepreneur|advisor|researcher|professor)\b/i;
+      /\b(co-?founder|founder|ceo|cto|cfo|coo|vp|vice president|president|director|manager|engineer|developer|designer|analyst|consultant|specialist|coordinator|lead|senior|junior|intern|associate|executive|administrator|officer|head of|chief|investor|partner|principal|owner|entrepreneur|advisor|researcher|professor|cabin crew|crew|flight attendant|attendant|steward|stewardess|hostess|pilot|purser|ground staff)\b/i;
     if (!roleKeywords.test(text)) return false;
 
     if (/\b(?:at|@)\b/i.test(text)) return false;
@@ -2388,6 +2409,7 @@ class LinkedInExtractor {
       'analytics',
       'engineering',
       'support',
+      'crew',
     ]);
     const tokens = text.split(/\s+/).filter(Boolean);
     if (tokens.length === 1 && genericSingleWord.has(tokens[0].toLowerCase())) {

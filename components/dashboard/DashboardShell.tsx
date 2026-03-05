@@ -81,7 +81,6 @@ function getPersonaNav(persona: DashboardPersona): DashboardNavItem[] {
     ...baseItems,
     personaSpecific,
     { label: "Analytics", href: "/dashboard/analytics", icon: BarChart2 },
-    { label: "Settings", href: "/dashboard/settings", icon: Settings },
   ];
 }
 
@@ -260,6 +259,7 @@ function DashboardChrome({ children }: { children: ReactNode }) {
                   <p className="truncate text-sm font-semibold text-[#2D2B55]">{userInfo.name}</p>
                   <p className="truncate text-xs text-[#706A97]">{userInfo.email || "No email"}</p>
                 </div>
+                <Settings className="ml-auto h-4 w-4 flex-shrink-0 text-[#8A86A7]" aria-hidden="true" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent

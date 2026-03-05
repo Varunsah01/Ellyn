@@ -35,6 +35,7 @@ interface PredictionMetadata {
   hasHistoricalData: boolean
   historicalPatternCount: number
   aiLatencyMs: number
+  provider: string
   model: string
 }
 
@@ -182,15 +183,17 @@ export async function POST(request: NextRequest): Promise<NextResponse<PredictEm
         }
 
         const domainVerification = await verifyDomainMxRecords(companyDomain)
+        const preflightWarnings: string[] = []
         if (!domainVerification.hasMxRecords) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: 'Domain cannot receive emails.',
-              message: domainVerification.error,
-            },
-            { status: 400 }
-          )
+          const mxWarning = domainVerification.error
+            ? `Domain MX pre-check failed (${domainVerification.error}). Continuing with Gemini ranking.`
+            : 'Domain MX pre-check failed. Continuing with Gemini ranking.'
+          preflightWarnings.push(mxWarning)
+          console.warn('[AI][predict-email] MX pre-check warning', {
+            userId: user.id,
+            companyDomain,
+            warning: mxWarning,
+          })
         }
 
         const inferredCompanyName = companyDomain.split('.')[0] ?? ''
@@ -302,6 +305,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<PredictEm
             hasHistoricalData: historicalPatterns.length > 0,
             historicalPatternCount: historicalPatterns.length,
             aiLatencyMs,
+            provider: llmResponse.provider,
             model: llmResponse.model,
           },
           debug: {
@@ -313,7 +317,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<PredictEm
             },
             estimatedCost,
           },
-          warnings: parsed.warnings,
+          warnings: [...preflightWarnings, ...parsed.warnings],
         }
 
         const totalMs = Date.now() - startedAt

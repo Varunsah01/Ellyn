@@ -6,10 +6,10 @@
     typeof process !== 'undefined' &&
     process?.env?.NODE_ENV === 'development';
   const DEFAULT_EXTENSION_API_ORIGINS = [
+    'http://localhost:3000',
     'https://www.useellyn.com',
     'https://app.ellyn.ai',
     'https://app.ellyn.app',
-    'http://localhost:3000',
   ];
 
   function getAuthBridge() {

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
 import { createVersionedHandler } from '@/app/api/v1/_utils'
-import { geminiGenerate } from '@/lib/ai/gemini'
 import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
+import { callLLMWithFallback } from '@/lib/llm-client'
 import { captureApiException } from '@/lib/monitoring/sentry'
 import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 
@@ -43,7 +43,7 @@ function buildPrompt(input: z.infer<typeof CompanyBriefRequestSchema>): string {
     .join('\n')
 }
 
-function parseGeminiJson(raw: string): unknown {
+function parseLlmJson(raw: string): unknown {
   const normalized = raw
     .replace(/```json\s*/gi, '')
     .replace(/```\s*/g, '')
@@ -99,6 +99,26 @@ function normalizeCompanyBrief(data: unknown): CompanyBriefPayload {
   }
 }
 
+function hasMeaningfulCompanyBrief(payload: CompanyBriefPayload): boolean {
+  return Boolean(
+    payload.intro_brief ||
+      payload.sector ||
+      payload.specialization ||
+      payload.year_of_incorporation
+  )
+}
+
+function buildCompanyBriefFallback(companyName: string): CompanyBriefPayload {
+  const safeCompany = normalizeField(companyName, 160)
+  const label = safeCompany || 'This company'
+  return {
+    intro_brief: `${label} is listed on LinkedIn. Detailed company insights are unavailable right now.`,
+    sector: '',
+    specialization: '',
+    year_of_incorporation: '',
+  }
+}
+
 async function postHandler(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request)
@@ -126,19 +146,42 @@ async function postHandler(request: NextRequest) {
       )
     }
 
-    const raw = await geminiGenerate({
-      model: 'gemini-2.5-flash',
-      systemPrompt: BASE_SYSTEM_PROMPT,
-      userPrompt: buildPrompt(parsed.data),
-      maxOutputTokens: 280,
-      temperature: 0.2,
-    })
+    let data: CompanyBriefPayload = buildCompanyBriefFallback(parsed.data.company_name)
+    let provider = 'fallback'
+    let model = 'local-fallback'
+    let fallbackUsed = true
 
-    const normalized = normalizeCompanyBrief(parseGeminiJson(raw))
+    try {
+      const llm = await callLLMWithFallback({
+        systemPrompt: BASE_SYSTEM_PROMPT,
+        userPrompt: buildPrompt(parsed.data),
+        maxTokens: 280,
+        temperature: 0.2,
+        action: 'company_brief',
+      })
+
+      const normalized = normalizeCompanyBrief(parseLlmJson(llm.text))
+      if (hasMeaningfulCompanyBrief(normalized)) {
+        data = normalized
+      }
+
+      provider = llm.provider
+      model = llm.model
+      fallbackUsed = llm.provider !== 'gemini'
+    } catch (llmError) {
+      console.warn('[company-brief] LLM chain failed. Returning deterministic fallback brief.', {
+        error: llmError instanceof Error ? llmError.message : String(llmError),
+      })
+    }
 
     return NextResponse.json({
       success: true,
-      data: normalized,
+      data,
+      meta: {
+        provider,
+        model,
+        fallbackUsed,
+      },
     })
   } catch (error) {
     if (error instanceof Error && error.message === 'Unauthorized') {

@@ -10,6 +10,8 @@ type ZeroBounceValidateResponse = {
   free_email?: unknown
   mx_found?: unknown
   smtp_provider?: unknown
+  error?: unknown
+  errors?: unknown
 }
 
 type VerificationResponse = {
@@ -69,6 +71,56 @@ function buildUnknownApiError(email: string) {
   }
 }
 
+function toArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function buildUpstreamApiError(
+  email: string,
+  upstreamStatus: number,
+  upstreamPayload: unknown
+): {
+  email: string
+  deliverability: 'UNKNOWN'
+  reason: string
+  source: 'zerobounce'
+  upstreamStatus: number
+  upstreamCode: string
+} {
+  const payload = upstreamPayload && typeof upstreamPayload === 'object' ? upstreamPayload : {}
+  const nestedErrors = toArray((payload as ZeroBounceValidateResponse).errors)
+  const firstNested = nestedErrors[0]
+  const nestedCode =
+    firstNested && typeof firstNested === 'object' ? toString((firstNested as { error?: unknown }).error) : ''
+  const directCode = toString((payload as ZeroBounceValidateResponse).error)
+  const upstreamCode = (nestedCode || directCode || '').trim()
+  const normalizedCode = upstreamCode.toLowerCase()
+
+  let reason = 'api_error'
+  if (
+    normalizedCode.includes('api key') ||
+    normalizedCode.includes('invalid key') ||
+    normalizedCode.includes('key not found')
+  ) {
+    reason = 'invalid_api_key'
+  } else if (upstreamStatus === 429 || normalizedCode.includes('rate')) {
+    reason = 'rate_limited'
+  } else if (upstreamStatus === 401 || upstreamStatus === 402 || upstreamStatus === 403) {
+    reason = 'upstream_auth_error'
+  } else if (upstreamStatus >= 500) {
+    reason = 'upstream_unavailable'
+  }
+
+  return {
+    email,
+    deliverability: 'UNKNOWN',
+    reason,
+    source: 'zerobounce',
+    upstreamStatus,
+    upstreamCode,
+  }
+}
+
 export async function POST(request: NextRequest) {
   let email = ''
 
@@ -124,11 +176,25 @@ export async function POST(request: NextRequest) {
         cache: 'no-store',
       })
     } catch {
-      return NextResponse.json(buildUnknownApiError(email), { status: 200 })
+      return NextResponse.json(
+        {
+          ...buildUnknownApiError(email),
+          reason: 'network_error',
+        },
+        { status: 200 }
+      )
     }
 
     if (!zbResponse.ok) {
-      return NextResponse.json(buildUnknownApiError(email), { status: 200 })
+      let upstreamPayload: unknown = null
+      try {
+        upstreamPayload = await zbResponse.json()
+      } catch {
+        upstreamPayload = null
+      }
+      return NextResponse.json(buildUpstreamApiError(email, zbResponse.status, upstreamPayload), {
+        status: 200,
+      })
     }
 
     let payload: ZeroBounceValidateResponse

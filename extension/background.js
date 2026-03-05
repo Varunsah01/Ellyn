@@ -60,7 +60,7 @@ const CSRF_REFRESH_PATH = '/api/v1';
 const CSRF_TOKEN_TTL_MS = 5 * 60 * 1000;
 const BACKEND_BASE_URL_CACHE_TTL_MS = 15 * 1000;
 const BASE_URL_OVERRIDE_KEY = 'ellyn_base_url_override';
-const LOCAL_DEV_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000'];
+const LOCAL_DEV_ORIGINS = ['http://localhost:3000'];
 
 const SUPABASE_AUTH_BRIDGE_KEY = 'ellynSupabaseAuthBridge';
 const CONTACT_SYNC_BRIDGE_KEY = 'ellynContactSync';
@@ -79,6 +79,10 @@ const OPERATION_STORAGE_PREFIX = 'find_email_op_';
 const OPERATION_ALARM_PREFIX = 'find-email-timeout-';
 const DOMAIN_CACHE_PREFIX = 'company_domain_';
 const PATTERN_CACHE_PREFIX = 'pattern_';
+const MAX_SMTP_ATTEMPTS_PER_CANDIDATE = 2;
+// Allow one pull for domain enrichment + one pull for LLM ranking.
+const MAX_EXTERNAL_API_PULLS_PER_LOOKUP = 2;
+const MAX_LLM_SHORTLIST_FOR_SMTP = 2;
 const CONTENT_SCRIPT_FILE = 'content/linkedin-extractor.js';
 const quotaClient = globalThis?.quotaManager || null;
 const analyticsClient = globalThis?.analytics || null;
@@ -88,6 +92,7 @@ let csrfRefreshPromise = null;
 let csrfTokenBaseUrl = '';
 let backendBaseUrlCache = '';
 let backendBaseUrlCachedAt = 0;
+let zerobouncePreferredBaseUrl = '';
 let smtpProbeHealthChecked = false;
 let smtpProbeHealthCheckPromise = null;
 
@@ -182,40 +187,27 @@ async function runSmtpProbeHealthCheck() {
     let result = { ok: false, smtpConfigured: false };
 
     try {
-      const baseUrl = await getBackendBaseUrl();
       const authToken = await getAuthToken();
-      const headers = {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      };
-      if (authToken) {
-        headers.Authorization = `Bearer ${authToken}`;
-      }
-
-      const response = await fetch(`${baseUrl}/api/v1/zerobounce-verify`, {
-        method: 'POST',
-        credentials: 'include',
-        cache: 'no-store',
-        headers,
-        body: JSON.stringify({ email: 'healthcheck@example.com' }),
-        signal: createTimeoutSignal(5000),
-      });
-
-      let payload = null;
-      try {
-        payload = await response.json();
-      } catch {
-        payload = null;
-      }
-
+      const probeResponse = await callZeroBounceVerifyWithFallback(
+        'healthcheck@example.com',
+        authToken,
+        5000,
+        { operationId: 'health-check' }
+      );
+      const payload = probeResponse?.payload || null;
+      const reason = String(payload?.reason || '').trim().toLowerCase();
       const configured =
         !!payload &&
         typeof payload === 'object' &&
-        payload.reason !== 'not_configured' &&
+        reason !== 'not_configured' &&
         payload.error !== 'Unauthorized';
       result = {
-        ok: response.ok,
+        ok: reason !== 'request_failed',
         smtpConfigured: configured,
+        baseUsed: probeResponse?.baseUsed || '',
+        attemptedBases: Array.isArray(probeResponse?.attempts)
+          ? probeResponse.attempts.map((entry) => entry.base).filter(Boolean)
+          : [],
       };
     } catch (error) {
       result = {
@@ -334,7 +326,8 @@ async function getBackendBaseUrl() {
 
   const localOrigin = await findLocalBackendOriginFromOpenTabs();
   const fallback = normalizeOrigin(CONFIG.API_BASE_URL) || String(CONFIG.API_BASE_URL || '').trim();
-  backendBaseUrlCache = String(overrideOrigin || sourceOrigin || localOrigin || fallback || '')
+  // Prefer localhost when available so extension + local backend stay aligned in dev.
+  backendBaseUrlCache = String(localOrigin || overrideOrigin || sourceOrigin || fallback || '')
     .trim()
     .replace(/\/+$/, '');
   backendBaseUrlCachedAt = Date.now();
@@ -1223,7 +1216,7 @@ async function handleGetCompanyBriefGeminiMessage(message, sendResponse) {
         ...(companyPageUrl ? { company_page_url: companyPageUrl } : {}),
       },
       authToken,
-      20000
+      12000
     );
 
     const normalized = normalizeCompanyBriefPayload(payload?.data || payload || {});
@@ -2651,6 +2644,38 @@ function normalizeDomain(value) {
     .split('#')[0];
 }
 
+function isValidDomainSyntax(domain) {
+  const normalized = normalizeDomain(domain);
+  if (!normalized) return false;
+  if (normalized.length > 253) return false;
+  if (!/^[a-z0-9.-]+$/.test(normalized)) return false;
+  if (!normalized.includes('.')) return false;
+  if (normalized.startsWith('.') || normalized.endsWith('.')) return false;
+  if (normalized.includes('..')) return false;
+
+  const labels = normalized.split('.');
+  return labels.every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
+}
+
+function isPlausibleTld(domain) {
+  const normalized = normalizeDomain(domain);
+  if (!normalized || !normalized.includes('.')) return false;
+  const tld = normalized.split('.').pop() || '';
+  return /^[a-z]{2,24}$/.test(tld);
+}
+
+function validateDomainAndTld(domain) {
+  const normalized = normalizeDomain(domain);
+  const syntaxOk = isValidDomainSyntax(normalized);
+  const tldOk = syntaxOk && isPlausibleTld(normalized);
+  return {
+    domain: normalized,
+    syntaxOk,
+    tldOk,
+    valid: syntaxOk && tldOk,
+  };
+}
+
 function normalizeCompanyKey(companyName) {
   return String(companyName || '')
     .toLowerCase()
@@ -2793,29 +2818,117 @@ function generateDomainGuessCandidates(companyName, companyPageUrl = '') {
     const compact = tokens.join('');
     add(`${compact}.com`);
     add(`${compact}.in`);
-    add(`${tokens[0]}.com`);
-    add(`${tokens[0]}.in`);
+
+    if (tokens.length >= 2) {
+      const firstTwoCompact = `${tokens[0]}${tokens[1]}`;
+      add(`${firstTwoCompact}.com`);
+      add(`${firstTwoCompact}.in`);
+      add(`${tokens[0]}-${tokens[1]}.com`);
+      add(`${tokens[0]}-${tokens[1]}.in`);
+    } else {
+      add(`${tokens[0]}.com`);
+      add(`${tokens[0]}.in`);
+    }
   }
 
   return Array.from(out);
 }
 
+function hasStrongRecoveryDomainMatch(candidateDomain, companyName, resolvedDomain, companyPageUrl = '') {
+  const candidateLabel = getRegistrableDomainLabel(candidateDomain);
+  if (!candidateLabel) return false;
+
+  const companyKey = normalizeCompanyKey(companyName);
+  if (!companyKey) return true;
+
+  const resolvedLabel = getRegistrableDomainLabel(resolvedDomain);
+  const slugCompact = extractLinkedInCompanySlug(companyPageUrl).replace(/-/g, '');
+  const companyTokens = tokenizeCompanyName(companyName);
+
+  const candidateInCompany = companyKey.includes(candidateLabel);
+  const candidateCoverage = companyKey.length > 0 ? candidateLabel.length / companyKey.length : 0;
+
+  if (candidateLabel === companyKey || candidateLabel.includes(companyKey)) {
+    return true;
+  }
+
+  if (candidateInCompany && candidateCoverage >= 0.65) {
+    return true;
+  }
+
+  if (slugCompact) {
+    const slugCoverage = slugCompact.length > 0 ? candidateLabel.length / slugCompact.length : 0;
+    if (
+      candidateLabel === slugCompact ||
+      candidateLabel.includes(slugCompact) ||
+      (slugCompact.includes(candidateLabel) && slugCoverage >= 0.65)
+    ) {
+      return true;
+    }
+  }
+
+  let tokenHits = 0;
+  for (const token of companyTokens) {
+    if (token.length >= 3 && candidateLabel.includes(token)) {
+      tokenHits += 1;
+    }
+  }
+
+  if (companyTokens.length >= 2 && tokenHits >= 2) {
+    return true;
+  }
+
+  if (companyTokens.length === 1 && tokenHits >= 1) {
+    return true;
+  }
+
+  if (resolvedLabel) {
+    const baselineCoverage = resolvedLabel.length > 0 ? candidateLabel.length / resolvedLabel.length : 0;
+    if (resolvedLabel.includes(candidateLabel) && baselineCoverage < 0.65) {
+      return false;
+    }
+  }
+
+  return false;
+}
+
 async function recoverDomainForMismatch(companyName, resolvedDomain, companyPageUrl = '') {
+  console.log('[ELLYN Domain Recovery] Starting recovery', {
+    companyName,
+    resolvedDomain,
+    companyPageUrl,
+  });
   const candidates = generateDomainGuessCandidates(companyName, companyPageUrl).filter(
-    (candidate) => candidate && candidate !== resolvedDomain && domainMatchesCompany(candidate, companyName, companyPageUrl)
+    (candidate) =>
+      candidate &&
+      candidate !== resolvedDomain &&
+      domainMatchesCompany(candidate, companyName, companyPageUrl) &&
+      hasStrongRecoveryDomainMatch(candidate, companyName, resolvedDomain, companyPageUrl)
   );
   const limitedCandidates = candidates.slice(0, 6);
+  console.log('[ELLYN Domain Recovery] Filtered candidates', {
+    resolvedDomain,
+    candidates: limitedCandidates,
+  });
 
   for (const candidate of limitedCandidates) {
     try {
       const mx = await verifyDomainMx(candidate);
       if (mx?.hasMx) {
+        console.log('[ELLYN Domain Recovery] Selected MX-backed recovery domain', {
+          resolvedDomain,
+          recoveredDomain: candidate,
+        });
         return candidate;
       }
     } catch {
       // Continue trying candidates.
     }
   }
+
+  console.log('[ELLYN Domain Recovery] No safe recovery domain found', {
+    resolvedDomain,
+  });
 
   return '';
 }
@@ -3136,6 +3249,14 @@ async function executeBackendPost(url, body, authToken, timeoutMs, forceCsrfRefr
   return { response, payload };
 }
 
+async function executeBackendPostWithCsrfRetry(url, body, authToken, timeoutMs) {
+  let result = await executeBackendPost(url, body, authToken, timeoutMs, false);
+  if (result.response.status === 403 && isCsrfInvalidPayload(result.payload)) {
+    result = await executeBackendPost(url, body, authToken, timeoutMs, true);
+  }
+  return result;
+}
+
 async function callBackendPost(path, body, authToken, timeoutMs) {
   const baseUrl = await getBackendBaseUrl();
   if (!baseUrl) {
@@ -3145,11 +3266,10 @@ async function callBackendPost(path, body, authToken, timeoutMs) {
   }
 
   const performRequest = async (requestUrl, token, forceCsrfRefresh = false) => {
-    let result = await executeBackendPost(requestUrl, body, token, timeoutMs, forceCsrfRefresh);
-    if (result.response.status === 403 && isCsrfInvalidPayload(result.payload)) {
-      result = await executeBackendPost(requestUrl, body, token, timeoutMs, true);
+    if (forceCsrfRefresh) {
+      return executeBackendPost(requestUrl, body, token, timeoutMs, true);
     }
-    return result;
+    return executeBackendPostWithCsrfRetry(requestUrl, body, token, timeoutMs);
   };
 
   let tokenInUse = String(authToken || '').trim();
@@ -3215,6 +3335,220 @@ async function callBackendPost(path, body, authToken, timeoutMs) {
   }
 
   return payload || {};
+}
+
+function buildApiUrl(baseUrl, path) {
+  const normalizedBase = String(baseUrl || '')
+    .trim()
+    .replace(/\/+$/, '');
+  const normalizedPath = String(path || '').startsWith('/') ? String(path || '') : `/${String(path || '')}`;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+function getZeroBounceCandidateBases(primaryBase) {
+  const primary = normalizeOrigin(primaryBase);
+  const preferred = normalizeOrigin(zerobouncePreferredBaseUrl);
+  const fallback = normalizeOrigin(CONFIG.API_BASE_URL);
+  const localBases = LOCAL_DEV_ORIGINS.map((origin) => normalizeOrigin(origin)).filter(Boolean);
+  const ordered = [preferred, primary, ...localBases, fallback].filter(Boolean);
+  return Array.from(new Set(ordered));
+}
+
+function isLikelyJsonApiResponse(response, payload) {
+  const contentType = String(response?.headers?.get?.('content-type') || '').toLowerCase();
+  if (contentType.includes('application/json')) {
+    return true;
+  }
+  return payload && typeof payload === 'object';
+}
+
+async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, context = {}) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  const primaryBase = await getBackendBaseUrl();
+  const candidateBases = getZeroBounceCandidateBases(primaryBase);
+
+  if (candidateBases.length === 0) {
+    throw buildPipelineError('NETWORK_FAILURE', 'No backend origin available for ZeroBounce verification.', {
+      isRecoverable: true,
+    });
+  }
+
+  let tokenInUse = String(authToken || '').trim();
+  if (!tokenInUse) {
+    tokenInUse = await getAuthToken();
+  }
+
+  let lastError = null;
+  let sawUnauthorized = false;
+  let successfulJsonResponses = 0;
+  let notConfiguredResponses = 0;
+  const attempts = [];
+
+  for (const base of candidateBases) {
+    const requestUrl = buildApiUrl(base, '/api/v1/zerobounce-verify');
+
+    try {
+      let { response, payload } = await executeBackendPostWithCsrfRetry(
+        requestUrl,
+        { email: normalizedEmail },
+        tokenInUse,
+        timeoutMs
+      );
+
+      if (response.status === 401) {
+        const refreshedToken = await getAuthToken();
+        if (refreshedToken && refreshedToken !== tokenInUse) {
+          tokenInUse = refreshedToken;
+          ({ response, payload } = await executeBackendPostWithCsrfRetry(
+            requestUrl,
+            { email: normalizedEmail },
+            tokenInUse,
+            timeoutMs
+          ));
+        } else {
+          sawUnauthorized = true;
+        }
+      }
+
+      const reason = String(payload?.reason || '').trim().toLowerCase();
+      const finalOrigin = normalizeOrigin(response?.url || '');
+      const redirected = response?.redirected === true;
+      const redirectedOffOrigin = redirected && finalOrigin && finalOrigin !== normalizeOrigin(base);
+      const looksJson = isLikelyJsonApiResponse(response, payload);
+
+      attempts.push({
+        base,
+        status: Number(response?.status || 0),
+        reason,
+        redirected,
+        finalOrigin,
+      });
+
+      console.log('[ELLYN ZeroBounce] Endpoint attempt', {
+        operationId: context.operationId || '',
+        base,
+        status: response?.status,
+        reason: reason || '',
+        redirected,
+        finalOrigin,
+      });
+
+      if (response.status === 401) {
+        sawUnauthorized = true;
+        continue;
+      }
+
+      if (response.ok && redirectedOffOrigin) {
+        lastError = buildPipelineError(
+          'REDIRECTED_API_RESPONSE',
+          `ZeroBounce verification endpoint redirected from ${base} to ${finalOrigin}.`,
+          { status: response.status, isRecoverable: true }
+        );
+        continue;
+      }
+
+      if (response.ok && !looksJson) {
+        lastError = buildPipelineError(
+          'NON_JSON_RESPONSE',
+          `ZeroBounce verification endpoint returned non-JSON response from ${base}.`,
+          { status: response.status, isRecoverable: true }
+        );
+        continue;
+      }
+
+      if (!response.ok) {
+        const apiCode = getApiErrorCode(payload);
+        const apiErrorMessage = getApiErrorMessage(payload);
+        const fallbackCode = response.status === 401 ? 'UNAUTHORIZED' : 'NETWORK_FAILURE';
+        const error = buildPipelineError(
+          String(apiCode || fallbackCode).toUpperCase(),
+          apiErrorMessage || `Request failed: ${response.status} ${response.statusText}`,
+          {
+            status: response.status,
+            isRecoverable: [401, 403, 404, 405, 408, 429, 500, 502, 503, 504].includes(response.status),
+          }
+        );
+        error.payload = payload;
+        lastError = error;
+        continue;
+      }
+
+      successfulJsonResponses += 1;
+      if (reason === 'not_configured') {
+        notConfiguredResponses += 1;
+        continue;
+      }
+
+      zerobouncePreferredBaseUrl = base;
+      backendBaseUrlCache = base;
+      backendBaseUrlCachedAt = Date.now();
+
+      return {
+        payload: payload || {},
+        baseUsed: base,
+        attempts,
+        authTokenUsed: tokenInUse,
+      };
+    } catch (error) {
+      lastError = error;
+      attempts.push({
+        base,
+        status: Number(error?.status || 0),
+        reason: String(error?.code || ''),
+        redirected: false,
+        finalOrigin: '',
+      });
+      console.warn('[ELLYN ZeroBounce] Endpoint attempt failed', {
+        operationId: context.operationId || '',
+        base,
+        error: error?.message || String(error),
+      });
+    }
+  }
+
+  const onlyNotConfiguredResponses =
+    notConfiguredResponses > 0 && successfulJsonResponses === notConfiguredResponses;
+
+  if (onlyNotConfiguredResponses && !sawUnauthorized) {
+    return {
+      payload: {
+        email: normalizedEmail,
+        deliverability: 'UNKNOWN',
+        reason: 'not_configured',
+        source: 'zerobounce',
+        attemptedBases: attempts.map((entry) => entry.base).filter(Boolean),
+      },
+      baseUsed: '',
+      attempts,
+      authTokenUsed: tokenInUse,
+    };
+  }
+
+  const allUnauthorized =
+    attempts.length > 0 && attempts.every((entry) => Number(entry?.status || 0) === 401);
+
+  if (sawUnauthorized && allUnauthorized) {
+    throw buildPipelineError('UNAUTHORIZED', 'Please sign in again to verify emails.', {
+      status: 401,
+      isRecoverable: false,
+    });
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+
+  return {
+    payload: {
+      email: normalizedEmail,
+      deliverability: 'UNKNOWN',
+      reason: 'request_failed',
+      source: 'zerobounce',
+    },
+    baseUsed: '',
+    attempts,
+    authTokenUsed: tokenInUse,
+  };
 }
 
 function isMethodNotAllowedError(error) {
@@ -3602,18 +3936,37 @@ async function normalizePipelineInput(data, senderTabId) {
 
   const isStudent = profileType?.type === 'STUDENT';
   const hasEducation = Boolean(education?.institution);
+  const normalizedFirstName = sanitizeNamePart(firstName);
+  const normalizedLastName = sanitizeNamePart(lastName);
+  const normalizedCompany = String(company || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const fullName = [normalizedFirstName, normalizedLastName].filter(Boolean).join(' ');
+  const aliasVariants = Array.from(
+    new Set(
+      [normalizedFirstName, normalizedLastName, `${normalizedFirstName}${normalizedLastName}`]
+        .map((value) => sanitizeNamePart(value))
+        .filter(Boolean)
+    )
+  );
+  const explicitCompanyDomain = normalizeDomain(
+    String(data?.companyDomain || data?.companyWebsite || data?.website || '').trim()
+  );
 
-  if (!firstName || (!company && !(isStudent && hasEducation))) {
+  if (!normalizedFirstName || (!normalizedCompany && !(isStudent && hasEducation))) {
     throw new Error('Profile context incomplete. Refresh and confirm name + company before finding email.');
   }
 
   return {
-    firstName,
-    lastName,
-    company,
+    firstName: normalizedFirstName,
+    lastName: normalizedLastName,
+    fullName,
+    aliasVariants,
+    company: normalizedCompany,
     role,
     profileUrl,
     companyPageUrl,
+    companyDomain: explicitCompanyDomain,
     tabId,
     profileType,
     education,
@@ -3648,7 +4001,8 @@ function generateStudentEmailCandidates(firstName, lastName, domain) {
   ].filter(Boolean);
 }
 
-async function resolveDomain(companyName, authToken, companyPageUrl = '') {
+async function resolveDomain(companyName, authToken, companyPageUrl = '', options = {}) {
+  const allowFallbackApi = options?.allowFallbackApi !== false;
   // Prefer enhanced resolver when available.
   try {
     const enhanced = await resolveDomainEnhanced(companyName, companyPageUrl, authToken);
@@ -3660,9 +4014,18 @@ async function resolveDomain(companyName, authToken, companyPageUrl = '') {
       };
     }
   } catch (error) {
+    if (!allowFallbackApi) {
+      throw error;
+    }
     if (!isMethodNotAllowedError(error) && Number(error?.status) !== 404) {
       console.warn('[Extension] /api/v1/resolve-domain-v2 failed. Falling back to /api/v1/resolve-domain.', error);
     }
+  }
+
+  if (!allowFallbackApi) {
+    throw buildPipelineError('NETWORK_FAILURE', 'Domain fallback API disabled by lookup budget.', {
+      isRecoverable: true,
+    });
   }
 
   return callBackendPost(
@@ -3673,7 +4036,8 @@ async function resolveDomain(companyName, authToken, companyPageUrl = '') {
   );
 }
 
-async function predictPatterns(input, authToken) {
+async function predictPatterns(input, authToken, options = {}) {
+  const allowFallbackApi = options?.allowFallbackApi !== false;
   // Prefer richer person-level prediction API.
   if (input.firstName && input.domain) {
     try {
@@ -3703,18 +4067,39 @@ async function predictPatterns(input, authToken) {
         .filter((item) => Boolean(item.template));
 
       if (normalizedPatterns.length > 0) {
+        const providerRaw = String(predicted?.metadata?.provider || '').trim().toLowerCase();
+        const modelRaw = String(predicted?.metadata?.model || '').trim();
+        const inferredProvider =
+          providerRaw || (/gemini/i.test(modelRaw) ? 'gemini' : modelRaw ? 'unknown' : '');
         return {
           patterns: normalizedPatterns,
           reasoning: String(predicted?.prediction?.recommendationReasoning || ''),
           source: 'predict-email',
+          provider: inferredProvider || 'unknown',
+          model: modelRaw || 'unknown',
           costUsd: Number(predicted?.debug?.estimatedCost || 0),
         };
       }
+
+      if (!allowFallbackApi) {
+        throw buildPipelineError('NETWORK_FAILURE', 'Predict-email returned no ranked patterns.', {
+          isRecoverable: true,
+        });
+      }
     } catch (error) {
+      if (!allowFallbackApi) {
+        throw error;
+      }
       if (!isMethodNotAllowedError(error) && Number(error?.status) !== 404) {
         console.warn('[Extension] /api/v1/predict-email failed. Falling back to /api/v1/predict-patterns.', error);
       }
     }
+  }
+
+  if (!allowFallbackApi) {
+    throw buildPipelineError('NETWORK_FAILURE', 'Pattern fallback API disabled by lookup budget.', {
+      isRecoverable: true,
+    });
   }
 
   return callBackendPost(
@@ -3959,6 +4344,32 @@ function buildCandidates(firstName, lastName, domain, patterns) {
   return candidates.sort((a, b) => b.confidence - a.confidence);
 }
 
+async function getCachedDomainMapping(companyName) {
+  const companyKey = normalizeCompanyKey(companyName);
+  if (!companyKey) return null;
+
+  const domainCacheKey = `${DOMAIN_CACHE_PREFIX}${companyKey}`;
+  const domainCacheResult = await chrome.storage.local.get([domainCacheKey]);
+  const domainCacheValue = domainCacheResult?.[domainCacheKey];
+  if (!domainCacheValue || typeof domainCacheValue !== 'object') {
+    return null;
+  }
+
+  const domain = normalizeDomain(domainCacheValue.domain);
+  const timestamp = Number(domainCacheValue.timestamp || 0);
+  const isFresh = Number.isFinite(timestamp) && Date.now() - timestamp <= CONFIG.CACHE_DURATION_MS;
+  if (!domain || !isFresh) {
+    return null;
+  }
+
+  return {
+    domain,
+    source: String(domainCacheValue.source || 'domain_cache'),
+    confidence: Number(domainCacheValue.confidence || 0),
+    timestamp,
+  };
+}
+
 async function getCachedPatternHit(companyName, firstName, lastName) {
   const companyKey = normalizeCompanyKey(companyName);
   if (!companyKey) return null;
@@ -4065,6 +4476,33 @@ async function handleFindEmail(data, sender, sendResponse) {
   const lookupStartedAt = Date.now();
   let stage = 'init';
   let normalizedInput = null;
+  let domain = '';
+  const lookupLimits = {
+    maxExternalApiPulls: MAX_EXTERNAL_API_PULLS_PER_LOOKUP,
+    externalApiPullsUsed: 0,
+    maxSmtpAttemptsPerCandidate: MAX_SMTP_ATTEMPTS_PER_CANDIDATE,
+    smtpAttemptsByCandidate: new Map(),
+  };
+  const consumeExternalApiPull = (label) => {
+    if (lookupLimits.externalApiPullsUsed >= lookupLimits.maxExternalApiPulls) {
+      console.log('[ELLYN Limit] External API pull blocked by hard cap.', {
+        operationId,
+        label,
+        used: lookupLimits.externalApiPullsUsed,
+        max: lookupLimits.maxExternalApiPulls,
+      });
+      return false;
+    }
+
+    lookupLimits.externalApiPullsUsed += 1;
+    console.log('[ELLYN Limit] External API pull consumed.', {
+      operationId,
+      label,
+      used: lookupLimits.externalApiPullsUsed,
+      max: lookupLimits.maxExternalApiPulls,
+    });
+    return true;
+  };
 
   try {
     await startOperation(operationId, {
@@ -4080,6 +4518,18 @@ async function handleFindEmail(data, sender, sendResponse) {
 
     const input = await normalizePipelineInput(data || {}, senderTabId);
     normalizedInput = input;
+    console.log('[ELLYN Debug] Extracted + normalized profile context', {
+      operationId,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      fullName: input.fullName,
+      company: input.company,
+      role: input.role,
+      profileUrl: input.profileUrl,
+      companyPageUrl: input.companyPageUrl,
+      companyDomain: input.companyDomain || '',
+      aliasVariants: input.aliasVariants,
+    });
 
     let authToken = await getAuthToken();
     if (!authToken) {
@@ -4109,13 +4559,19 @@ async function handleFindEmail(data, sender, sendResponse) {
     if (safetyCheck.limited) {
       throw Object.assign(new Error('Rate limit exceeded'), { code: 'RATE_LIMITED', retryAfterMs: safetyCheck.retryAfterMs });
     }
+    console.log('[ELLYN Debug] Gate result', {
+      operationId,
+      authenticated: Boolean(authToken),
+      quotaAllowed: true,
+      rateLimited: false,
+    });
 
     let totalCost = 0;
-    let domain = '';
     let geminiConfirmed = true;
     let geminiReason = '';
     let llmRankingPulled = false;
     let llmRankingSource = 'fallback';
+    let llmRankingProvider = 'unknown';
     let mxSucceededAttempt = 'none';
 
     // STAGE 0: Cache lookup
@@ -4160,6 +4616,9 @@ async function handleFindEmail(data, sender, sendResponse) {
         mxSelectedFromAlternative: false,
         alternativeEmails: [],
         cost: toRoundedMoney(totalCost),
+        externalApiPullsUsed: lookupLimits.externalApiPullsUsed,
+        externalApiPullsMax: lookupLimits.maxExternalApiPulls,
+        smtpAttemptsMaxPerCandidate: lookupLimits.maxSmtpAttemptsPerCandidate,
       };
 
       await trackLookupAnalytics({
@@ -4178,6 +4637,12 @@ async function handleFindEmail(data, sender, sendResponse) {
       await completeOperation(operationId, 'completed', {
         stage: 'done',
         result: resultPayload,
+      });
+      console.log('[ELLYN Debug] Final selected email', {
+        operationId,
+        email: resultPayload.email,
+        source: resultPayload.source,
+        externalApiPullsUsed: resultPayload.externalApiPullsUsed,
       });
 
       await notifyEmailFound(input.tabId, resultPayload);
@@ -4244,6 +4709,7 @@ async function handleFindEmail(data, sender, sendResponse) {
     console.log('[ELLYN Stage 1] Domain resolution');
 
     let domainResult = null;
+    const domainWarnings = [];
     let companyPageUrl = String(input.companyPageUrl || '').trim();
     if (!companyPageUrl) {
       try {
@@ -4260,92 +4726,111 @@ async function handleFindEmail(data, sender, sendResponse) {
       }
     }
 
-    try {
-      domainResult = await resolveDomain(input.company, authToken, companyPageUrl);
-    } catch (error) {
-      const resolutionError = classifyApiError(error);
-      if (isMethodNotAllowedError(error)) {
-        console.warn('[Extension] /api/v1/resolve-domain returned 405. Falling back to /api/v1/generate-emails.', error);
-
-        try {
-          stage = 'legacy_generate_emails';
-          await updateOperation(operationId, {
-            stage,
-            warning: 'Modern API unavailable (405). Used legacy generate-emails fallback.',
-          });
-
-          const legacyPayload = await runLegacyGenerateEmailsPipeline(input, authToken);
-
-          await trackLookupAnalytics({
-            profileUrl: legacyPayload.profileUrl,
-            domain: legacyPayload.domain || '',
-            email: legacyPayload.email,
-            pattern: legacyPayload.pattern,
-            confidence: legacyPayload.confidence,
-            source: legacyPayload.source,
-            cacheHit: false,
-            cost: legacyPayload.cost,
-            duration: Date.now() - lookupStartedAt,
-            success: true,
-          });
-
-          await completeOperation(operationId, 'completed', {
-            stage: 'done',
-            result: legacyPayload,
-          });
-
-          await notifyEmailFound(input.tabId, legacyPayload);
-
-          sendResponse({
-            success: true,
-            type: 'EMAIL_FOUND',
-            data: legacyPayload,
-          });
-          return;
-        } catch (legacyError) {
-          const legacyClassification = classifyApiError(legacyError);
-          if (!legacyClassification.isRecoverable) {
-            throw legacyError;
-          }
-          console.warn(
-            '[Extension] Legacy /api/v1/generate-emails fallback failed. Using local heuristic domain fallback.',
-            legacyError
-          );
-        }
-      }
-
-      if (!resolutionError.isRecoverable) {
-        throw error;
-      }
-
-      if (CONFIG.HEURISTIC_FALLBACK.enabled !== true) {
-        throw error;
-      }
-
-      const guessedDomain = guessDomainFromCompanyName(input.company);
-      if (!guessedDomain) {
-        throw error;
-      }
-
+    const explicitDomain = normalizeDomain(input.companyDomain);
+    if (explicitDomain) {
       domainResult = {
-        domain: guessedDomain,
-        source: 'local_heuristic',
-        confidence: 0.4,
-        warnings: [
-          'Heuristic fallback enabled due recoverable domain-resolution failure.',
-          `Original error: ${resolutionError.code}`,
-        ],
+        domain: explicitDomain,
+        source: 'explicit_context',
+        confidence: 0.92,
       };
     }
 
+    if (!domainResult) {
+      const cachedDomainHit = await getCachedDomainMapping(input.company);
+      if (cachedDomainHit) {
+        if (domainMatchesCompany(cachedDomainHit.domain, input.company, companyPageUrl)) {
+          domainResult = {
+            domain: cachedDomainHit.domain,
+            source: 'cached_domain_mapping',
+            confidence: Number(cachedDomainHit.confidence || 0.8),
+          };
+        } else {
+          domainWarnings.push(
+            `Cached domain ${cachedDomainHit.domain} did not match ${input.company}. Ignoring cached mapping.`
+          );
+        }
+      }
+    }
+
+    if (!domainResult) {
+      if (consumeExternalApiPull('resolve_domain')) {
+        try {
+          domainResult = await resolveDomain(input.company, authToken, companyPageUrl, {
+            allowFallbackApi: false,
+          });
+        } catch (error) {
+          const resolutionError = classifyApiError(error);
+          if (!resolutionError.isRecoverable) {
+            throw error;
+          }
+
+          if (CONFIG.HEURISTIC_FALLBACK.enabled !== true) {
+            throw error;
+          }
+
+          const guessedDomain = guessDomainFromCompanyName(input.company);
+          if (!guessedDomain) {
+            throw error;
+          }
+
+          domainResult = {
+            domain: guessedDomain,
+            source: 'local_heuristic',
+            confidence: 0.4,
+            warnings: [
+              'Heuristic fallback enabled due recoverable domain-resolution failure.',
+              `Original error: ${resolutionError.code}`,
+            ],
+          };
+        }
+      } else {
+        const guessedDomain = guessDomainFromCompanyName(input.company);
+        if (!guessedDomain) {
+          throw buildPipelineError('NETWORK_FAILURE', 'No API budget left and no domain could be inferred.', {
+            isRecoverable: true,
+          });
+        }
+        domainResult = {
+          domain: guessedDomain,
+          source: 'local_heuristic_budget',
+          confidence: 0.38,
+          warnings: ['External API pull cap reached. Used heuristic domain inference.'],
+        };
+      }
+    }
+
+    if (Array.isArray(domainResult?.warnings)) {
+      domainWarnings.push(
+        ...domainResult.warnings.filter((warning) => typeof warning === 'string' && warning.trim().length > 0)
+      );
+    }
+
     domain = normalizeDomain(domainResult?.domain);
-    const domainWarnings = Array.isArray(domainResult?.warnings)
-      ? domainResult.warnings.filter((warning) => typeof warning === 'string' && warning.trim().length > 0)
-      : [];
 
     if (!domain) {
       throw new Error('Domain resolution failed.');
     }
+
+    const domainValidation = validateDomainAndTld(domain);
+    console.log('[ELLYN Debug] Domain/TLD validation', {
+      operationId,
+      domain: domainValidation.domain,
+      syntaxOk: domainValidation.syntaxOk,
+      tldOk: domainValidation.tldOk,
+    });
+    if (!domainValidation.valid) {
+      throw buildPipelineError('INVALID_DOMAIN', `Resolved domain ${domain} failed domain/TLD validation.`, {
+        isRecoverable: false,
+      });
+    }
+    domain = domainValidation.domain;
+    console.log('[ELLYN Debug] Resolved domain', {
+      operationId,
+      domain,
+      source: domainResult?.source || 'unknown',
+      apiPullsUsed: lookupLimits.externalApiPullsUsed,
+      apiPullsMax: lookupLimits.maxExternalApiPulls,
+    });
 
     if (!domainMatchesCompany(domain, input.company, companyPageUrl)) {
       const recoveredDomain = await recoverDomainForMismatch(input.company, domain, companyPageUrl);
@@ -4375,29 +4860,9 @@ async function handleFindEmail(data, sender, sendResponse) {
     await updateOperation(operationId, { stage, domain });
     console.log('[ELLYN Stage 1.5] Gemini domain confirmation for', domain);
 
-    const geminiResult = await confirmDomainWithGemini(input.company, domain, authToken);
-    geminiConfirmed = geminiResult.confirmed;
-    geminiReason = geminiResult.reason || 'gemini_unavailable';
-
-    if (!geminiConfirmed && geminiResult.correctedDomain) {
-      const corrected = normalizeDomain(geminiResult.correctedDomain);
-      if (corrected && corrected !== domain) {
-        if (domainMatchesCompany(corrected, input.company, companyPageUrl)) {
-          console.log('[ELLYN] Gemini corrected domain:', domain, 'â†’', corrected);
-          domainWarnings.push(
-            `Gemini corrected domain from ${domain} to ${corrected}. Reason: ${geminiResult.reason}`
-          );
-          domain = corrected;
-
-          // Re-cache the corrected domain
-          await cacheResolvedDomain(input.company, domain, 'gemini_corrected', geminiResult.confidence || 0.85);
-        } else {
-          console.log('[ELLYN] Gemini suggested domain', corrected, 'but it does not match company. Keeping', domain);
-        }
-      }
-    } else if (geminiConfirmed) {
-      console.log('[ELLYN] Gemini confirmed domain:', domain, '(confidence:', geminiResult.confidence, ')');
-    }
+    geminiConfirmed = true;
+    geminiReason = 'skipped_api_budget';
+    console.log('[ELLYN Stage 1.5] Gemini confirmation skipped to preserve one-API-pull budget.');
 
     // STAGE 2: LLM pattern prediction
     stage = 'predict_patterns';
@@ -4405,34 +4870,57 @@ async function handleFindEmail(data, sender, sendResponse) {
     console.log('[ELLYN Stage 2] LLM pattern prediction');
 
     let predictedPatterns = [];
-    try {
-      const prediction = await predictPatterns(
-        {
-          firstName: input.firstName,
-          lastName: input.lastName,
-          domain,
-          company: input.company,
-          role: input.role || '',
-          profileUrl: input.profileUrl || '',
-        },
-        authToken
-      );
+    if (consumeExternalApiPull('predict_patterns')) {
+      try {
+        const prediction = await predictPatterns(
+          {
+            firstName: input.firstName,
+            lastName: input.lastName,
+            domain,
+            company: input.company,
+            role: input.role || '',
+            profileUrl: input.profileUrl || '',
+          },
+          authToken,
+          { allowFallbackApi: false }
+        );
 
-      predictedPatterns = Array.isArray(prediction?.patterns) ? prediction.patterns : [];
-      llmRankingSource = String(prediction?.source || 'fallback').trim() || 'fallback';
-      llmRankingPulled = llmRankingSource === 'predict-email';
-      const predictionCost = Number(prediction?.costUsd);
-      const effectivePredictionCost = Number.isFinite(predictionCost)
-        ? predictionCost
-        : CONFIG.COSTS.predictPatternsFallback;
+        predictedPatterns = Array.isArray(prediction?.patterns) ? prediction.patterns : [];
+        llmRankingSource = String(prediction?.source || 'fallback').trim() || 'fallback';
+        const llmProvider = String(prediction?.provider || '').trim().toLowerCase();
+        llmRankingProvider = llmProvider || 'unknown';
+        llmRankingPulled = llmRankingSource === 'predict-email' && llmRankingProvider === 'gemini';
+        const llmModel = String(prediction?.model || '').trim();
+        console.log('[ELLYN Stage 2] LLM ranking provider', {
+          operationId,
+          provider: llmRankingProvider,
+          model: llmModel || 'unknown',
+          source: llmRankingSource,
+          pulled: llmRankingPulled,
+        });
+        if (llmRankingSource === 'predict-email' && llmRankingProvider !== 'gemini') {
+          domainWarnings.push(`LLM ranking used ${llmRankingProvider}; Gemini was unavailable for this lookup.`);
+        }
+        const predictionCost = Number(prediction?.costUsd);
+        const effectivePredictionCost = Number.isFinite(predictionCost)
+          ? predictionCost
+          : CONFIG.COSTS.predictPatternsFallback;
 
-      totalCost = toRoundedMoney(totalCost + effectivePredictionCost);
-      await trackApiCost(effectivePredictionCost);
-    } catch (error) {
-      console.warn('[Extension] Pattern prediction failed. Using fallback patterns.', error);
+        totalCost = toRoundedMoney(totalCost + effectivePredictionCost);
+        await trackApiCost(effectivePredictionCost);
+      } catch (error) {
+        console.warn('[Extension] Pattern prediction failed. Using fallback patterns.', error);
+        predictedPatterns = getFallbackPatterns();
+        llmRankingSource = 'fallback_api_error';
+        llmRankingProvider = 'unknown';
+        totalCost = toRoundedMoney(totalCost + CONFIG.COSTS.predictPatternsFallback);
+        await trackApiCost(CONFIG.COSTS.predictPatternsFallback);
+      }
+    } else {
       predictedPatterns = getFallbackPatterns();
-      totalCost = toRoundedMoney(totalCost + CONFIG.COSTS.predictPatternsFallback);
-      await trackApiCost(CONFIG.COSTS.predictPatternsFallback);
+      llmRankingSource = 'fallback_api_budget';
+      llmRankingProvider = 'unknown';
+      console.log('[ELLYN Stage 2] Pattern API skipped because external API cap has been reached.');
     }
 
     // STAGE 3: Email generation
@@ -4457,6 +4945,11 @@ async function handleFindEmail(data, sender, sendResponse) {
     // Cap at top 8 candidates by pattern confidence
     candidates = candidates.slice(0, 8);
     console.log('[ELLYN Stage 3] Capped to top 8 candidates:', candidates.map((c) => c.email));
+    console.log('[ELLYN Debug] Generated candidate list', {
+      operationId,
+      count: candidates.length,
+      emails: candidates.map((c) => c.email),
+    });
 
     if (candidates.length === 0) {
       throw new Error('Failed to generate email candidates from predicted patterns.');
@@ -4552,7 +5045,10 @@ async function handleFindEmail(data, sender, sendResponse) {
           warnings: domainWarnings,
           llmRankingPulled,
           llmRankingSource,
+          llmRankingProvider,
           mxSucceededAttempt,
+          externalApiPullsUsed: lookupLimits.externalApiPullsUsed,
+          externalApiPullsMax: lookupLimits.maxExternalApiPulls,
           type: 'EMAIL_NOT_FOUND',
         });
         return;
@@ -4567,75 +5063,126 @@ async function handleFindEmail(data, sender, sendResponse) {
     const mxProvider = firstMxResult?.status === 'fulfilled' ? firstMxResult.value.mxProvider : null;
 
     console.log('[ELLYN Stage 4] MX passed:', mxVerifiedCount, '/', candidates.length, 'Provider:', mxProvider);
-    // STAGE 5: Sequential ZeroBounce verification - stop on first DELIVERABLE
+    console.log('[ELLYN Debug] MX result summary', {
+      operationId,
+      mxVerifiedCount,
+      totalCandidates: candidates.length,
+      mxProvider,
+      mxSucceededAttempt,
+    });
+    // STAGE 5: Sequential ZeroBounce verification on LLM-ranked top candidates
     stage = 'verify_candidates';
     await updateOperation(operationId, { stage });
-    console.log('[ELLYN Stage 5] Sequential ZeroBounce verification - up to', candidates.length, 'candidates');
+    const rankedSmtpPool = (mxPassed.length > 0 ? mxPassed : candidates)
+      .slice()
+      .sort((a, b) => Number(b?.confidence || 0) - Number(a?.confidence || 0));
+    const candidatesToVerify = rankedSmtpPool.slice(0, MAX_LLM_SHORTLIST_FOR_SMTP);
+    console.log('[ELLYN Stage 5] LLM-ranked SMTP shortlist', {
+      operationId,
+      shortlistSize: candidatesToVerify.length,
+      shortlistMax: MAX_LLM_SHORTLIST_FOR_SMTP,
+      emails: candidatesToVerify.map((candidate) => candidate.email),
+    });
 
     let selected = null;
     const alternativesFromVerification = [];
     const verificationResults = [];
     let zbCreditsUsed = 0;
 
-    // Only verify MX-passing candidates, sorted by confidence (highest first)
-    const candidatesToVerify = mxPassed.length > 0 ? mxPassed : candidates;
-
-    for (const candidate of candidatesToVerify) {
-      console.log('[ELLYN Stage 5] Verifying:', candidate.email);
-
+    const verifyCandidateWithSmtpLimit = async (
+      candidateEmail,
+      maxAttemptsForCandidate = lookupLimits.maxSmtpAttemptsPerCandidate
+    ) => {
       let zbResult = null;
-      try {
-        zbResult = await callBackendPost(
-          '/api/v1/zerobounce-verify',
-          { email: candidate.email },
-          authToken,
-          15000
-        );
-        zbCreditsUsed += 1;
-      } catch (err) {
-        const authCode = String(err?.code || '').toUpperCase();
-        if (authCode === 'UNAUTHORIZED' || Number(err?.status) === 401) {
-          const refreshedAuthToken = await getAuthToken();
-          if (refreshedAuthToken && refreshedAuthToken !== authToken) {
-            authToken = refreshedAuthToken;
-            try {
-              zbResult = await callBackendPost(
-                '/api/v1/zerobounce-verify',
-                { email: candidate.email },
-                authToken,
-                15000
-              );
-              zbCreditsUsed += 1;
-            } catch (retryError) {
-              const retryCode = String(retryError?.code || '').toUpperCase();
-              if (retryCode === 'UNAUTHORIZED' || Number(retryError?.status) === 401) {
-                throw buildPipelineError(
-                  'UNAUTHORIZED',
-                  'Please sign in again to verify emails.',
-                  { status: 401, isRecoverable: false }
-                );
-              }
-              throw retryError;
+      let lastError = null;
+      let hadApiResponse = false;
+
+      while (true) {
+        const attemptsUsed = Number(lookupLimits.smtpAttemptsByCandidate.get(candidateEmail) || 0);
+        if (attemptsUsed >= maxAttemptsForCandidate) {
+          console.warn('[ELLYN Limit] SMTP attempts hard cap reached for candidate.', {
+            operationId,
+            candidateEmail,
+            attemptsUsed,
+            max: maxAttemptsForCandidate,
+          });
+          break;
+        }
+
+        const nextAttempt = attemptsUsed + 1;
+        lookupLimits.smtpAttemptsByCandidate.set(candidateEmail, nextAttempt);
+        console.log('[ELLYN Limit] SMTP attempt', {
+          operationId,
+          candidateEmail,
+          attempt: nextAttempt,
+          max: maxAttemptsForCandidate,
+        });
+
+        try {
+          const verificationResponse = await callZeroBounceVerifyWithFallback(candidateEmail, authToken, 15000, {
+            operationId,
+          });
+          zbResult = verificationResponse?.payload || null;
+          hadApiResponse = Boolean(zbResult && typeof zbResult === 'object');
+          if (verificationResponse?.authTokenUsed) {
+            authToken = verificationResponse.authTokenUsed;
+          }
+          const zbReason = String(zbResult?.reason || '').trim().toLowerCase();
+          if (hadApiResponse && zbReason !== 'not_configured') {
+            zbCreditsUsed += 1;
+          }
+          break;
+        } catch (err) {
+          lastError = err;
+          const authCode = String(err?.code || '').toUpperCase();
+          if (authCode === 'UNAUTHORIZED' || Number(err?.status) === 401) {
+            const refreshedAuthToken = await getAuthToken();
+            if (refreshedAuthToken && refreshedAuthToken !== authToken) {
+              authToken = refreshedAuthToken;
+              continue;
             }
-          } else {
             throw buildPipelineError(
               'UNAUTHORIZED',
               'Please sign in again to verify emails.',
               { status: 401, isRecoverable: false }
             );
           }
-        }
-        if (!zbResult) {
-          console.warn('[ELLYN Stage 5] ZeroBounce error for', candidate.email, err?.message);
-          zbResult = { deliverability: 'UNKNOWN', reason: 'request_failed' };
+          break;
         }
       }
 
+      return {
+        zbResult,
+        lastError,
+        hadApiResponse,
+        attempts: Number(lookupLimits.smtpAttemptsByCandidate.get(candidateEmail) || 0),
+      };
+    };
+
+    for (const candidate of candidatesToVerify) {
+      console.log('[ELLYN Stage 5] Verifying:', candidate.email);
+      const smtpCheck = await verifyCandidateWithSmtpLimit(candidate.email, 1);
+      let zbResult = smtpCheck.zbResult;
+
+      if (!zbResult) {
+        console.warn('[ELLYN Stage 5] ZeroBounce error for', candidate.email, smtpCheck.lastError?.message || '');
+        zbResult = { deliverability: 'UNKNOWN', reason: 'request_failed' };
+      }
+
       const zbReason = String(zbResult?.reason || '').trim().toLowerCase();
-      if (zbReason === 'not_configured') {
+      if (
+        zbReason === 'not_configured' ||
+        zbReason === 'invalid_api_key' ||
+        zbReason === 'upstream_auth_error'
+      ) {
+        const attemptedBases = Array.isArray(zbResult?.attemptedBases)
+          ? zbResult.attemptedBases.filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
+          : [];
+        const attemptedSuffix =
+          attemptedBases.length > 0 ? ` Checked backend origins: ${attemptedBases.join(', ')}.` : '';
         throw buildPipelineError(
           'SMTP_NOT_CONFIGURED',
-          'Email verification provider is not configured (ZEROBOUNCE_API_KEY).',
+          `Email verification provider is not configured (ZEROBOUNCE_API_KEY).${attemptedSuffix}`,
           { isRecoverable: false }
         );
       }
@@ -4647,10 +5194,18 @@ async function handleFindEmail(data, sender, sendResponse) {
         deliverability,
         confidence: zbResult?.confidence ?? candidate.confidence,
         subStatus: zbResult?.subStatus || null,
+        smtpAttempts: smtpCheck.attempts,
+        verifiedByApi: smtpCheck.hadApiResponse,
         source: 'zerobounce',
       });
 
       console.log('[ELLYN Stage 5] ZeroBounce result for', candidate.email, '', deliverability);
+      console.log('[ELLYN Debug] SMTP result', {
+        operationId,
+        email: candidate.email,
+        deliverability,
+        attempts: smtpCheck.attempts,
+      });
 
       if (deliverability === 'DELIVERABLE') {
         selected = {
@@ -4662,19 +5217,6 @@ async function handleFindEmail(data, sender, sendResponse) {
         };
         console.log('[ELLYN Stage 5]  Found DELIVERABLE email:', selected.email, '- stopping verification');
         break; // Stop immediately - do not verify remaining candidates
-      }
-
-      if (deliverability === 'CATCHALL') {
-        // Catch-all domain: first catch-all becomes selected if nothing better found
-        if (!selected) {
-          selected = {
-            ...candidate,
-            source: 'zerobounce_catchall',
-            confidence: zbResult?.confidence ?? 0.55,
-            tier: 'primary',
-          };
-          // Do NOT break - continue checking others for a hard DELIVERABLE
-        }
       }
 
       if (deliverability === 'UNDELIVERABLE') {
@@ -4693,35 +5235,75 @@ async function handleFindEmail(data, sender, sendResponse) {
       }
     }
 
-    // If no DELIVERABLE or CATCHALL was found via ZeroBounce, 
-    // fall back to top pattern-confidence candidate
+    // If no DELIVERABLE email was found via ZeroBounce after retry cap,
+    // treat lookup as unknown/undeliverable (do not fall back to pattern guess).
     if (!selected) {
-      const fallbackCandidates = candidatesToVerify.filter(
-        (c) => !verificationResults.find((r) => r.email === c.email && r.deliverability === 'UNDELIVERABLE')
-      );
-      if (fallbackCandidates.length > 0) {
-        const best = fallbackCandidates[0];
-        selected = {
-          ...best,
-          source: 'pattern_confidence',
-          confidence: Math.min(best.confidence, 0.35),
-          tier: 'primary',
-        };
-        for (const alt of fallbackCandidates.slice(1)) {
-          alternativesFromVerification.push({
-            ...alt,
-            confidence: Math.min(alt.confidence, 0.30),
-            source: 'pattern_confidence',
-            tier: 'alternative',
-          });
-        }
+      const anyZeroBounceResponse = verificationResults.some((row) => row.verifiedByApi === true);
+      if (!anyZeroBounceResponse) {
+        console.warn('[ELLYN Stage 5] ZeroBounce verification unavailable for all candidates. Returning not-found.');
+        await completeOperation(operationId, 'completed', {
+          stage: 'verify_candidates',
+          result: { found: false, reason: 'smtp_unavailable' },
+        });
+        sendResponse({
+          success: false,
+          found: false,
+          reason: 'smtp_unavailable',
+          message: 'SMTP verification could not be completed via ZeroBounce. Please try again.',
+          domain,
+          totalCandidates: candidatesToVerify.length,
+          warnings: [...domainWarnings, 'ZeroBounce verification was unavailable for this lookup.'],
+          llmRankingPulled,
+          llmRankingSource,
+          llmRankingProvider,
+          mxSucceededAttempt,
+          externalApiPullsUsed: lookupLimits.externalApiPullsUsed,
+          externalApiPullsMax: lookupLimits.maxExternalApiPulls,
+          type: 'EMAIL_NOT_FOUND',
+        });
+        return;
       }
+
+      console.log('[ELLYN Stage 5] No deliverable email after top-2 SMTP checks. Returning unknown.');
+      await completeOperation(operationId, 'completed', {
+        stage: 'verify_candidates',
+        result: { found: false, reason: 'undeliverable' },
+      });
+      sendResponse({
+        success: false,
+        found: false,
+        reason: 'undeliverable',
+        message: 'Email ID unknown.',
+        domain,
+        totalCandidates: candidatesToVerify.length,
+        warnings: domainWarnings,
+        llmRankingPulled,
+        llmRankingSource,
+        llmRankingProvider,
+        mxSucceededAttempt,
+        externalApiPullsUsed: lookupLimits.externalApiPullsUsed,
+        externalApiPullsMax: lookupLimits.maxExternalApiPulls,
+        smtpAttemptsMaxPerCandidate: lookupLimits.maxSmtpAttemptsPerCandidate,
+        verificationResults,
+        type: 'EMAIL_NOT_FOUND',
+      });
+      return;
     }
 
     // Build alternatives list - exclude selected email, sort by confidence
     const finalAlternatives = alternativesFromVerification
       .filter((a) => a.email !== selected?.email)
       .sort((a, b) => b.confidence - a.confidence);
+    const selectedVerification = verificationResults.find((row) => row.email === selected?.email) || null;
+    console.log('[ELLYN Debug] Ranking result', {
+      operationId,
+      selectedEmail: selected?.email || '',
+      selectedPattern: selected?.pattern || '',
+      selectedConfidence: Number(selected?.confidence || 0),
+      smtpDeliverability: selectedVerification?.deliverability || 'UNVERIFIED',
+      mxDomainPass: mxByDomain.get(extractDomainFromEmail(selected?.email || '') || ''),
+      alternativesCount: finalAlternatives.length,
+    });
 
     totalCost = toRoundedMoney(totalCost + (zbCreditsUsed * 0.008)); // $0.008 per ZB credit
     console.log('[ELLYN Stage 5] Done. Credits used:', zbCreditsUsed, 
@@ -4754,6 +5336,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       pattern: finalResult.pattern,
       confidence: Number(finalResult.confidence || 0),
       source: finalResult.source || 'smtp_verified',
+      smtpVerificationProvider: 'zerobounce',
       mxChecked: true,
       mxSelectedHasMx,
       mxSelectedFromAlternative: false,
@@ -4767,13 +5350,24 @@ async function handleFindEmail(data, sender, sendResponse) {
       geminiReason,
       llmRankingPulled,
       llmRankingSource,
+      llmRankingProvider,
       mxSucceededAttempt,
       mxVerifiedCount,
       mxProvider,
       smtpVerifiedCount,
       abstractVerifiedCount,
       totalCandidates: candidates.length,
+      externalApiPullsUsed: lookupLimits.externalApiPullsUsed,
+      externalApiPullsMax: lookupLimits.maxExternalApiPulls,
+      smtpAttemptsMaxPerCandidate: lookupLimits.maxSmtpAttemptsPerCandidate,
     };
+    console.log('[ELLYN Debug] Final selected email', {
+      operationId,
+      email: payload.email,
+      source: payload.source,
+      externalApiPullsUsed: payload.externalApiPullsUsed,
+      smtpAttemptsMaxPerCandidate: payload.smtpAttemptsMaxPerCandidate,
+    });
 
     await trackLookupAnalytics({
       profileUrl: payload.profileUrl,

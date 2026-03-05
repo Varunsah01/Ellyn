@@ -80,7 +80,7 @@ export class GeminiClient {
     const normalizedKey = apiKey.trim()
 
     if (!normalizedKey) {
-      throw new Error('GOOGLE_AI_API_KEY is missing. Set it in environment variables.')
+      throw new Error('Gemini API key is missing. Set GOOGLE_AI_API_KEY or GEMINI_API_KEY.')
     }
 
     this.apiKey = normalizedKey
@@ -302,7 +302,7 @@ let singletonClient: GeminiClient | null = null
  */
 export function getGeminiClient(): GeminiClient {
   if (!singletonClient) {
-    const apiKey = process.env.GOOGLE_AI_API_KEY?.trim() || ''
+    const apiKey = process.env.GOOGLE_AI_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim() || ''
     singletonClient = new GeminiClient(apiKey)
   }
 

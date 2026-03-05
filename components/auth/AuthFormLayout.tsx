@@ -104,7 +104,7 @@ export function AuthFormLayout({
           {!isSupabaseConfigured && (
             <Alert variant="destructive" className="mb-6">
               <AlertDescription>
-                Supabase is not configured. Update <code>.env</code> with valid public keys.
+                Supabase is not configured. Update <code>.env.local</code> with valid public keys.
               </AlertDescription>
             </Alert>
           )}

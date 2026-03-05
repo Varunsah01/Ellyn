@@ -266,6 +266,57 @@
         color: var(--text-main);
       }
 
+      .ellyn-action-btn[data-credit-tooltip] {
+        position: relative;
+      }
+
+      .ellyn-action-btn[data-credit-tooltip]::after {
+        content: attr(data-credit-tooltip);
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 8px);
+        transform: translate(-50%, 6px);
+        background: #0f172a;
+        color: #ffffff;
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1.2;
+        white-space: nowrap;
+        border-radius: 8px;
+        padding: 6px 8px;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 20;
+        transition: opacity 0.14s ease, transform 0.14s ease;
+      }
+
+      .ellyn-action-btn[data-credit-tooltip]::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 3px);
+        transform: translateX(-50%);
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 5px solid #0f172a;
+        opacity: 0;
+        pointer-events: none;
+        z-index: 20;
+        transition: opacity 0.14s ease;
+      }
+
+      .ellyn-action-btn[data-credit-tooltip]:hover::after,
+      .ellyn-action-btn[data-credit-tooltip]:hover::before,
+      .ellyn-action-btn[data-credit-tooltip]:focus-visible::after,
+      .ellyn-action-btn[data-credit-tooltip]:focus-visible::before {
+        opacity: 1;
+      }
+
+      .ellyn-action-btn[data-credit-tooltip]:hover::after,
+      .ellyn-action-btn[data-credit-tooltip]:focus-visible::after {
+        transform: translate(-50%, 0);
+      }
+
       .ellyn-action-icon {
         width: 38px;
         height: 38px;
@@ -319,7 +370,13 @@
       .ellyn-contact-default {
         margin-top: 14px;
         display: grid;
-        gap: 16px;
+        gap: 12px;
+      }
+
+      .ellyn-contact-action-slot {
+        min-height: 34px;
+        display: flex;
+        align-items: center;
       }
 
       .ellyn-pill-btn {
@@ -342,6 +399,11 @@
       .ellyn-pill-btn:disabled {
         opacity: 0.6;
         cursor: not-allowed;
+      }
+
+      .ellyn-pill-btn.is-placeholder {
+        visibility: hidden;
+        pointer-events: none;
       }
 
       .ellyn-pill-btn.is-busy {
@@ -460,6 +522,70 @@
 
       .ellyn-contact-warnings li {
         margin: 0 0 2px;
+      }
+
+      .ellyn-usage {
+        display: grid;
+        gap: 8px;
+      }
+
+      .ellyn-usage h3 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .ellyn-usage-copy {
+        margin: 0;
+        font-size: 12px;
+        color: #334155;
+      }
+
+      .ellyn-usage-track {
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        background: #e5e7eb;
+        overflow: hidden;
+      }
+
+      .ellyn-usage-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: 999px;
+        background: #ec4899;
+        transition: width 0.2s ease;
+      }
+
+      .ellyn-usage-fill.warning {
+        background: #f59e0b;
+      }
+
+      .ellyn-usage-fill.danger {
+        background: #ef4444;
+      }
+
+      .ellyn-usage-warning {
+        margin: 0;
+        font-size: 10px;
+        color: #b45309;
+      }
+
+      .ellyn-company-people-card {
+        display: grid;
+        gap: 8px;
+      }
+
+      .ellyn-company-people-copy {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.35;
+        color: #4b5563;
+      }
+
+      .ellyn-company-people-wrap {
+        display: flex;
+        justify-content: center;
       }
 
       .ellyn-todo h3 {
@@ -702,24 +828,42 @@
             <article id="profileContextCard" class="ellyn-card ellyn-profile">
               <div id="profileAvatarInitials" class="ellyn-avatar">--</div>
               <div>
-                <p id="profileContextName" class="ellyn-profile-name">Name</p>
-                <p id="profileContextRole" class="ellyn-profile-role">Designation</p>
-                <p id="profileContextCompany" class="ellyn-profile-company">Company Name</p>
-                <p id="profileContextStatus" class="ellyn-profile-status">Open a LinkedIn profile to begin.</p>
+                <p id="profileContextName" class="ellyn-profile-name">Open a LinkedIn profile</p>
+                <p id="profileContextRole" class="ellyn-profile-role">to unlock email IDs and contact details.</p>
+                <p id="profileContextCompany" class="ellyn-profile-company hidden"></p>
+                <p id="profileContextStatus" class="ellyn-profile-status">Open a user's LinkedIn profile to view email IDs.</p>
                 <span id="profileContextUrl" class="hidden">--</span>
               </div>
             </article>
 
-            <article class="ellyn-card ellyn-about">
-              <h3 id="aboutCardTitle">About Company Name</h3>
+            <article id="aboutCard" class="ellyn-card ellyn-about">
+              <h3 id="aboutCardTitle">About Company</h3>
               <p id="aboutCardIntro">Details about the company will appear here when profile context is available.</p>
               <ul id="aboutCardBullets" class="hidden">
               </ul>
             </article>
 
-            <article class="ellyn-card">
+            <article id="companyPeopleCard" class="ellyn-card ellyn-company-people-card hidden">
+              <h3 id="companyPeopleTitle">People Working Here</h3>
+              <p class="ellyn-company-people-copy">Find LinkedIn profiles of people working at this company.</p>
+              <div class="ellyn-company-people-wrap">
+                <button id="companyPeopleBtn" type="button" class="ellyn-action-btn">
+                  <span class="ellyn-action-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="9" cy="10" r="2.2" />
+                      <circle cx="15.5" cy="10.5" r="1.8" />
+                      <path d="M4.8 18c.8-2.4 2.7-3.8 4.9-3.8s4.1 1.4 4.9 3.8" />
+                      <path d="M13.3 17.8c.5-1.6 1.8-2.6 3.4-2.6 1.5 0 2.8 1 3.3 2.6" />
+                    </svg>
+                  </span>
+                  <span id="companyPeopleBtnLabel" class="ellyn-action-label">See People Profiles</span>
+                </button>
+              </div>
+            </article>
+
+            <article id="quickActionsCard" class="ellyn-card">
               <div class="ellyn-actions-grid">
-                <button id="saveToContactsBtn" type="button" class="ellyn-action-btn primary" disabled>
+                <button id="saveToContactsBtn" type="button" class="ellyn-action-btn primary" data-credit-tooltip="1 email credit will be used." title="1 email credit will be used." disabled>
                   <span class="ellyn-action-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M12 5v14" />
@@ -728,7 +872,7 @@
                   </span>
                   <span class="ellyn-action-label">Save Contact</span>
                 </button>
-                <button id="addToListBtn" type="button" class="ellyn-action-btn">
+                <button id="addToListBtn" type="button" class="ellyn-action-btn" data-credit-tooltip="1 email credit will be used." title="1 email credit will be used.">
                   <span class="ellyn-action-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M9 7h10" />
@@ -741,7 +885,7 @@
                   </span>
                   <span class="ellyn-action-label">Add to List</span>
                 </button>
-                <button id="addToSequenceBtn" type="button" class="ellyn-action-btn">
+                <button id="addToSequenceBtn" type="button" class="ellyn-action-btn" data-credit-tooltip="1 email credit will be used." title="1 email credit will be used.">
                   <span class="ellyn-action-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <path d="M5 12h13" />
@@ -750,7 +894,7 @@
                   </span>
                   <span class="ellyn-action-label">Add to Sequence</span>
                 </button>
-                <button id="draftMailBtn" type="button" class="ellyn-action-btn" disabled>
+                <button id="draftMailBtn" type="button" class="ellyn-action-btn" data-credit-tooltip="1 email credit will be used." title="1 email credit will be used." disabled>
                   <span class="ellyn-action-icon">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <rect x="4" y="6" width="16" height="12" rx="1.8" />
@@ -785,15 +929,19 @@
               </div>
             </article>
 
-            <section class="ellyn-contact-section">
+            <section id="contactSection" class="ellyn-contact-section">
               <h2 class="ellyn-contact-title">Contact Details</h2>
               <div id="contactDefaultView" class="ellyn-contact-default">
-                <button id="findEmailBtn" type="button" class="ellyn-pill-btn">
-                  <span id="accessEmailBtnLabel">Access Email</span>
-                </button>
-                <button id="phoneNumberBtn" type="button" class="ellyn-pill-btn">
-                  Phone Number
-                </button>
+                <div class="ellyn-contact-action-slot">
+                  <button id="findEmailBtn" type="button" class="ellyn-pill-btn">
+                    <span id="accessEmailBtnLabel">Access Email</span>
+                  </button>
+                </div>
+                <div class="ellyn-contact-action-slot">
+                  <button id="phoneNumberBtn" type="button" class="ellyn-pill-btn">
+                    Phone Number
+                  </button>
+                </div>
               </div>
 
               <div id="contactDetailView" class="ellyn-contact-detail hidden">
@@ -830,7 +978,16 @@
               </div>
             </section>
 
-            <article class="ellyn-card ellyn-todo">
+            <article id="quotaBar" class="ellyn-card ellyn-usage hidden">
+              <h3>Usage</h3>
+              <p class="ellyn-usage-copy"><span id="quotaCount">0/0</span> credits used this month</p>
+              <div class="ellyn-usage-track" role="progressbar" aria-label="Credit usage">
+                <div id="quotaFill" class="ellyn-usage-fill"></div>
+              </div>
+              <p id="quotaWarning" class="ellyn-usage-warning hidden"></p>
+            </article>
+
+            <article id="todoCard" class="ellyn-card ellyn-todo">
               <h3>To-Do</h3>
               <ul id="todoList" class="ellyn-todo-list"></ul>
               <p id="todoEmptyState" class="ellyn-todo-empty hidden">No to-do items yet.</p>

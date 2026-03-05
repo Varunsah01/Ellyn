@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "check:env-local": "node scripts/check-env-local-precedence.mjs",
+    "predev": "npm run check:env-local",
+    "prebuild": "npm run check:env-local",
+    "prestart": "npm run check:env-local",
     "dev": "next dev",
     "clean:next": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true}); console.log('Cleaned .next cache');\"",
     "dev:clean": "npm run clean:next && next dev",

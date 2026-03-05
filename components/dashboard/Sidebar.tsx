@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/DropdownMenu";
 import { secondaryNavItems, type NavItem } from "@/lib/constants/navigation";
 import { getPersonaCopy, type Persona } from "@/lib/persona-copy";
-import { ChevronLeft, LifeBuoy, LogOut, Sparkles, LayoutDashboard, BarChart2, Briefcase, TrendingUp, Users, Layers, FileText, Send } from "lucide-react";
+import { ChevronLeft, LifeBuoy, LogOut, Sparkles, LayoutDashboard, BarChart2, Briefcase, TrendingUp, Users, Layers, FileText, Send, Settings } from "lucide-react";
 import { usePersona } from "@/context/PersonaContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDashboardStats } from "@/lib/hooks/useAnalytics";
@@ -414,6 +414,9 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
                   </motion.div>
                 )}
               </AnimatePresence>
+              {!collapsed && (
+                <Settings className="ml-auto h-4 w-4 flex-shrink-0 text-muted-foreground/70" aria-hidden="true" />
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top" className="w-64 mb-2">

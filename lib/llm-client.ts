@@ -239,7 +239,7 @@ const FALLBACK_TEMPLATE_TEXT = JSON.stringify(
  * Fallback: returns a sensible default template payload.
  */
 export async function generateEmailTemplate(prompt: string): Promise<string> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY?.trim()
+  const apiKey = process.env.GOOGLE_AI_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim()
   if (!apiKey) {
     return FALLBACK_TEMPLATE_TEXT
   }
@@ -299,7 +299,7 @@ export async function callLLM(prompt: string): Promise<string> {
   const normalizedPrompt = String(prompt || '').trim()
   if (!normalizedPrompt) return ''
 
-  const geminiKey = process.env.GOOGLE_AI_API_KEY?.trim()
+  const geminiKey = process.env.GOOGLE_AI_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim()
   if (geminiKey) {
     try {
       const geminiClient = new GoogleGenerativeAI(geminiKey)

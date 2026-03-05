@@ -11,12 +11,19 @@ const FEEDBACK_QUEUE_KEY = "feedback_queue";
 const SYNC_STATUS_KEY = "sync_status";
 const SYNC_QUEUE_KEY = "sync_queue";
 const TODO_CACHE_KEY = "ellyn_todo_items_cache";
+const EMAIL_LOOKUP_CACHE_KEY = "ellyn_email_lookup_cache";
 const TODO_MAX_ITEMS = 30;
 const TODO_VISIBLE_COMPLETED = 2;
 const PROFILE_SYNC_INTERVAL_MS = 2000;
 const PROFILE_CONTEXT_FRESH_MS = 15000;
+const PROFILE_CONTEXT_EMPTY_NAME = "Open a LinkedIn profile";
+const PROFILE_CONTEXT_EMPTY_SUBTEXT = "to unlock email IDs and contact details.";
+const PROFILE_CONTEXT_EMPTY_STATUS = "Open a user's LinkedIn profile to view email IDs.";
 const ABOUT_BRIEF_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const ABOUT_BRIEF_FAILURE_TTL_MS = 30 * 60 * 1000;
 const ABOUT_BRIEF_MAX_CACHE_ENTRIES = 40;
+const ABOUT_BRIEF_UNAVAILABLE_MESSAGE =
+  "We couldn't fetch company details right now. Try again later.";
 const CONTACT_SYNC_STATE = Object.freeze({
   SYNCED: "synced",
   QUEUED: "queued",
@@ -48,6 +55,8 @@ const emailFinderState = {
   isLoading: false,
   quotaKnown: false,
   quotaAllowsLookup: true,
+  quotaVisibleRequested: false,
+  profileSectionMode: "none",
   currentResult: null,
   currentError: null,
   resultProfileKey: "",
@@ -65,6 +74,7 @@ const emailFinderState = {
   activeAboutBriefKey: "",
   todoItems: [],
   todoSaveInFlight: false,
+  revealedPhone: "",
 };
 
 const elements = {
@@ -144,6 +154,14 @@ const elements = {
   aboutCardTitle: null,
   aboutCardIntro: null,
   aboutCardBullets: null,
+  aboutCard: null,
+  quickActionsCard: null,
+  contactSection: null,
+  todoCard: null,
+  companyPeopleCard: null,
+  companyPeopleTitle: null,
+  companyPeopleBtn: null,
+  companyPeopleBtnLabel: null,
   refreshProfileContextBtn: null,
   toastContainer: null,
   syncStatusRow: null,
@@ -256,6 +274,15 @@ async function findLocalAppOriginFromOpenTabs() {
 }
 
 async function resolveBaseUrls() {
+  const localOrigin = await findLocalAppOriginFromOpenTabs();
+  if (localOrigin) {
+    return {
+      apiBaseUrl: localOrigin,
+      appBaseUrl: localOrigin,
+      authBaseUrl: localOrigin,
+    };
+  }
+
   try {
     const stored = await storageGet([BASE_URL_OVERRIDE_KEY, AUTH_SOURCE_ORIGIN_KEY]);
     const overrideOrigin = normalizeOrigin(stored?.[BASE_URL_OVERRIDE_KEY]);
@@ -277,15 +304,6 @@ async function resolveBaseUrls() {
     }
   } catch {
     // Ignore storage read failures and continue.
-  }
-
-  const localOrigin = await findLocalAppOriginFromOpenTabs();
-  if (localOrigin) {
-    return {
-      apiBaseUrl: localOrigin,
-      appBaseUrl: localOrigin,
-      authBaseUrl: localOrigin,
-    };
   }
 
   return {
@@ -385,6 +403,14 @@ function cacheElements() {
   elements.aboutCardTitle = document.getElementById("aboutCardTitle");
   elements.aboutCardIntro = document.getElementById("aboutCardIntro");
   elements.aboutCardBullets = document.getElementById("aboutCardBullets");
+  elements.aboutCard = document.getElementById("aboutCard");
+  elements.quickActionsCard = document.getElementById("quickActionsCard");
+  elements.contactSection = document.getElementById("contactSection");
+  elements.todoCard = document.getElementById("todoCard");
+  elements.companyPeopleCard = document.getElementById("companyPeopleCard");
+  elements.companyPeopleTitle = document.getElementById("companyPeopleTitle");
+  elements.companyPeopleBtn = document.getElementById("companyPeopleBtn");
+  elements.companyPeopleBtnLabel = document.getElementById("companyPeopleBtnLabel");
   elements.refreshProfileContextBtn = document.getElementById("refreshProfileContextBtn");
 
   elements.toastContainer = document.getElementById("toastContainer");
@@ -455,7 +481,7 @@ function bindEvents() {
   });
   elements.logoutButton?.addEventListener("click", signOut);
   elements.findEmailBtn?.addEventListener("click", () => {
-    openContactDetailView("email");
+    console.log("[Sidepanel] Access Email click received");
     void findEmail();
   });
   elements.phoneNumberBtn?.addEventListener("click", () => {
@@ -485,6 +511,9 @@ function bindEvents() {
   });
   elements.viewCatalogBtn?.addEventListener("click", () => {
     void openDashboardPath("/dashboard/templates");
+  });
+  elements.companyPeopleBtn?.addEventListener("click", () => {
+    showToast("People profile view will be available soon.", "info");
   });
   elements.todoAddMoreBtn?.addEventListener("click", () => {
     openTodoComposer();
@@ -710,6 +739,7 @@ async function init() {
   bindRuntimeListeners();
   hideLegacyStages();
   resetProfileContext();
+  setProfileDependentSectionsVisible(false);
   await loadTodosFromCache();
   renderTodoList();
   await syncAuthStateFromStorage();
@@ -719,6 +749,29 @@ function hideLegacyStages() {
   elements.stage1?.classList.add("hidden");
   elements.stage2?.classList.add("hidden");
   elements.stage3?.classList.add("hidden");
+}
+
+function setProfileDependentSectionsVisible(modeOrVisible = "none") {
+  let mode = "none";
+  if (typeof modeOrVisible === "string") {
+    mode = modeOrVisible;
+  } else if (modeOrVisible === true) {
+    mode = "profile";
+  }
+
+  const showAbout = mode === "profile" || mode === "company";
+  const showQuickActions = mode === "profile";
+  const showContact = mode === "profile";
+  const showCompanyPeople = mode === "company";
+  const showUsage = mode === "profile" && emailFinderState.quotaVisibleRequested;
+
+  emailFinderState.profileSectionMode = mode;
+
+  elements.aboutCard?.classList.toggle("hidden", !showAbout);
+  elements.quickActionsCard?.classList.toggle("hidden", !showQuickActions);
+  elements.contactSection?.classList.toggle("hidden", !showContact);
+  elements.companyPeopleCard?.classList.toggle("hidden", !showCompanyPeople);
+  elements.quotaBar?.classList.toggle("hidden", !showUsage);
 }
 
 function isSupabaseSessionValue(rawValue) {
@@ -787,7 +840,7 @@ async function syncAuthStateFromStorage() {
     await refreshProfileContext("auth");
     const linkedInHint = await hasLinkedInProfileOpen();
     if (!linkedInHint) {
-      setStatus("Open a LinkedIn profile to get started.", "neutral");
+      setStatus(PROFILE_CONTEXT_EMPTY_STATUS, "neutral");
     } else {
       setStatus("Profile ready.", "success");
     }
@@ -812,6 +865,7 @@ function renderAuthState() {
   if (!emailFinderState.isAuthenticated) {
     emailFinderState.quotaKnown = false;
     emailFinderState.quotaAllowsLookup = false;
+    emailFinderState.revealedPhone = "";
     stopProfileContextSync();
     resetProfileContext();
     stopLoadingCycle();
@@ -823,6 +877,7 @@ function renderAuthState() {
     resetContactDetailView();
     updateFoundEmailText("");
     updatePhoneNumberText("");
+    setProfileDependentSectionsVisible(false);
   } else {
     hideSessionExpiredBanner();
   }
@@ -887,15 +942,19 @@ async function refreshProfileContext(reason = "auto") {
     const [activeTab] = await queryTabs({ active: true, currentWindow: true });
     const tabId = Number.isFinite(activeTab?.id) ? activeTab.id : null;
     const tabUrl = typeof activeTab?.url === "string" ? activeTab.url : "";
+    const tabTitle = typeof activeTab?.title === "string" ? activeTab.title : "";
+    const onLinkedInProfilePage = isLinkedInProfile(tabUrl);
+    const onLinkedInCompanyPage = isLinkedInCompanyPage(tabUrl);
     const previousProfileKey = emailFinderState.lastProfileKey;
     console.log("[Sidepanel] Active tab for profile context", { tabId, tabUrl });
 
-    if (!Number.isFinite(tabId) || !isLinkedInProfile(tabUrl)) {
+    if (!Number.isFinite(tabId) || (!onLinkedInProfilePage && !onLinkedInCompanyPage)) {
+      setProfileDependentSectionsVisible("none");
       if (previousProfileKey || emailFinderState.currentResult || emailFinderState.currentError) {
         clearLookupStateForProfileChange("left-linkedin-profile");
       }
       emailFinderState.lastProfileKey = "";
-      resetProfileContext("Open a LinkedIn profile to begin.", "neutral");
+      resetProfileContext(PROFILE_CONTEXT_EMPTY_STATUS, "neutral");
       return;
     }
 
@@ -908,11 +967,21 @@ async function refreshProfileContext(reason = "auto") {
       return;
     }
 
+    if (onLinkedInCompanyPage) {
+      const companyContext = buildCompanyPageContext(tabId, tabUrl, tabTitle);
+      renderProfileContext(companyContext, "success", "Company page detected.");
+      renderCompanyPeopleCard(companyContext.company, companyContext.companyPageUrl);
+      setProfileDependentSectionsVisible("company");
+      emailFinderState.lastProfileKey = incomingKey;
+      return;
+    }
+
     const extractorResponse = await requestProfileExtraction(tabId, reason === "manual");
     console.log("[Sidepanel] Extraction response", extractorResponse);
     if (!extractorResponse?.success || !extractorResponse?.data) {
       const failure = String(extractorResponse?.error || "");
       const isNeutral = /not on a linkedin profile page/i.test(failure);
+      setProfileDependentSectionsVisible(isNeutral ? "none" : "profile");
       renderProfileContext(
         {
           ...getDefaultProfileContext(),
@@ -921,7 +990,7 @@ async function refreshProfileContext(reason = "auto") {
           lastUpdatedAt: Date.now(),
         },
         isNeutral ? "neutral" : "error",
-        isNeutral ? "Open a LinkedIn profile to begin." : "Unable to load profile."
+        isNeutral ? PROFILE_CONTEXT_EMPTY_STATUS : "Unable to load profile."
       );
       emailFinderState.lastProfileKey = incomingKey;
       return;
@@ -969,8 +1038,10 @@ async function refreshProfileContext(reason = "auto") {
     }
 
     renderProfileContext(nextContext, tone, status);
+    setProfileDependentSectionsVisible("profile");
     console.log("[Sidepanel] Profile context updated", nextContext);
     emailFinderState.lastProfileKey = buildProfileContextKey(tabId, profileUrl || tabUrl);
+    void restoreLookupResultForActiveProfile();
   } catch (error) {
     console.warn("[Sidepanel] Failed refreshing profile context:", error);
     renderProfileContext(emailFinderState.profileContext || getDefaultProfileContext(), "error", "Unable to load profile.");
@@ -1091,24 +1162,43 @@ function buildAboutBriefCacheKey(companyName, companyPageUrl = "") {
   return `${normalizeInline(companyName).toLowerCase()}|${normalizeInline(companyPageUrl).toLowerCase()}`;
 }
 
-function getCachedAboutBrief(cacheKey) {
+function getAboutBriefCacheEntry(cacheKey) {
   const entry = emailFinderState.aboutBriefCache.get(cacheKey);
   if (!entry) return null;
 
   const ageMs = Date.now() - Number(entry.cachedAt || 0);
-  if (ageMs > ABOUT_BRIEF_CACHE_TTL_MS) {
+  const ttlMs = entry.status === "failed" ? ABOUT_BRIEF_FAILURE_TTL_MS : ABOUT_BRIEF_CACHE_TTL_MS;
+  if (ageMs > ttlMs) {
     emailFinderState.aboutBriefCache.delete(cacheKey);
     return null;
   }
 
+  return entry;
+}
+
+function getCachedAboutBrief(cacheKey) {
+  const entry = getAboutBriefCacheEntry(cacheKey);
+  if (!entry || entry.status === "failed") {
+    return null;
+  }
   return entry.data || null;
 }
 
-function setCachedAboutBrief(cacheKey, data) {
+function getFailedAboutBrief(cacheKey) {
+  const entry = getAboutBriefCacheEntry(cacheKey);
+  if (!entry || entry.status !== "failed") {
+    return null;
+  }
+  return entry;
+}
+
+function setCachedAboutBrief(cacheKey, data, status = "success", errorMessage = "") {
   if (!cacheKey) return;
   emailFinderState.aboutBriefCache.set(cacheKey, {
     cachedAt: Date.now(),
     data,
+    status,
+    errorMessage: normalizeInline(errorMessage),
   });
 
   if (emailFinderState.aboutBriefCache.size > ABOUT_BRIEF_MAX_CACHE_ENTRIES) {
@@ -1119,6 +1209,41 @@ function setCachedAboutBrief(cacheKey, data) {
   }
 }
 
+function setFailedAboutBrief(cacheKey, errorMessage = "") {
+  setCachedAboutBrief(cacheKey, null, "failed", errorMessage);
+}
+
+function hasMeaningfulAboutBrief(payload) {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  return Boolean(
+    normalizeInline(payload.introBrief) ||
+      normalizeInline(payload.sector) ||
+      normalizeInline(payload.specialization) ||
+      normalizeInline(payload.yearOfIncorporation)
+  );
+}
+
+function buildAboutBriefFallback(companyName) {
+  const safeCompany = normalizeInline(companyName);
+  if (!safeCompany) {
+    return {
+      introBrief: ABOUT_BRIEF_UNAVAILABLE_MESSAGE,
+      sector: "",
+      specialization: "",
+      yearOfIncorporation: "",
+    };
+  }
+
+  return {
+    introBrief: `${safeCompany} has a LinkedIn company page. Detailed company insights are unavailable right now.`,
+    sector: "",
+    specialization: "",
+    yearOfIncorporation: "",
+  };
+}
+
 function renderAboutCard(companyName, payload = null, options = {}) {
   const isLoading = options.isLoading === true;
   const hasCompany = Boolean(companyName);
@@ -1126,7 +1251,7 @@ function renderAboutCard(companyName, payload = null, options = {}) {
   if (elements.aboutCardTitle) {
     elements.aboutCardTitle.textContent = hasCompany
       ? `About ${companyName}`
-      : "About Company Name";
+      : "About Company";
   }
 
   if (elements.aboutCardIntro) {
@@ -1167,6 +1292,25 @@ function renderAboutCard(companyName, payload = null, options = {}) {
     const item = document.createElement("li");
     item.textContent = row;
     elements.aboutCardBullets.appendChild(item);
+  }
+}
+
+function renderCompanyPeopleCard(companyName, companyPageUrl = "") {
+  const safeCompanyName = normalizeInline(companyName);
+  if (elements.companyPeopleTitle) {
+    elements.companyPeopleTitle.textContent = safeCompanyName
+      ? `People at ${safeCompanyName}`
+      : "People Working Here";
+  }
+
+  if (elements.companyPeopleBtnLabel) {
+    elements.companyPeopleBtnLabel.textContent = safeCompanyName
+      ? `See ${safeCompanyName} Profiles`
+      : "See People Profiles";
+  }
+
+  if (elements.companyPeopleBtn) {
+    elements.companyPeopleBtn.dataset.companyPageUrl = normalizeLinkedInCompanyPageUrl(companyPageUrl);
   }
 }
 
@@ -1212,6 +1356,12 @@ async function refreshAboutCardFromProfileContext(context) {
     return;
   }
 
+  const failedEntry = getFailedAboutBrief(cacheKey);
+  if (failedEntry) {
+    renderAboutCard(companyName, buildAboutBriefFallback(companyName), { isLoading: false });
+    return;
+  }
+
   const cached = getCachedAboutBrief(cacheKey);
   if (cached) {
     renderAboutCard(companyName, cached, { isLoading: false });
@@ -1228,16 +1378,24 @@ async function refreshAboutCardFromProfileContext(context) {
   if (cacheKey !== emailFinderState.activeAboutBriefKey) return;
 
   if (!response?.success) {
-    renderAboutCard(companyName, null, { isLoading: false });
+    setFailedAboutBrief(cacheKey, response?.error || "company-brief-request-failed");
+    renderAboutCard(companyName, buildAboutBriefFallback(companyName), { isLoading: false });
     return;
   }
 
   const normalized = normalizeAboutBriefPayload(response?.data || {});
+  if (!hasMeaningfulAboutBrief(normalized)) {
+    const fallback = buildAboutBriefFallback(companyName);
+    setCachedAboutBrief(cacheKey, fallback);
+    renderAboutCard(companyName, fallback, { isLoading: false });
+    return;
+  }
+
   setCachedAboutBrief(cacheKey, normalized);
   renderAboutCard(companyName, normalized, { isLoading: false });
 }
 
-function renderProfileContext(context, statusTone = "neutral", statusText = "Open a LinkedIn profile to begin.") {
+function renderProfileContext(context, statusTone = "neutral", statusText = PROFILE_CONTEXT_EMPTY_STATUS) {
   const merged = {
     ...getDefaultProfileContext(),
     ...(context || {}),
@@ -1250,35 +1408,6 @@ function renderProfileContext(context, statusTone = "neutral", statusText = "Ope
     elements.profileContextStatus.textContent = statusText;
   }
 
-  if (elements.profileContextName) {
-    elements.profileContextName.textContent = merged.fullName || "Name";
-  }
-
-  if (elements.profileContextRole) {
-    let roleText = "Designation";
-    if (merged.role) {
-      if (typeof merged.role === "string") {
-        roleText = merged.role;
-      } else if (typeof merged.role === "object") {
-        roleText = merged.role.title || "\u2014";
-      }
-    }
-    elements.profileContextRole.textContent = roleText;
-  }
-
-  if (elements.profileContextCompany) {
-    let companyText = "Company Name";
-    if (merged.company) {
-      if (typeof merged.company === "string") {
-        companyText = merged.company;
-      } else if (typeof merged.company === "object") {
-        companyText = merged.company.name || "\u2014";
-        console.warn("[Sidepanel] Company was object in renderProfileContext:", merged.company);
-      }
-    }
-    elements.profileContextCompany.textContent = companyText;
-  }
-
   const displayName = String(merged.fullName || "").trim();
   const displayRole = String(
     typeof merged.role === "string" ? merged.role : merged?.role?.title || ""
@@ -1286,9 +1415,37 @@ function renderProfileContext(context, statusTone = "neutral", statusText = "Ope
   const displayCompany = String(
     typeof merged.company === "string" ? merged.company : merged?.company?.name || ""
   ).trim();
+  const hasProfileIdentity = Boolean(displayName || displayRole || displayCompany);
+
+  if (elements.profileContextName) {
+    elements.profileContextName.textContent = hasProfileIdentity
+      ? displayName || "LinkedIn member"
+      : PROFILE_CONTEXT_EMPTY_NAME;
+  }
+
+  if (elements.profileContextRole) {
+    elements.profileContextRole.textContent = hasProfileIdentity
+      ? displayRole || "Role not found yet"
+      : PROFILE_CONTEXT_EMPTY_SUBTEXT;
+  }
+
+  if (elements.profileContextCompany) {
+    if (!hasProfileIdentity) {
+      elements.profileContextCompany.textContent = "";
+      elements.profileContextCompany.classList.add("hidden");
+    } else {
+      elements.profileContextCompany.classList.remove("hidden");
+      elements.profileContextCompany.textContent = displayCompany || "Company not found yet";
+      if (merged.company && typeof merged.company === "object" && !displayCompany) {
+        console.warn("[Sidepanel] Company was object in renderProfileContext:", merged.company);
+      }
+    }
+  }
 
   if (elements.profileAvatarInitials) {
-    elements.profileAvatarInitials.textContent = deriveInitials(displayName || "Unknown");
+    elements.profileAvatarInitials.textContent = hasProfileIdentity
+      ? deriveInitials(displayName || "Unknown")
+      : "LI";
   }
 
   void refreshAboutCardFromProfileContext({
@@ -1322,7 +1479,7 @@ function renderProfileContext(context, statusTone = "neutral", statusText = "Ope
   applyFindEmailAvailability();
 }
 
-function resetProfileContext(statusText = "Open a LinkedIn profile to begin.", tone = "neutral") {
+function resetProfileContext(statusText = PROFILE_CONTEXT_EMPTY_STATUS, tone = "neutral") {
   emailFinderState.profileContext = getDefaultProfileContext();
   emailFinderState.lastProfileKey = "";
   renderProfileContext(emailFinderState.profileContext, tone, statusText);
@@ -1443,6 +1600,69 @@ function normalizeLinkedInUrlForApi(value) {
   }
 }
 
+function normalizeLinkedInCompanyPageUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw);
+    if (!/linkedin\.com$/i.test(parsed.hostname) && !/\.linkedin\.com$/i.test(parsed.hostname)) {
+      return "";
+    }
+
+    const slugMatch = parsed.pathname.match(/^\/company\/([^/?#]+)/i);
+    if (!slugMatch?.[1]) {
+      return "";
+    }
+
+    return `https://www.linkedin.com/company/${slugMatch[1]}/`;
+  } catch {
+    return "";
+  }
+}
+
+function deriveCompanyNameFromLinkedInCompanyPage(url, tabTitle = "") {
+  const titleCandidate = normalizeInline(String(tabTitle || "").split("|")[0] || "");
+  if (titleCandidate && !/^linkedin$/i.test(titleCandidate)) {
+    return titleCandidate;
+  }
+
+  const normalizedUrl = normalizeLinkedInCompanyPageUrl(url);
+  const slugMatch = normalizedUrl.match(/\/company\/([^/]+)\/?$/i);
+  const slug = String(slugMatch?.[1] || "").trim();
+  if (!slug) return "";
+
+  let decodedSlug = slug;
+  try {
+    decodedSlug = decodeURIComponent(slug);
+  } catch {
+    decodedSlug = slug;
+  }
+
+  const normalizedSlug = decodedSlug
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return toDisplayCase(normalizedSlug);
+}
+
+function buildCompanyPageContext(tabId, tabUrl, tabTitle = "") {
+  const companyPageUrl = normalizeLinkedInCompanyPageUrl(tabUrl);
+  const companyName = deriveCompanyNameFromLinkedInCompanyPage(tabUrl, tabTitle) || "LinkedIn Company";
+
+  return {
+    ...getDefaultProfileContext(),
+    tabId,
+    profileUrl: companyPageUrl || String(tabUrl || "").trim(),
+    fullName: companyName,
+    company: companyName,
+    companyPageUrl,
+    role: "LinkedIn company page",
+    lastUpdatedAt: Date.now(),
+    sourceSummary: "company-page:url",
+  };
+}
+
 function hasUsableProfileIdentity(response, fallbackUrl = "") {
   const normalized = normalizeProfileResponseData(response, fallbackUrl);
   return Boolean(normalized.fullName && normalized.company);
@@ -1453,7 +1673,7 @@ function getProfileContextGateStatus() {
   if (!context || !Number.isFinite(context.tabId)) {
     return {
       ready: false,
-      message: "Open a LinkedIn profile to begin.",
+      message: PROFILE_CONTEXT_EMPTY_STATUS,
     };
   }
 
@@ -1478,20 +1698,47 @@ function getProfileContextGateStatus() {
 }
 
 function openContactDetailView(mode = "email") {
-  elements.contactDefaultView?.classList.add("hidden");
-  elements.contactDetailView?.classList.remove("hidden");
   const normalizedMode = String(mode || "email").toLowerCase();
-  const showEmail = normalizedMode === "email";
-  const showPhone = normalizedMode === "phone";
-  elements.emailContactRow?.classList.toggle("hidden", !showEmail);
-  elements.phoneContactRow?.classList.toggle("hidden", !showPhone);
+  const hasResolvedEmail = Boolean(String(emailFinderState.currentResult?.email || "").trim());
+  const hasResolvedPhone = Boolean(String(emailFinderState.revealedPhone || "").trim());
+
+  let showEmailRow = hasResolvedEmail;
+  let showPhoneRow = hasResolvedPhone;
+
+  if (normalizedMode === "email") {
+    showEmailRow = true;
+  } else if (normalizedMode === "phone") {
+    showPhoneRow = true;
+  } else if (normalizedMode === "all") {
+    showEmailRow = true;
+    showPhoneRow = true;
+  }
+
+  const showDetail = showEmailRow || showPhoneRow;
+  elements.contactDefaultView?.classList.remove("hidden");
+  elements.contactDetailView?.classList.toggle("hidden", !showDetail);
+  elements.emailContactRow?.classList.toggle("hidden", !showEmailRow);
+  elements.phoneContactRow?.classList.toggle("hidden", !showPhoneRow);
+  elements.findEmailBtn?.classList.remove("is-placeholder");
+  elements.phoneNumberBtn?.classList.remove("is-placeholder");
 }
 
 function resetContactDetailView() {
   elements.contactDetailView?.classList.add("hidden");
   elements.contactDefaultView?.classList.remove("hidden");
-  elements.emailContactRow?.classList.remove("hidden");
-  elements.phoneContactRow?.classList.remove("hidden");
+  elements.emailContactRow?.classList.add("hidden");
+  elements.phoneContactRow?.classList.add("hidden");
+  if (elements.findEmailBtn) {
+    elements.findEmailBtn.classList.remove("is-placeholder");
+    elements.findEmailBtn.setAttribute("aria-hidden", "false");
+    elements.findEmailBtn.tabIndex = 0;
+  }
+  if (elements.phoneNumberBtn) {
+    elements.phoneNumberBtn.classList.remove("is-placeholder");
+    elements.phoneNumberBtn.classList.remove("hidden");
+    elements.phoneNumberBtn.setAttribute("aria-hidden", "false");
+    elements.phoneNumberBtn.tabIndex = 0;
+  }
   setLookupTrace("");
   setLookupWarnings([]);
 }
@@ -1604,23 +1851,47 @@ function formatPipelineStage(stage) {
   return labels[value] || "pipeline";
 }
 
+function getSmtpProbeCount(rows = []) {
+  return (Array.isArray(rows) ? rows : []).reduce((count, entry) => {
+    const attempts = Number(entry?.smtpAttempts || 0);
+    if (Number.isFinite(attempts) && attempts > 0) {
+      return count + attempts;
+    }
+    return count + 1;
+  }, 0);
+}
+
 function buildSuccessLookupTrace(data) {
   const source = String(data?.source || "").trim().toLowerCase();
   const hasDomain = Boolean(String(data?.domain || "").trim());
   const hasMx = data?.mxChecked === true || Number(data?.mxVerifiedCount || 0) > 0;
   const verificationRows = Array.isArray(data?.verificationResults) ? data.verificationResults : [];
+  const smtpProbeCount = getSmtpProbeCount(verificationRows);
   const hasDeliverable = verificationRows.some(
     (entry) => String(entry?.deliverability || "").toUpperCase() === "DELIVERABLE"
   );
   const llmPulled = data?.llmRankingPulled === true;
   const llmSource = String(data?.llmRankingSource || "").trim().toLowerCase();
-  const mxAttempt = String(data?.mxSucceededAttempt || "").trim().toLowerCase();
+  const llmProvider = String(data?.llmRankingProvider || "").trim().toLowerCase();
+  const llmStatusLabel = llmPulled
+    ? llmProvider === "gemini"
+      ? "Gemini"
+      : llmProvider
+      ? `Done (${llmProvider})`
+      : "Done"
+    : llmSource === "predict-email" && llmProvider
+    ? `Fallback (${llmProvider})`
+    : llmSource === "predict-patterns"
+    ? "Fallback route"
+    : "Not pulled";
+  const smtpAttemptLabel =
+    smtpProbeCount >= 2 ? "2nd try" : smtpProbeCount === 1 ? "1st try" : hasMx ? "Passed" : "Failed";
 
   const steps = [];
   steps.push(`Domain: ${hasDomain ? "OK" : "Skipped"}`);
   steps.push(`Patterns: ${source === "cache_verified" ? "Skipped (cache)" : "OK"}`);
-  steps.push(`LLM Ranking: ${llmPulled ? "Done" : llmSource === "predict-patterns" ? "Fallback route" : "Not pulled"}`);
-  steps.push(`SMTP: ${mxAttempt === "first" ? "1st try" : mxAttempt === "second" ? "2nd try" : hasMx ? "Passed" : "Failed"}`);
+  steps.push(`LLM Ranking: ${llmStatusLabel}`);
+  steps.push(`SMTP: ${smtpAttemptLabel}`);
 
   if (verificationRows.length > 0) {
     steps.push(`Verify: ${hasDeliverable ? "OK" : "No deliverable"}`);
@@ -1641,14 +1912,37 @@ function buildNotFoundLookupTrace(response) {
   const candidateCount = Number(response?.totalCandidates || 0);
   const llmPulled = response?.llmRankingPulled === true;
   const llmSource = String(response?.llmRankingSource || "").trim().toLowerCase();
-  const mxAttempt = String(response?.mxSucceededAttempt || "").trim().toLowerCase();
+  const llmProvider = String(response?.llmRankingProvider || "").trim().toLowerCase();
+  const llmStatusLabel = llmPulled
+    ? llmProvider === "gemini"
+      ? "Gemini"
+      : llmProvider
+      ? `Done (${llmProvider})`
+      : "Done"
+    : llmSource === "predict-email" && llmProvider
+    ? `Fallback (${llmProvider})`
+    : llmSource === "predict-patterns"
+    ? "Fallback route"
+    : "Not pulled";
+  const verificationRows = Array.isArray(response?.verificationResults) ? response.verificationResults : [];
+  const smtpProbeCount = getSmtpProbeCount(verificationRows);
+  const smtpAttemptLabel =
+    smtpProbeCount >= 2
+      ? "2nd try"
+      : smtpProbeCount === 1
+      ? "1st try"
+      : String(response?.mxSucceededAttempt || "").trim().toLowerCase() === "second"
+      ? "2nd try"
+      : String(response?.mxSucceededAttempt || "").trim().toLowerCase() === "first"
+      ? "1st try"
+      : "Failed";
   const reasonLabel =
-    reason === "no_mx" ? "MX failed" : reason === "undeliverable" ? "verification failed" : "not found";
+    reason === "no_mx" ? "MX failed" : reason === "undeliverable" ? "undeliverable" : "not found";
 
   const bits = [
     `Domain: ${domain ? "OK" : "Unknown"}`,
-    `LLM Ranking: ${llmPulled ? "Done" : llmSource === "predict-patterns" ? "Fallback route" : "Not pulled"}`,
-    `SMTP: ${mxAttempt === "first" ? "1st try" : mxAttempt === "second" ? "2nd try" : "Failed"}`,
+    `LLM Ranking: ${llmStatusLabel}`,
+    `SMTP: ${smtpAttemptLabel}`,
     `Result: ${reasonLabel}`,
   ];
   if (candidateCount > 0) {
@@ -1665,6 +1959,12 @@ function buildErrorLookupTrace(code, stage) {
   }
   if (normalizedCode === "UNAUTHORIZED") {
     return "Request blocked: authentication required.";
+  }
+  if (normalizedCode === "SMTP_NOT_CONFIGURED") {
+    return "ZeroBounce is not configured on the active backend origin.";
+  }
+  if (normalizedCode === "REDIRECTED_API_RESPONSE" || normalizedCode === "NON_JSON_RESPONSE") {
+    return "Backend endpoint mismatch detected. Verify extension API base URL.";
   }
   return `Failed at ${stageLabel}.`;
 }
@@ -2017,20 +2317,26 @@ async function consumeLookupCredits(credits, label = "action") {
 }
 
 async function handlePhoneNumberAccess() {
-  openContactDetailView("phone");
-  const creditsAllowed = await consumeLookupCredits(10, "phone number access");
+  const creditsAllowed = await consumeLookupCredits(1, "phone number access");
   if (!creditsAllowed) {
-    resetContactDetailView();
     return;
   }
 
   const phone = getCurrentPhoneNumber();
   if (phone) {
+    emailFinderState.revealedPhone = phone;
+    openContactDetailView("phone");
     updatePhoneNumberText(phone, "Phone Number");
     return;
   }
 
-  updatePhoneNumberText("", "Phone not available");
+  emailFinderState.revealedPhone = "";
+  updatePhoneNumberText("", "Phone Number");
+  if (String(emailFinderState.currentResult?.email || "").trim()) {
+    openContactDetailView("email");
+  } else {
+    resetContactDetailView();
+  }
   showToast("Phone number not available for this profile.", "info");
 }
 
@@ -2079,6 +2385,7 @@ function clearLookupStateForProfileChange(reason = "profile-changed") {
   emailFinderState.currentResult = null;
   emailFinderState.currentError = null;
   emailFinderState.resultProfileKey = "";
+  emailFinderState.revealedPhone = "";
 
   if (elements.resultEmail) {
     elements.resultEmail.textContent = "";
@@ -2120,7 +2427,7 @@ function setPrimaryFinderAction(mode = "find") {
     elements.addToListContactBtn.disabled = disableSecondaryActions;
   }
 
-  updatePhoneNumberText(getCurrentPhoneNumber(), "Phone Number");
+  updatePhoneNumberText(emailFinderState.revealedPhone, "Phone Number");
 
   if (mode === "none" && elements.findEmailBtn) {
     elements.findEmailBtn.setAttribute("disabled", "true");
@@ -2130,8 +2437,106 @@ function setPrimaryFinderAction(mode = "find") {
   }
 }
 
+function getActiveProfileLookupKey() {
+  const context = emailFinderState.profileContext;
+  if (!context) return "";
+  const key = buildProfileContextKey(context.tabId, context.profileUrl);
+  return String(key || "").trim();
+}
+
+function normalizeLookupCacheMap(rawValue) {
+  if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) {
+    return {};
+  }
+
+  const next = {};
+  Object.entries(rawValue).forEach(([key, value]) => {
+    if (!key || !value || typeof value !== "object" || Array.isArray(value)) return;
+    const email = String(value?.data?.email || value?.email || "").trim();
+    if (!email) return;
+    next[String(key)] = {
+      data: value.data && typeof value.data === "object" ? value.data : value,
+      updatedAt: Number(value.updatedAt || Date.now()),
+      profileUrl: String(value.profileUrl || ""),
+    };
+  });
+
+  const limited = Object.entries(next)
+    .sort(([, a], [, b]) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+    .slice(0, 120);
+  return Object.fromEntries(limited);
+}
+
+async function persistLookupResultForActiveProfile(result) {
+  const key = getActiveProfileLookupKey();
+  const email = String(result?.email || "").trim();
+  if (!key || !email) return;
+
+  try {
+    const stored = await storageGet([EMAIL_LOOKUP_CACHE_KEY]);
+    const cache = normalizeLookupCacheMap(stored?.[EMAIL_LOOKUP_CACHE_KEY]);
+    cache[key] = {
+      data: result,
+      updatedAt: Date.now(),
+      profileUrl: String(emailFinderState.profileContext?.profileUrl || ""),
+    };
+    await storageSet({ [EMAIL_LOOKUP_CACHE_KEY]: normalizeLookupCacheMap(cache) });
+    console.log("[Sidepanel] Lookup result persisted", { key, email });
+  } catch (error) {
+    console.warn("[Sidepanel] Failed persisting lookup result", { key, error: error?.message || String(error) });
+  }
+}
+
+async function readPersistedLookupResultForActiveProfile() {
+  const key = getActiveProfileLookupKey();
+  if (!key) return null;
+
+  try {
+    const stored = await storageGet([EMAIL_LOOKUP_CACHE_KEY]);
+    const cache = normalizeLookupCacheMap(stored?.[EMAIL_LOOKUP_CACHE_KEY]);
+    const entry = cache[key];
+    if (!entry || !entry.data || typeof entry.data !== "object") return null;
+    const email = String(entry.data.email || "").trim();
+    if (!email) return null;
+    return entry.data;
+  } catch (error) {
+    console.warn("[Sidepanel] Failed reading persisted lookup result", { key, error: error?.message || String(error) });
+    return null;
+  }
+}
+
+async function restoreLookupResultForActiveProfile() {
+  if (emailFinderState.isLoading) return;
+  const key = getActiveProfileLookupKey();
+  if (!key) return;
+
+  const currentEmail = String(emailFinderState.currentResult?.email || "").trim();
+  if (currentEmail && emailFinderState.resultProfileKey === key) {
+    return;
+  }
+
+  const restored = await readPersistedLookupResultForActiveProfile();
+  if (!restored) return;
+
+  console.log("[Sidepanel] Restoring persisted lookup result", { key, email: restored.email });
+  displayResults(restored);
+  setStatus("Loaded saved email for this profile.", "neutral");
+}
+
 async function openDraftForCurrentResult() {
-  const email = String(emailFinderState.currentResult?.email || "").trim();
+  let email = String(emailFinderState.currentResult?.email || "").trim();
+  if (!email) {
+    const restored = await readPersistedLookupResultForActiveProfile();
+    if (restored) {
+      emailFinderState.currentResult = restored;
+      emailFinderState.resultProfileKey = getActiveProfileLookupKey();
+      email = String(restored.email || "").trim();
+      console.log("[Sidepanel] Draft flow restored email from persisted lookup", { email });
+      updateFoundEmailText(email, "Access Email");
+      setPrimaryFinderAction("draft");
+    }
+  }
+
   if (!email) {
     setPrimaryFinderAction("find");
     showToast("Find an email first.", "error");
@@ -2273,12 +2678,19 @@ async function findEmail() {
   if (emailFinderState.isLoading) return;
 
   if (!emailFinderState.isAuthenticated) {
+    resetContactDetailView();
+    console.log("[Sidepanel] Access Email gate result", { allowed: false, reason: "not_authenticated" });
     setStatus("Please sign in first.", "error");
     return;
   }
 
   const gateStatus = getProfileContextGateStatus();
+  console.log("[Sidepanel] Access Email gate result", {
+    allowed: gateStatus.ready,
+    reason: gateStatus.ready ? "ok" : gateStatus.message,
+  });
   if (!gateStatus.ready) {
+    resetContactDetailView();
     setStatus(gateStatus.message, "error");
     return;
   }
@@ -2296,6 +2708,13 @@ async function findEmail() {
     }
 
     const pipelineData = { tabId: tab.id, ...contextPayload };
+    console.log("[Sidepanel] Sending FIND_EMAIL request", {
+      tabId: pipelineData.tabId,
+      firstName: pipelineData.firstName,
+      lastName: pipelineData.lastName,
+      company: pipelineData.company,
+      companyPageUrl: pipelineData.companyPageUrl,
+    });
 
     const response = await sendRuntimeMessage({
       type: "FIND_EMAIL",
@@ -2307,6 +2726,7 @@ async function findEmail() {
     if (!response?.success || !response?.data) {
       // Check for graceful "not found" (pipeline completed, no valid email)
       if (response?.found === false) {
+        console.log("[Sidepanel] FIND_EMAIL returned not_found", response);
         displayNotFound(response);
         await updateQuotaStatus();
         return;
@@ -2319,6 +2739,10 @@ async function findEmail() {
     }
 
     displayResults(response.data);
+    console.log("[Sidepanel] FIND_EMAIL success", {
+      email: response?.data?.email || "",
+      source: response?.data?.source || "",
+    });
     await updateQuotaStatus();
   } catch (error) {
     stopLoadingCycle();
@@ -2326,6 +2750,7 @@ async function findEmail() {
     const code = error?.code || "";
     const resetDate = error?.resetDate || null;
     const stage = error?.stage || "";
+    console.warn("[Sidepanel] FIND_EMAIL failed", { message, code, stage });
     showError(message, code, resetDate, stage);
     await updateQuotaStatus();
   }
@@ -2432,7 +2857,14 @@ function displayResults(data) {
   if (elements.resultEmail) {
     elements.resultEmail.textContent = email || "No email returned";
   }
+  openContactDetailView("email");
   updateFoundEmailText(email, "Access Email");
+  console.log("[Sidepanel] UI update: email result rendered", {
+    profileKey: emailFinderState.resultProfileKey,
+    email,
+    source: String(data?.source || ""),
+  });
+  void persistLookupResultForActiveProfile(data);
 
   renderAlternatives(alternatives);
 
@@ -2502,25 +2934,34 @@ function renderAlternatives(items) {
 }
 
 function displayNotFound(response) {
+  resetContactDetailView();
   emailFinderState.currentResult = null;
   emailFinderState.currentError = null;
   emailFinderState.resultProfileKey = "";
+  emailFinderState.revealedPhone = "";
+  console.log("[Sidepanel] UI update: email not found state rendered", {
+    reason: String(response?.reason || "unknown"),
+  });
 
   const reason = response?.reason || "unknown";
+  const verificationRows = Array.isArray(response?.verificationResults) ? response.verificationResults : [];
+  const smtpProbeCount = getSmtpProbeCount(verificationRows);
   let subtext;
   if (reason === "no_mx") {
     subtext =
       "We couldn\u2019t verify a mail server for this company\u2019s domain. This person may use a private or undiscoverable email.";
   } else if (reason === "undeliverable") {
+    const attemptText =
+      smtpProbeCount >= 2 ? "after two ZeroBounce SMTP checks" : "after ZeroBounce SMTP verification";
     subtext =
-      "We found this company's mail server but our SMTP probe could not confirm any of the email patterns. The person may use a non-standard format or the server may be blocking verification probes.";
+      `We found this company's mail server, but no deliverable email was confirmed ${attemptText}. Email ID is unknown.`;
   } else {
     subtext =
       "We couldn\u2019t determine a valid email address for this contact.";
   }
 
   if (elements.errorTitle) {
-    elements.errorTitle.textContent = "No Email ID Found";
+    elements.errorTitle.textContent = reason === "undeliverable" ? "Email ID Unknown" : "No Email ID Found";
   }
   if (elements.errorMessage) {
     elements.errorMessage.textContent = subtext;
@@ -2529,17 +2970,24 @@ function displayNotFound(response) {
   elements.resultsCard?.classList.add("hidden");
   elements.errorState?.classList.remove("hidden");
   elements.errorState?.classList.add("not-found");
-  updateFoundEmailText("", "No email found for this contact.");
+  updateFoundEmailText("", reason === "undeliverable" ? "Email ID unknown" : "No email found for this contact.");
   setPrimaryFinderAction("find");
-  setStatus("No email found for this contact.", "info");
+  setStatus(reason === "undeliverable" ? "Email ID unknown." : "No email found for this contact.", "info");
   setLookupTrace(buildNotFoundLookupTrace(response), "error");
   setLookupWarnings(Array.isArray(response?.warnings) ? response.warnings : []);
 }
 
 function showError(message, code, resetDate, stage) {
+  resetContactDetailView();
   emailFinderState.currentError = message;
   emailFinderState.currentResult = null;
   emailFinderState.resultProfileKey = "";
+  emailFinderState.revealedPhone = "";
+  console.log("[Sidepanel] UI update: email error state rendered", {
+    message: String(message || ""),
+    code: String(code || ""),
+    stage: String(stage || ""),
+  });
 
   // Reset not-found styling if previously set
   elements.errorState?.classList.remove("not-found");
@@ -3545,7 +3993,9 @@ function resetQuotaUI() {
 }
 
 function setQuotaVisibility(visible) {
-  elements.quotaBar?.classList.toggle("hidden", !visible);
+  emailFinderState.quotaVisibleRequested = Boolean(visible);
+  const profileModeActive = emailFinderState.profileSectionMode === "profile";
+  elements.quotaBar?.classList.toggle("hidden", !(visible && profileModeActive));
 }
 
 function setQuotaWarning(message) {
@@ -3617,13 +4067,13 @@ async function getLinkedInProfileTab() {
     return candidate;
   }
 
-  throw new Error("Open a LinkedIn profile to get started.");
+  throw new Error(PROFILE_CONTEXT_EMPTY_STATUS);
 }
 
 async function hasLinkedInProfileOpen() {
   try {
     const tabs = await queryTabs({ currentWindow: true });
-    return tabs.some((tab) => isLinkedInProfile(tab?.url));
+    return tabs.some((tab) => isLinkedInProfile(tab?.url) || isLinkedInCompanyPage(tab?.url));
   } catch {
     return false;
   }
@@ -3631,6 +4081,10 @@ async function hasLinkedInProfileOpen() {
 
 function isLinkedInProfile(url) {
   return typeof url === "string" && /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/in\/[^/?#]+/i.test(url);
+}
+
+function isLinkedInCompanyPage(url) {
+  return typeof url === "string" && /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/company\/[^/?#]+/i.test(url);
 }
 
 function toConfidencePercent(value) {
