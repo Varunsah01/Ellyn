@@ -33,11 +33,25 @@ import { captureApiException } from '@/lib/monitoring/sentry';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Quota enforcement (auth required)
-    // Declared here so `user` is in scope for the rest of the handler.
     let user: Awaited<ReturnType<typeof getAuthenticatedUser>>;
     try {
       user = await getAuthenticatedUser();
+    } catch (authError) {
+      if (authError instanceof Error && authError.message === 'Unauthorized') {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+      throw authError;
+    }
+
+    const parsed = EmailGenerateSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: formatZodError(parsed.error) },
+        { status: 400 }
+      );
+    }
+
+    try {
       await incrementEmailGeneration(user.id);
     } catch (quotaErr) {
       if (quotaErr instanceof QuotaExceededError) {
@@ -53,21 +67,10 @@ export async function POST(request: NextRequest) {
           { status: 402 }
         );
       }
-      if (quotaErr instanceof Error && quotaErr.message === 'Unauthorized') {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
       throw quotaErr;
     }
 
     const supabase = await createServiceRoleClient();
-
-    const parsed = EmailGenerateSchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: formatZodError(parsed.error) },
-        { status: 400 }
-      );
-    }
     const body = parsed.data;
     const { firstName, lastName, companyName, companyDomain, role } = body;
 

@@ -1,6 +1,10 @@
 -- ============================================================================
 -- Migration 000: Ensure Complete Foundation (Idempotent)
 -- ============================================================================
+-- WARNING:
+-- This file is the additive legacy baseline. Do not run it together with
+-- `001_complete_foundation.sql` on the same database without an explicit
+-- reconciliation plan. `001` is a destructive alternate baseline.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- ============================================================================

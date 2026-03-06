@@ -261,28 +261,57 @@ export function getDodoProductId(
   );
 }
 
+function getKnownProductIdsForPlan(
+  planType: "starter" | "pro"
+): string[] {
+  const envKeys =
+    planType === "starter"
+      ? [
+          "DODO_STARTER_PRODUCT_ID_GLOBAL_MONTHLY",
+          "DODO_STARTER_PRODUCT_ID_MONTHLY",
+          "DODO_STARTER_PRODUCT_ID_GLOBAL_QUARTERLY",
+          "DODO_STARTER_PRODUCT_ID_QUARTERLY",
+          "DODO_STARTER_PRODUCT_ID_GLOBAL_YEARLY",
+          "DODO_STARTER_PRODUCT_ID_YEARLY",
+        ]
+      : [
+          "DODO_PRO_PRODUCT_ID_GLOBAL_MONTHLY",
+          "DODO_PRO_PRODUCT_ID_MONTHLY",
+          "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID_MONTHLY",
+          "DODO_PRO_PRODUCT_ID_GLOBAL_QUARTERLY",
+          "DODO_PRO_PRODUCT_ID_QUARTERLY",
+          "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID_QUARTERLY",
+          "DODO_PRO_PRODUCT_ID_GLOBAL_YEARLY",
+          "DODO_PRO_PRODUCT_ID_YEARLY",
+          "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID_YEARLY",
+          "DODO_PRO_PRODUCT_ID_GLOBAL",
+          "NEXT_PUBLIC_DODO_PRO_PRODUCT_ID",
+          "DODO_PRO_PRODUCT_ID_IN",
+        ];
+
+  return envKeys
+    .map((envKey) => process.env[envKey])
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.trim());
+}
+
 /**
  * Resolve plan type from a Dodo product ID.
- * Checks against known starter product ID env vars; falls back to 'pro'.
+ * Unknown or missing IDs return null so callers can fail closed.
  */
-export function resolvePlanTypeFromProductId(productId: string | null): "starter" | "pro" {
-  if (!productId) return "pro";
+export function resolvePlanTypeFromProductId(
+  productId: string | null
+): "starter" | "pro" | null {
+  const normalized = typeof productId === "string" ? productId.trim() : "";
+  if (!normalized) return null;
 
-  const starterEnvKeys = [
-    "DODO_STARTER_PRODUCT_ID_GLOBAL_MONTHLY",
-    "DODO_STARTER_PRODUCT_ID_MONTHLY",
-    "DODO_STARTER_PRODUCT_ID_GLOBAL_QUARTERLY",
-    "DODO_STARTER_PRODUCT_ID_QUARTERLY",
-    "DODO_STARTER_PRODUCT_ID_GLOBAL_YEARLY",
-    "DODO_STARTER_PRODUCT_ID_YEARLY",
-  ];
-
-  for (const envKey of starterEnvKeys) {
-    const value = process.env[envKey];
-    if (typeof value === "string" && value.trim() === productId.trim()) {
-      return "starter";
-    }
+  if (getKnownProductIdsForPlan("starter").includes(normalized)) {
+    return "starter";
   }
 
-  return "pro";
+  if (getKnownProductIdsForPlan("pro").includes(normalized)) {
+    return "pro";
+  }
+
+  return null;
 }

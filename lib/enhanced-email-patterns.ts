@@ -22,6 +22,15 @@ export interface EmailPattern {
   learned?: boolean;
 }
 
+export function normalizeEmailLocalPart(value: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim()
+}
+
 // Legacy in-memory lookup kept for reference only — DB is now the source of truth.
 // @ts-ignore -- retained for documentation purposes
 const _KNOWN_DOMAINS_LEGACY: Record<string, string> = {
@@ -161,8 +170,8 @@ export function generateSmartEmailPatterns(
   const domain = companyProfile.domain;
   const size = companyProfile.estimatedSize;
 
-  const first = firstName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const last = lastName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const first = normalizeEmailLocalPart(firstName);
+  const last = normalizeEmailLocalPart(lastName);
   const f = first[0];
 
   const patterns: EmailPattern[] = [];

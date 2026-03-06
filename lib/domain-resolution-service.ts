@@ -105,18 +105,14 @@ async function resolveDomainForEnrich(
   }
 
   // Layer 2: Clearbit (skip when key missing)
-  if (process.env.CLEARBIT_API_KEY?.trim()) {
-    try {
-      const clearbit = await resolveDomainFromClearbit(originalName, normalizedName)
-      const normalized = normalizeDomain(String(clearbit?.domain || ''))
-      if (normalized && !isLikelyInvalidDomain(normalized)) {
-        return { domain: normalized, confidence: 90, source: 'clearbit' }
-      }
-    } catch (error) {
-      console.warn('[Domain] clearbit layer failed:', sanitizeError(error))
+  try {
+    const clearbit = await resolveDomainFromClearbit(originalName, normalizedName)
+    const normalized = normalizeDomain(String(clearbit?.domain || ''))
+    if (normalized && !isLikelyInvalidDomain(normalized)) {
+      return { domain: normalized, confidence: 90, source: 'clearbit' }
     }
-  } else {
-    console.log('[Domain] clearbit layer skipped (missing CLEARBIT_API_KEY)')
+  } catch (error) {
+    console.warn('[Domain] clearbit layer failed:', sanitizeError(error))
   }
 
   // Layer 3: Brandfetch
@@ -458,12 +454,22 @@ export async function resolveDomainFromBrandfetch(normalizedName: string): Promi
   const query = normalizeCompanyName(normalizedName)
   if (!query) return null
 
-  const url = `https://api.brandfetch.io/v2/search/${encodeURIComponent(query)}`
+  const url = buildBrandfetchSearchUrl(query)
+  if (!url) {
+    console.warn('[Brandfetch] Search layer disabled: missing BRANDFETCH_CLIENT_ID', {
+      query,
+    })
+    return null
+  }
+
   console.log('[Brandfetch] Querying search API', { query })
 
   const payload = await requestJson(url, API_FETCH_TIMEOUT_MS)
   const domain = extractBrandfetchDomain(payload)
   if (!domain) {
+    console.warn('[Brandfetch] Search returned no usable domain', {
+      query,
+    })
     return null
   }
 
@@ -476,6 +482,20 @@ export async function resolveDomainFromBrandfetch(normalizedName: string): Promi
       validated: false,
     },
   }
+}
+
+export function buildBrandfetchSearchUrl(query: string): string | null {
+  const normalizedQuery = normalizeCompanyName(query)
+  if (!normalizedQuery) return null
+
+  const clientId = String(process.env.BRANDFETCH_CLIENT_ID || '').trim()
+  if (!clientId) {
+    return null
+  }
+
+  const url = new URL(`https://api.brandfetch.io/v2/search/${encodeURIComponent(normalizedQuery)}`)
+  url.searchParams.set('c', clientId)
+  return url.toString()
 }
 
 /**
@@ -815,6 +835,12 @@ async function requestJson(url: string, timeoutMs: number): Promise<unknown | nu
 
     return payload
   } catch (error) {
+    console.warn('[Domain] External request failed', {
+      service,
+      operation,
+      host,
+      error: sanitizeError(error),
+    })
     const statusCode = Number((error as { status?: number })?.status)
     recordExternalApiUsage({
       service,

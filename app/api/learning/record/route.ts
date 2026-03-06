@@ -1,55 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { invalidateEmailPatternCache } from '@/lib/cache/tags'
-import { recordPatternFeedback } from '@/lib/pattern-learning';
-import { LearningRecordSchema, formatZodError } from '@/lib/validation/schemas';
-import { captureApiException } from '@/lib/monitoring/sentry'
+import { NextResponse } from 'next/server'
 
-/**
- * Handle POST requests for `/api/learning/record`.
- * @param {NextRequest} request - Request input.
- * @returns {unknown} JSON response for the POST /api/learning/record request.
- * @throws {AuthenticationError} If the request is not authenticated.
- * @throws {ValidationError} If the request payload fails validation.
- * @throws {Error} If an unexpected server error occurs.
- * @example
- * // POST /api/learning/record
- * fetch('/api/learning/record', { method: 'POST' })
- */
-export async function POST(request: NextRequest) {
-  try {
-    const parsed = LearningRecordSchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: formatZodError(parsed.error) },
-        { status: 400 }
-      );
-    }
-    const { domain, pattern, worked } = parsed.data;
+const DEPRECATION_RESPONSE = {
+  success: false,
+  error: 'Deprecated endpoint. Use /api/email-feedback.',
+}
 
-    // Record feedback via learned_patterns table
-    await recordPatternFeedback({ company_domain: domain, pattern, worked, email: '' });
-    try {
-      await invalidateEmailPatternCache(domain)
-    } catch (invalidateError) {
-      console.warn('[Learning API] Pattern cache invalidation failed:', invalidateError)
-    }
+export async function POST() {
+  return NextResponse.json(DEPRECATION_RESPONSE, { status: 410 })
+}
 
-    return NextResponse.json({
-      success: true,
-      message: 'Feedback recorded. Thank you for helping improve our accuracy!',
-      data: {
-        domain,
-        pattern,
-        worked
-      }
-    });
-
-  } catch (error) {
-    console.error('[Learning API] Error:', error);
-    captureApiException(error, { route: '/api/learning/record', method: 'POST' })
-    return NextResponse.json(
-      { error: 'Failed to record feedback', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
-  }
+export async function GET() {
+  return NextResponse.json(DEPRECATION_RESPONSE, { status: 410 })
 }

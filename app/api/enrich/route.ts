@@ -10,6 +10,7 @@ import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { captureApiException } from '@/lib/monitoring/sentry'
 import { verifyDomainMX } from '@/lib/mx-verification'
 import { incrementEmailGeneration, QuotaExceededError } from '@/lib/quota'
+import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 import { resolveDomain } from '@/lib/domain-resolution-service'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { verifyEmailZeroBounce } from '@/lib/zerobounce'
@@ -225,6 +226,14 @@ function buildSuccessResponse(params: {
   }
 }
 
+function normalizeDomainSourceForAnalytics(source: string): string {
+  const normalized = String(source || '').trim().toLowerCase()
+  if (normalized === 'known_db' || normalized === 'known-db') return 'known_database'
+  if (normalized === 'google-search' || normalized === 'google_search') return 'google_search'
+  if (normalized === 'llm') return 'llm_prediction'
+  return normalized || 'unknown'
+}
+
 function logDomainResolutionAsync(params: {
   userId: string
   companyName: string
@@ -236,26 +245,14 @@ function logDomainResolutionAsync(params: {
   void (async () => {
     try {
       const supabase = await createServiceRoleClient()
-
-      const primaryInsert = await supabase.from('domain_resolution_logs').insert({
+      await supabase.from('domain_resolution_logs').insert({
         user_id: params.userId,
         company_name: params.companyName,
         domain: params.domain,
-        layers_attempted: params.layersAttempted,
-        resolution_source: params.domainSource,
-        confidence_score: params.confidence,
-      })
-
-      if (!primaryInsert.error) return
-
-      // Backward compatibility for legacy schema variant.
-      await supabase.from('domain_resolution_logs').insert({
-        company_name: params.companyName,
-        domain: params.domain,
-        domain_source: params.domainSource,
+        domain_source: normalizeDomainSourceForAnalytics(params.domainSource),
         mx_valid: null,
-        confidence_score: params.confidence,
         attempted_layers: params.layersAttempted,
+        confidence_score: params.confidence,
       })
     } catch {
       // Fire-and-forget logging should never block API response.
@@ -269,11 +266,7 @@ export async function POST(request: NextRequest) {
     try {
       const user = await getAuthenticatedUserFromRequest(request)
       userId = user.id
-      await incrementEmailGeneration(user.id)
     } catch (error) {
-      if (error instanceof QuotaExceededError) {
-        return quotaExceededResponse(error)
-      }
       if (error instanceof Error && error.message === 'Unauthorized') {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
@@ -297,6 +290,20 @@ export async function POST(request: NextRequest) {
     }
 
     const { firstName, lastName, companyName, role } = parsed.data
+
+    const rl = await checkApiRateLimit(`enrich:${userId}`, 60, 3600)
+    if (!rl.allowed) {
+      return rateLimitExceeded(rl.resetAt)
+    }
+
+    try {
+      await incrementEmailGeneration(userId)
+    } catch (error) {
+      if (error instanceof QuotaExceededError) {
+        return quotaExceededResponse(error)
+      }
+      throw error
+    }
 
     // Phase 1: Domain resolution cascade.
     const resolved = await resolveDomain(companyName)

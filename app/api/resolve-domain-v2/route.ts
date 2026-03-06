@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { resolveDomain, type DomainResult } from '@/lib/domain-resolution-service'
 import {
   captureApiException,
   captureSlowApiRoute,
   withApiRouteSpan,
 } from '@/lib/monitoring/sentry'
+import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 import { ResolveDomainSchema, formatZodError } from '@/lib/validation/schemas'
 
 export const runtime = 'edge'
@@ -39,6 +41,17 @@ export async function POST(request: NextRequest) {
     'POST /api/resolve-domain-v2',
     async () => {
       try {
+        const user = await getAuthenticatedUserFromRequest(request)
+
+        const rl = await checkApiRateLimit(`resolve-domain-v2:${user.id}`, 60, 3600)
+        if (!rl.allowed) {
+          console.warn('[resolve-domain-v2] rate limit exceeded', {
+            route: '/api/resolve-domain-v2',
+            userId: user.id,
+          })
+          return rateLimitExceeded(rl.resetAt)
+        }
+
         const parsed = ResolveDomainSchema.safeParse(await request.json())
         if (!parsed.success) {
           const badRequest: ResolveDomainResponse = {
@@ -74,6 +87,22 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(successResponse)
       } catch (error) {
+        if (error instanceof Error && error.message === 'Unauthorized') {
+          console.warn('[resolve-domain-v2] unauthorized request denied', {
+            route: '/api/resolve-domain-v2',
+          })
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'Unauthorized',
+              timing: {
+                total: Date.now() - startedAt,
+              },
+            } satisfies ResolveDomainResponse,
+            { status: 401 }
+          )
+        }
+
         if (error instanceof SyntaxError) {
           const badJson: ResolveDomainResponse = {
             success: false,

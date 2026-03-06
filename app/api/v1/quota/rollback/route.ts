@@ -1,39 +1,35 @@
-import { NextResponse } from 'next/server'
-import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { NextRequest, NextResponse } from 'next/server'
+
+import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    const user = await getAuthenticatedUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
+    const user = await getAuthenticatedUserFromRequest(request)
     const client = await createServiceRoleClient()
 
-    // Decrement email_lookups_used by 1, clamped at 0
-    const { error } = await client
-      .from('user_quotas')
-      .update({
-        email_lookups_used: client.rpc('greatest', [0]) as any,
-      })
-      .eq('user_id', user.id)
+    const { error } = await client.rpc('rollback_email_quota', {
+      p_user_id: user.id,
+    })
 
-    // If the above doesn't work due to raw expression limitation,
-    // use the RPC function
     if (error) {
-      const { error: rpcError } = await client.rpc('rollback_email_quota', {
-        p_user_id: user.id,
+      console.error('[quota/rollback] RPC failed', {
+        userId: user.id,
+        message: error.message,
+        code: error.code,
       })
-      if (rpcError) {
-        console.warn('[quota/rollback] RPC fallback failed:', rpcError.message)
-      }
+      return NextResponse.json({ success: false, error: 'Failed to rollback quota' }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[quota/rollback] Error:', error)
-    // Always return success — quota rollback failure should never block the client
-    return NextResponse.json({ success: true })
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
+    console.error('[quota/rollback] Error:', {
+      message: error instanceof Error ? error.message : String(error),
+    })
+    return NextResponse.json({ success: false, error: 'Failed to rollback quota' }, { status: 500 })
   }
 }

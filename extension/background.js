@@ -25,7 +25,7 @@ const CONFIG = {
   WEBAPP_URL: 'https://www.useellyn.com',
   CACHE_DURATION_MS: 30 * 24 * 60 * 60 * 1000, // 30 days
   COST_WINDOW_MS: 30 * 24 * 60 * 60 * 1000, // 30 days rolling cost window
-  DISABLE_CREDIT_LIMITS: true,
+  DISABLE_CREDIT_LIMITS: false,
   HEURISTIC_FALLBACK: {
     enabled: true,
     allowOnNoMx: false,
@@ -1521,15 +1521,7 @@ async function checkQuota() {
       warning: 'Quota manager unavailable',
     };
   }
-  const status = await quotaClient.getStatus();
-  if (!CONFIG.DISABLE_CREDIT_LIMITS) {
-    return status;
-  }
-  return {
-    ...status,
-    allowed: true,
-    warning: status?.warning || 'Credit limits disabled',
-  };
+  return quotaClient.getStatus();
 }
 
 async function canPerformLookup(cost = 1) {
@@ -1548,13 +1540,8 @@ async function canPerformLookup(cost = 1) {
     ? Math.max(1, Math.min(100, Math.floor(Number(cost))))
     : 1;
   const quotaCheck = await quotaClient.canPerformLookup(requestedCost);
-  if (!CONFIG.DISABLE_CREDIT_LIMITS) {
-    return quotaCheck;
-  }
   return {
     ...quotaCheck,
-    allowed: true,
-    warning: quotaCheck?.warning || 'Credit limits disabled',
     requestedCost,
   };
 }
@@ -2470,7 +2457,7 @@ async function handleExtractProfileFromTabMessage(data, sender, sendResponse) {
     console.error('[Extension] Failed EXTRACT_PROFILE_FROM_TAB:', error);
     reportExtensionError(error, {
       pipeline: 'extract-profile-from-tab',
-      tabId: Number.isFinite(payload?.tabId) ? payload.tabId : null,
+      tabId: Number.isFinite(data?.tabId) ? data.tabId : null,
     });
     sendResponse({
       success: false,

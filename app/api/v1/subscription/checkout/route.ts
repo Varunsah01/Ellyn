@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { getDodoClient } from "@/lib/dodo";
+import { DEFAULT_PRICING_REGION, getDodoProductId } from "@/lib/pricing-config";
+import { checkApiRateLimit, rateLimitExceeded } from "@/lib/rate-limit";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
 type ProfileRow = {
@@ -15,12 +17,6 @@ const checkoutSchema = z.object({
   plan: z.enum(["starter", "pro"]),
   billingCycle: z.enum(["monthly", "quarterly", "yearly"]),
 });
-
-function resolveProductId(plan: "starter" | "pro", billingCycle: "monthly" | "quarterly" | "yearly") {
-  const envKey = `DODO_${plan.toUpperCase()}_PRODUCT_ID_GLOBAL_${billingCycle.toUpperCase()}`;
-  const productId = process.env[envKey]?.trim();
-  return productId || null;
-}
 
 function getAppBaseUrl(request: NextRequest): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -35,6 +31,11 @@ export async function POST(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
 
+    const rl = await checkApiRateLimit(`subscription-checkout:${user.id}`, 10, 3600);
+    if (!rl.allowed) {
+      return rateLimitExceeded(rl.resetAt);
+    }
+
     const body = await request.json().catch(() => null);
     const parsed = checkoutSchema.safeParse(body);
 
@@ -45,8 +46,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const productId = resolveProductId(parsed.data.plan, parsed.data.billingCycle);
-    if (!productId) {
+    let productId: string;
+    try {
+      productId = getDodoProductId(
+        DEFAULT_PRICING_REGION,
+        parsed.data.billingCycle,
+        parsed.data.plan
+      );
+    } catch (error) {
+      console.error("[subscription-checkout] missing product configuration", {
+        userId: user.id,
+        plan: parsed.data.plan,
+        billingCycle: parsed.data.billingCycle,
+        message: error instanceof Error ? error.message : String(error),
+      });
       return NextResponse.json({ error: "Product not configured" }, { status: 500 });
     }
 

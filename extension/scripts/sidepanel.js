@@ -705,8 +705,11 @@ function bindRuntimeListeners() {
     }
 
     if (message.type === "SHOW_UPGRADE_MODAL") {
-      // Credit limits are currently disabled for the extension flow.
-      setUpgradeState(false, "", message?.data?.upgradeUrl || PRICING_URL);
+      setUpgradeState(
+        true,
+        "Upgrade to continue.",
+        message?.data?.upgradeUrl || PRICING_URL
+      );
     }
   });
 
@@ -2301,9 +2304,7 @@ async function consumeLookupCredits(credits, label = "action") {
         ? `Not enough credits for ${label}. Resets ${resetLabel}.`
         : `Not enough credits for ${label}.`;
       showToast(message, "error");
-      if (response?.resetDate) {
-        setUpgradeState(false, "", PRICING_URL);
-      }
+      setUpgradeState(true, message, PRICING_URL);
       return false;
     }
 
@@ -2357,8 +2358,12 @@ function applyFindEmailAvailability() {
   const gateStatus = getProfileContextGateStatus();
   const disabledByProfile = emailFinderState.isAuthenticated && !gateStatus.ready;
   const disabledByLoading = emailFinderState.isLoading;
+  const disabledByQuota =
+    emailFinderState.isAuthenticated &&
+    emailFinderState.quotaKnown &&
+    !emailFinderState.quotaAllowsLookup;
 
-  const shouldDisable = disabledByAuth || disabledByProfile || disabledByLoading;
+  const shouldDisable = disabledByAuth || disabledByProfile || disabledByLoading || disabledByQuota;
   if (shouldDisable) {
     elements.findEmailBtn.setAttribute("disabled", "true");
   } else {
@@ -2367,6 +2372,8 @@ function applyFindEmailAvailability() {
 
   const reason = disabledByProfile
     ? gateStatus.message
+    : disabledByQuota
+    ? "No credits left. Upgrade to continue."
     : disabledByAuth
     ? "Sign in to use email finder."
     : "";
@@ -3012,7 +3019,7 @@ function showError(message, code, resetDate, stage) {
   setLookupTrace(buildErrorLookupTrace(code, stage), "error");
   setLookupWarnings([]);
   if (code === "QUOTA_EXCEEDED") {
-    setUpgradeState(false, "", PRICING_URL);
+    setUpgradeState(true, "Upgrade to continue.", PRICING_URL);
   }
 }
 
@@ -3862,6 +3869,14 @@ async function submitCorrectionFeedback(originalEmail, correctedEmail) {
 async function updateQuotaStatus() {
   try {
     const response = await sendRuntimeMessage({ type: "CHECK_QUOTA" });
+    const allowsLookup = response?.allowed !== false;
+    const resetLabel = formatResetDate(response?.resetDate);
+    const quotaBlockedMessage =
+      typeof response?.error === "string" && response.error.trim()
+        ? response.error.trim()
+        : resetLabel
+        ? `No credits left. Resets ${resetLabel}.`
+        : "No credits left. Upgrade to continue.";
     const used = toFiniteNumber(response?.used);
     const remaining = toFiniteNumber(response?.remaining);
     const limit = toFiniteNumber(response?.limit);
@@ -3879,7 +3894,7 @@ async function updateQuotaStatus() {
 
     const unlimitedPlan = !Number.isFinite(safeLimit);
     const shouldShowQuota =
-      (Number.isFinite(safeUsed) && safeUsed > 0) || safeLimit !== null;
+      (Number.isFinite(safeUsed) && safeUsed > 0) || safeLimit !== null || !allowsLookup;
     setQuotaVisibility(shouldShowQuota);
 
     if (!shouldShowQuota) {
@@ -3900,7 +3915,7 @@ async function updateQuotaStatus() {
     }
 
     emailFinderState.quotaKnown = true;
-    emailFinderState.quotaAllowsLookup = true;
+    emailFinderState.quotaAllowsLookup = allowsLookup;
 
     if (elements.quotaCount) {
       if (Number.isFinite(safeUsed) && Number.isFinite(safeLimit)) {
@@ -3939,10 +3954,15 @@ async function updateQuotaStatus() {
       }
     }
 
-    // Credit limits are currently disabled: quota UI is informational only.
-    setUpgradeState(false, "", emailFinderState.upgradeUrl);
+    setUpgradeState(
+      !emailFinderState.quotaAllowsLookup,
+      quotaBlockedMessage,
+      emailFinderState.upgradeUrl
+    );
 
-    if (unlimitedPlan) {
+    if (!emailFinderState.quotaAllowsLookup) {
+      setQuotaWarning(quotaBlockedMessage);
+    } else if (unlimitedPlan) {
       if (Number.isFinite(safeUsed)) {
         setQuotaWarning(`Unlimited plan active. ${safeUsed} credits used.`);
       } else {

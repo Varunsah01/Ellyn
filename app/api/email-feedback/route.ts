@@ -1,10 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 
-import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
-import { invalidateEmailPatternCache } from '@/lib/cache/tags'
-import { captureApiException } from '@/lib/monitoring/sentry'
-import { type PatternFeedback, recordPatternFeedback } from '@/lib/pattern-learning'
-import { EmailFeedbackSchema, formatZodError } from '@/lib/validation/schemas'
+import {
+  handlePatternFeedbackPost,
+  methodNotAllowedResponse,
+} from '@/lib/pattern-feedback-endpoint'
 
 /**
  * Handle POST requests for `/api/email-feedback`.
@@ -18,79 +17,10 @@ import { EmailFeedbackSchema, formatZodError } from '@/lib/validation/schemas'
  * fetch('/api/email-feedback', { method: 'POST' })
  */
 export async function POST(request: NextRequest) {
-  try {
-    await getAuthenticatedUserFromRequest(request)
-
-    const parsed = EmailFeedbackSchema.safeParse(await request.json())
-    if (!parsed.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Validation failed',
-          details: formatZodError(parsed.error),
-        },
-        { status: 400 }
-      )
-    }
-
-    const { email, pattern, companyDomain, worked, contactId } = parsed.data
-
-    const feedback: PatternFeedback = {
-      email,
-      pattern,
-      company_domain: companyDomain,
-      worked,
-      contact_id: contactId,
-    }
-
-    const result = await recordPatternFeedback(feedback)
-
-    if (!result.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: result.error || 'Failed to record feedback',
-        },
-        { status: 500 }
-      )
-    }
-
-    try {
-      await invalidateEmailPatternCache(companyDomain)
-    } catch (invalidateError) {
-      console.warn('[API][email-feedback] Pattern cache invalidation failed:', invalidateError)
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Feedback recorded. Thank you for helping improve accuracy.',
-      data: {
-        email,
-        pattern,
-        companyDomain,
-        worked,
-      },
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-
-    if (message === 'Unauthorized') {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-    }
-
-    console.error('[API][email-feedback] Error:', {
-      message,
-    })
-    captureApiException(error, { route: '/api/email-feedback', method: 'POST' })
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to record feedback',
-      },
-      { status: 500 }
-    )
-  }
+  return handlePatternFeedbackPost(request, {
+    route: '/api/email-feedback',
+    rateLimitKey: 'email-feedback',
+  })
 }
 
 /**
@@ -103,11 +33,5 @@ export async function POST(request: NextRequest) {
  * fetch('/api/email-feedback')
  */
 export async function GET() {
-  return NextResponse.json(
-    {
-      success: false,
-      error: 'Method not allowed. Use POST.',
-    },
-    { status: 405 }
-  )
+  return methodNotAllowedResponse()
 }

@@ -29,6 +29,12 @@ type QuotaSnapshot = {
   plan_type: PlanType
 }
 
+type QuotaRpcDecision = {
+  allowed: boolean
+  remaining: number
+  reset_date: string | null
+}
+
 export type QuotaInfo = {
   email: { used: number; limit: number; remaining: number }
   ai_draft: { used: number; limit: number; remaining: number }
@@ -56,72 +62,49 @@ export class QuotaExceededError extends Error {
   }
 }
 
-// incrementEmailGeneration: calls ensure_user_quota then increments email_lookups_used.
-// Throws QuotaExceededError if used >= limit.
-// Returns { used, limit, plan_type }
 export async function incrementEmailGeneration(
   userId: string
 ): Promise<QuotaIncrementResult> {
   const supabase = await createServiceRoleClient()
   await ensureUserQuotaRow(supabase, userId)
 
-  const quota = await getQuotaSnapshot(supabase, userId)
-  const currentUsed = toSafeInt(quota.quota.email_lookups_used, 0)
-  const limit = PLAN_LIMITS[quota.plan_type].email
+  const decision = await runQuotaDecisionRpc(supabase, 'check_and_increment_quota', {
+    p_user_id: userId,
+    p_quota_type: 'email_lookups',
+  })
 
-  if (currentUsed >= limit) {
-    throw new QuotaExceededError('email_generation', currentUsed, limit, quota.plan_type)
+  const snapshot = await getQuotaSnapshot(supabase, userId)
+  const used = toSafeInt(snapshot.quota.email_lookups_used, 0)
+  const limit = PLAN_LIMITS[snapshot.plan_type].email
+
+  if (!decision.allowed) {
+    throw new QuotaExceededError('email_generation', used, limit, snapshot.plan_type)
   }
 
-  const nextUsed = currentUsed + 1
-  const { error: updateError } = await supabase
-    .from('user_quotas')
-    .update({
-      email_lookups_used: nextUsed,
-      email_lookups_limit: limit,
-    })
-    .eq('user_id', userId)
-
-  if (updateError) {
-    throw updateError
-  }
-
-  return { used: nextUsed, limit, plan_type: quota.plan_type }
+  return { used, limit, plan_type: snapshot.plan_type }
 }
 
-// incrementAIDraftGeneration: same but for ai_draft_generations_used.
-// Throws QuotaExceededError if plan is free (limit = 0) or used >= limit.
 export async function incrementAIDraftGeneration(
   userId: string
 ): Promise<QuotaIncrementResult> {
   const supabase = await createServiceRoleClient()
   await ensureUserQuotaRow(supabase, userId)
 
-  const quota = await getQuotaSnapshot(supabase, userId)
-  const currentUsed = toSafeInt(quota.quota.ai_draft_generations_used, 0)
-  const limit = PLAN_LIMITS[quota.plan_type].ai_draft
+  const decision = await runQuotaDecisionRpc(supabase, 'check_and_increment_ai_draft', {
+    p_user_id: userId,
+  })
 
-  if (limit === 0 || currentUsed >= limit) {
-    throw new QuotaExceededError('ai_draft_generation', currentUsed, limit, quota.plan_type)
+  const snapshot = await getQuotaSnapshot(supabase, userId)
+  const used = toSafeInt(snapshot.quota.ai_draft_generations_used, 0)
+  const limit = PLAN_LIMITS[snapshot.plan_type].ai_draft
+
+  if (!decision.allowed) {
+    throw new QuotaExceededError('ai_draft_generation', used, limit, snapshot.plan_type)
   }
 
-  const nextUsed = currentUsed + 1
-  const { error: updateError } = await supabase
-    .from('user_quotas')
-    .update({
-      ai_draft_generations_used: nextUsed,
-      ai_draft_generations_limit: limit,
-    })
-    .eq('user_id', userId)
-
-  if (updateError) {
-    throw updateError
-  }
-
-  return { used: nextUsed, limit, plan_type: quota.plan_type }
+  return { used, limit, plan_type: snapshot.plan_type }
 }
 
-// getUserQuota: returns current quota state without incrementing
 export async function getUserQuota(userId: string): Promise<QuotaInfo> {
   const supabase = await createServiceRoleClient()
   await ensureUserQuotaRow(supabase, userId)
@@ -151,6 +134,29 @@ export async function getUserQuota(userId: string): Promise<QuotaInfo> {
   }
 }
 
+async function runQuotaDecisionRpc(
+  supabase: ServiceRoleClient,
+  rpcName: 'check_and_increment_quota' | 'check_and_increment_ai_draft',
+  params: Record<string, unknown>
+): Promise<QuotaRpcDecision> {
+  const { data, error } = await supabase.rpc(rpcName, params as never)
+  if (error) {
+    throw error
+  }
+
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    allowed: Boolean((row as { allowed?: unknown } | null)?.allowed),
+    remaining: toSafeInt((row as { remaining?: unknown } | null)?.remaining, 0),
+    reset_date:
+      typeof (row as { reset_date?: unknown } | null)?.reset_date === 'string'
+        ? ((row as { reset_date?: string } | null)?.reset_date ?? null)
+        : (row as { reset_date?: unknown } | null)?.reset_date
+        ? String((row as { reset_date?: unknown } | null)?.reset_date)
+        : null,
+  }
+}
+
 async function ensureUserQuotaRow(
   supabase: ServiceRoleClient,
   userId: string
@@ -173,7 +179,6 @@ async function getQuotaSnapshot(
   supabase: ServiceRoleClient,
   userId: string
 ): Promise<QuotaSnapshot> {
-  // Preferred read path: fetch quota + plan_type with a join.
   const { data: joinedData, error: joinedError } = await supabase
     .from('user_quotas')
     .select(
@@ -194,7 +199,6 @@ async function getQuotaSnapshot(
     }
   }
 
-  // Fallback path when join relation is unavailable.
   const { data: quotaData, error: quotaError } = await supabase
     .from('user_quotas')
     .select(

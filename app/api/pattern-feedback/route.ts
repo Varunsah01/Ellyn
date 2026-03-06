@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { invalidateEmailPatternCache } from '@/lib/cache/tags'
-import { recordPatternFeedback, PatternFeedback } from '@/lib/pattern-learning';
-import { PatternFeedbackSchema, formatZodError } from '@/lib/validation/schemas';
-import { captureApiException } from '@/lib/monitoring/sentry'
+import { NextRequest } from 'next/server'
+
+import {
+  handlePatternFeedbackPost,
+  methodNotAllowedResponse,
+} from '@/lib/pattern-feedback-endpoint'
 
 /**
  * Handle POST requests for `/api/pattern-feedback`.
@@ -16,58 +17,10 @@ import { captureApiException } from '@/lib/monitoring/sentry'
  * fetch('/api/pattern-feedback', { method: 'POST' })
  */
 export async function POST(request: NextRequest) {
-  try {
-    const parsed = PatternFeedbackSchema.safeParse(await request.json());
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: 'Validation failed', details: formatZodError(parsed.error) },
-        { status: 400 }
-      );
-    }
-    const { email, pattern, companyDomain, worked, contactId } = parsed.data;
-
-    // Record the feedback
-    const feedback: PatternFeedback = {
-      email,
-      pattern,
-      company_domain: companyDomain,
-      worked,
-      contact_id: contactId,
-    };
-
-    const result = await recordPatternFeedback(feedback);
-
-    if (!result.success) {
-      return NextResponse.json(
-        { error: result.error || 'Failed to record pattern feedback' },
-        { status: 500 }
-      );
-    }
-
-    try {
-      await invalidateEmailPatternCache(companyDomain)
-    } catch (invalidateError) {
-      console.warn('[pattern-feedback] Pattern cache invalidation failed:', invalidateError)
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Pattern feedback recorded: ${pattern} ${worked ? 'worked' : 'did not work'} for ${companyDomain}`,
-      data: {
-        email,
-        pattern,
-        companyDomain,
-        worked,
-      },
-    });
-  } catch (error) {
-    console.error('Error recording pattern feedback:', error);
-    captureApiException(error, { route: '/api/pattern-feedback', method: 'POST' })
-    return NextResponse.json(
-      { error: 'Internal server error while recording pattern feedback' },
-      { status: 500 }
-    );
-  }
+  return handlePatternFeedbackPost(request, {
+    route: '/api/pattern-feedback',
+    rateLimitKey: 'pattern-feedback',
+  })
 }
 
 // Handle unsupported methods
@@ -81,8 +34,5 @@ export async function POST(request: NextRequest) {
  * fetch('/api/pattern-feedback')
  */
 export async function GET() {
-  return NextResponse.json(
-    { error: 'Method not allowed. Use POST to submit pattern feedback.' },
-    { status: 405 }
-  );
+  return methodNotAllowedResponse()
 }

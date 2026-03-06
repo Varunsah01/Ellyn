@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import {
   captureApiException,
   captureSlowApiRoute,
   withApiRouteSpan,
 } from '@/lib/monitoring/sentry'
 import { recordExternalApiUsage, timeOperation } from '@/lib/monitoring/performance'
+import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { ResolveDomainSchema, formatZodError } from '@/lib/validation/schemas'
 
@@ -195,6 +197,17 @@ export async function POST(request: NextRequest) {
     'POST /api/resolve-domain',
     async () => {
       try {
+        const user = await getAuthenticatedUserFromRequest(request)
+
+        const rl = await checkApiRateLimit(`resolve-domain:${user.id}`, 60, 3600)
+        if (!rl.allowed) {
+          console.warn('[resolve-domain] rate limit exceeded', {
+            route: '/api/resolve-domain',
+            userId: user.id,
+          })
+          return rateLimitExceeded(rl.resetAt)
+        }
+
         let rawBody: unknown
         try {
           rawBody = await request.json()
@@ -285,6 +298,13 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(buildResponse(guessedDomain, 'heuristic'))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
+        if (message === 'Unauthorized') {
+          console.warn('[resolve-domain] unauthorized request denied', {
+            route: '/api/resolve-domain',
+          })
+          return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+
         if (message === 'Invalid JSON body') {
           return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
         }
@@ -390,7 +410,13 @@ async function resolveFromClearbit(companyName: string, failures: string[]): Pro
 async function resolveFromBrandfetch(companyName: string, failures: string[]): Promise<string | null> {
   const startedAt = Date.now()
   try {
-    const url = `https://api.brandfetch.io/v2/search/${encodeURIComponent(companyName)}`
+    const url = buildBrandfetchSearchUrl(companyName)
+    if (!url) {
+      failures.push('brandfetch:missing_client_id')
+      console.warn('[resolve-domain] Brandfetch disabled: missing BRANDFETCH_CLIENT_ID')
+      return null
+    }
+
     const response = await timeOperation(
       'brandfetch.company-search.fetch',
       async () => await fetch(url, {
@@ -693,6 +719,17 @@ function isMissingDbObjectError(error: unknown): boolean {
 function compactErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message.slice(0, 120)
   return String(error).slice(0, 120)
+}
+
+function buildBrandfetchSearchUrl(companyName: string): string | null {
+  const clientId = String(process.env.BRANDFETCH_CLIENT_ID || '').trim()
+  if (!clientId) {
+    return null
+  }
+
+  const url = new URL(`https://api.brandfetch.io/v2/search/${encodeURIComponent(companyName)}`)
+  url.searchParams.set('c', clientId)
+  return url.toString()
 }
 
 function sanitizeErrorForLog(error: unknown) {
