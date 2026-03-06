@@ -1,28 +1,12 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import * as Sentry from '@sentry/nextjs'
 import { instrumentSupabaseClientPerformance } from '@/lib/monitoring/performance'
-
-let supabaseSentryInstrumentationApplied = false
 
 function instrumentSupabaseClientIfNeeded<T extends object>(
   client: T,
   source: 'server' | 'service-role'
 ): T {
-  if (!supabaseSentryInstrumentationApplied) {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(Sentry as any).instrumentSupabaseClient(client)
-      supabaseSentryInstrumentationApplied = true
-    } catch (error) {
-      // Instrumentation is best-effort and should never break runtime auth/db flows.
-      console.warn('[Sentry] Failed to instrument Supabase client', {
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
-
   try {
     return instrumentSupabaseClientPerformance(client, source)
   } catch (error) {

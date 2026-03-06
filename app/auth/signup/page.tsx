@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2 } from "lucide-react";
 
-import { AuthFormLayout } from "@/components/auth/AuthFormLayout";
+import { AuthFormLayout, AuthPageLoading } from "@/components/auth/AuthFormLayout";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
 import { createClient } from "@/lib/supabase/client";
 import { showToast } from "@/lib/toast";
@@ -106,7 +106,7 @@ function GoogleIcon() {
   );
 }
 
-export default function SignupPage() {
+function SignupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -371,5 +371,17 @@ export default function SignupPage() {
         </p>
       </div>
     </AuthFormLayout>
+  );
+}
+
+function SignupPageFallback() {
+  return <AuthPageLoading text="Loading sign up..." />;
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<SignupPageFallback />}>
+      <SignupPageContent />
+    </Suspense>
   );
 }
