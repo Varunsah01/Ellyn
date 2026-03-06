@@ -2,6 +2,9 @@
   "name": "ellyn",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "check:env-local": "node scripts/check-env-local-precedence.mjs",
     "predev": "npm run check:env-local",
