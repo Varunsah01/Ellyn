@@ -321,7 +321,7 @@ export default function DashboardPage() {
   const fetchContacts = useCallback(async () => {
     setContactsLoading(true);
     try {
-      const response = await fetch("/api/v1/contacts?limit=10&sort=created_at:desc", {
+      const response = await fetch("/api/v1/contacts?limit=10&page=1&sortBy=created_at&sortDir=desc", {
         cache: "no-store",
       });
       if (!response.ok) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
+import { isMissingDbObjectError } from "@/app/api/analytics/_helpers";
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -49,6 +50,13 @@ type TrackerApplicationRow = {
   created_at: string;
 };
 
+function trackerSchemaMissingResponse() {
+  return NextResponse.json(
+    { error: "Tracker schema is missing. Apply the Supabase reconciliation migration." },
+    { status: 503 }
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
@@ -61,6 +69,9 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (error) {
+      if (isMissingDbObjectError(error)) {
+        return trackerSchemaMissingResponse();
+      }
       return NextResponse.json({ error: error.message || "Failed to fetch applications" }, { status: 500 });
     }
 
@@ -105,6 +116,9 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
+      if (isMissingDbObjectError(error)) {
+        return trackerSchemaMissingResponse();
+      }
       return NextResponse.json({ error: error.message || "Failed to create application" }, { status: 500 });
     }
 

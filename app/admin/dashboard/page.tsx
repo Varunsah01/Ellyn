@@ -100,7 +100,7 @@ export default async function AdminDashboardPage() {
         <QuickLink
           href="/admin/dashboard/verification"
           title="Verification"
-          description="ZeroBounce API usage & costs"
+          description="Abstract API usage & costs"
         />
       </div>
     </div>

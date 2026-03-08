@@ -27,8 +27,9 @@ type ContactRow = {
   id: string;
   first_name: string | null;
   last_name: string | null;
-  email: string | null;
-  company_name: string | null;
+  confirmed_email: string | null;
+  inferred_email: string | null;
+  company: string | null;
   role: string | null;
   status: string | null;
 };
@@ -73,17 +74,21 @@ function fullName(contact: ContactRow): string {
   return joined || "Unknown Contact";
 }
 
+function getContactEmail(contact: ContactRow): string {
+  return contact.confirmed_email || contact.inferred_email || "";
+}
+
 function interpolatePreview(template: string, contact: ContactRow): string {
   const map: Record<string, string> = {
     firstname: contact.first_name ?? "there",
     first_name: contact.first_name ?? "there",
     lastname: contact.last_name ?? "",
     last_name: contact.last_name ?? "",
-    company: contact.company_name ?? "your company",
-    companyname: contact.company_name ?? "your company",
-    company_name: contact.company_name ?? "your company",
+    company: contact.company ?? "your company",
+    companyname: contact.company ?? "your company",
+    company_name: contact.company ?? "your company",
     role: contact.role ?? "",
-    email: contact.email ?? "",
+    email: getContactEmail(contact),
   };
 
   return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (token, key: string) => {
@@ -118,6 +123,13 @@ export default function EnrollContactsPage() {
   const [startDate, setStartDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [enrolledCount, setEnrolledCount] = useState(0);
 
+  const unwrapPayload = <T,>(payload: T | { data?: T }): T => {
+    if (payload && typeof payload === "object" && "data" in payload && payload.data) {
+      return payload.data;
+    }
+    return payload as T;
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -127,23 +139,34 @@ export default function EnrollContactsPage() {
       try {
         const [sequenceResponse, contactsResponse] = await Promise.all([
           fetch(`/api/v1/sequences/${sequenceId}`, { cache: "no-store" }),
-          fetch(`/api/v1/contacts?limit=500&offset=0&sort=created_at:desc`, { cache: "no-store" }),
+          fetch(`/api/v1/contacts?limit=500&page=1&sortBy=created_at&sortDir=desc`, { cache: "no-store" }),
         ]);
 
-        const sequencePayload = (await sequenceResponse.json().catch(() => ({}))) as {
+        const rawSequencePayload = (await sequenceResponse.json().catch(() => ({}))) as {
           sequence?: SequenceSummary;
           steps?: SequenceStepRow[];
           error?: string;
+          data?: {
+            sequence?: SequenceSummary;
+            steps?: SequenceStepRow[];
+            error?: string;
+          };
         };
+        const sequencePayload = unwrapPayload(rawSequencePayload);
 
         if (!sequenceResponse.ok) {
           throw new Error(parseError(sequencePayload, "Failed to load sequence"));
         }
 
-        const contactsPayload = (await contactsResponse.json().catch(() => ({}))) as {
+        const rawContactsPayload = (await contactsResponse.json().catch(() => ({}))) as {
           contacts?: ContactRow[];
           error?: string;
+          data?: {
+            contacts?: ContactRow[];
+            error?: string;
+          };
         };
+        const contactsPayload = unwrapPayload(rawContactsPayload);
 
         if (!contactsResponse.ok) {
           throw new Error(parseError(contactsPayload, "Failed to load contacts"));
@@ -177,7 +200,7 @@ export default function EnrollContactsPage() {
   }, [sequenceId]);
 
   const contactsWithEmail = useMemo(
-    () => contacts.filter((contact) => Boolean(contact.email && contact.email.trim())),
+    () => contacts.filter((contact) => Boolean(getContactEmail(contact).trim())),
     [contacts]
   );
 
@@ -187,8 +210,8 @@ export default function EnrollContactsPage() {
 
     return contactsWithEmail.filter((contact) => {
       const name = fullName(contact).toLowerCase();
-      const email = (contact.email ?? "").toLowerCase();
-      const company = (contact.company_name ?? "").toLowerCase();
+      const email = getContactEmail(contact).toLowerCase();
+      const company = (contact.company ?? "").toLowerCase();
 
       return name.includes(query) || email.includes(query) || company.includes(query);
     });
@@ -268,10 +291,15 @@ export default function EnrollContactsPage() {
         }),
       });
 
-      const payload = (await response.json().catch(() => ({}))) as {
+      const rawPayload = (await response.json().catch(() => ({}))) as {
         enrolled?: number;
         error?: string;
+        data?: {
+          enrolled?: number;
+          error?: string;
+        };
       };
+      const payload = unwrapPayload(rawPayload);
 
       if (!response.ok) {
         throw new Error(parseError(payload, "Failed to enroll contacts"));
@@ -388,11 +416,11 @@ export default function EnrollContactsPage() {
                                 />
                               </td>
                               <td className="px-3 py-3 font-medium text-[#2D2B55]">{fullName(contact)}</td>
-                              <td className="px-3 py-3 text-slate-700">{contact.email}</td>
-                              <td className="px-3 py-3 text-slate-700">{contact.company_name || "-"}</td>
+                              <td className="px-3 py-3 text-slate-700">{getContactEmail(contact) || "-"}</td>
+                              <td className="px-3 py-3 text-slate-700">{contact.company || "-"}</td>
                               <td className="px-3 py-3">
                                 <Badge className="border-slate-200 bg-slate-100 text-slate-700">
-                                  {contact.status || "discovered"}
+                                  {contact.status || "new"}
                                 </Badge>
                               </td>
                             </tr>
@@ -451,7 +479,7 @@ export default function EnrollContactsPage() {
                             >
                               <div>
                                 <p className="text-sm font-medium text-[#2D2B55]">{fullName(contact)}</p>
-                                <p className="text-xs text-slate-600">{contact.email}</p>
+                                <p className="text-xs text-slate-600">{getContactEmail(contact)}</p>
                               </div>
                               {isExpanded ? (
                                 <ChevronDown className="h-4 w-4 text-slate-500" />

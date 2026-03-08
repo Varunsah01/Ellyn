@@ -16,10 +16,12 @@ type SequenceOwnershipRow = {
 type EnrollmentRow = {
   id: string;
   sequence_id: string;
+  contact_id: string;
+  user_id: string;
   status: "active" | "paused" | "completed" | "bounced" | null;
   current_step_index: number | null;
   next_step_at: string | null;
-  started_at: string | null;
+  enrolled_at: string | null;
   completed_at: string | null;
 };
 
@@ -50,7 +52,7 @@ async function getEnrollment(
 ) {
   return supabase
     .from("sequence_enrollments")
-    .select("id, sequence_id, status, current_step_index, next_step_at, started_at, completed_at")
+    .select("id, sequence_id, contact_id, user_id, status, current_step_index, next_step_at, enrolled_at, completed_at")
     .eq("id", enrollmentId)
     .eq("sequence_id", sequenceId)
     .maybeSingle<EnrollmentRow>();
@@ -99,7 +101,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
       })
       .eq("id", params.enrollmentId)
       .eq("sequence_id", params.id)
-      .select("id, sequence_id, status, current_step_index, next_step_at, started_at, completed_at")
+      .eq("user_id", user.id)
+      .select("id, sequence_id, contact_id, user_id, status, current_step_index, next_step_at, enrolled_at, completed_at")
       .single<EnrollmentRow>();
 
     if (error) {
@@ -146,7 +149,8 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
       .from("sequence_enrollments")
       .delete()
       .eq("id", params.enrollmentId)
-      .eq("sequence_id", params.id);
+      .eq("sequence_id", params.id)
+      .eq("user_id", user.id);
 
     if (error) {
       return NextResponse.json({ error: error.message || "Failed to remove enrollment" }, { status: 500 });

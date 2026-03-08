@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
+import { isMissingDbObjectError } from "@/app/api/analytics/_helpers";
 import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 
@@ -45,6 +46,13 @@ type RouteParams = {
   params: Promise<{ id: string }>;
 };
 
+function trackerSchemaMissingResponse() {
+  return NextResponse.json(
+    { error: "Tracker schema is missing. Apply the Supabase reconciliation migration." },
+    { status: 503 }
+  );
+}
+
 export async function PATCH(request: NextRequest, context: RouteParams) {
   try {
     const user = await getAuthenticatedUserFromRequest(request);
@@ -69,6 +77,9 @@ export async function PATCH(request: NextRequest, context: RouteParams) {
       .maybeSingle();
 
     if (error) {
+      if (isMissingDbObjectError(error)) {
+        return trackerSchemaMissingResponse();
+      }
       return NextResponse.json({ error: error.message || "Failed to update application" }, { status: 500 });
     }
 
@@ -102,6 +113,9 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
       .maybeSingle();
 
     if (existingError) {
+      if (isMissingDbObjectError(existingError)) {
+        return trackerSchemaMissingResponse();
+      }
       return NextResponse.json({ error: existingError.message || "Failed to delete application" }, { status: 500 });
     }
 
@@ -116,6 +130,9 @@ export async function DELETE(request: NextRequest, context: RouteParams) {
       .eq("user_id", user.id);
 
     if (error) {
+      if (isMissingDbObjectError(error)) {
+        return trackerSchemaMissingResponse();
+      }
       return NextResponse.json({ error: error.message || "Failed to delete application" }, { status: 500 });
     }
 

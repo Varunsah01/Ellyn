@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { z } from 'zod'
 
 import { getAuthenticatedServiceRoleClient } from '@/lib/auth/api-user'
+import { syncSequenceSteps } from '@/lib/sequences/contracts'
 import { formatZodError } from '@/lib/validation/schemas'
 
 type PlanType = 'free' | 'starter' | 'pro'
@@ -357,6 +358,15 @@ export async function POST(request: NextRequest) {
   if (createError || !created) {
     return NextResponse.json(
       { error: 'Failed to create sequence', details: createError?.message },
+      { status: 500 }
+    )
+  }
+
+  const syncResult = await syncSequenceSteps(supabase, created.id, normalizedSteps)
+  if (syncResult.error) {
+    await supabase.from('sequences').delete().eq('id', created.id).eq('user_id', user.id)
+    return NextResponse.json(
+      { error: 'Failed to create sequence steps', details: syncResult.error.message },
       { status: 500 }
     )
   }

@@ -13,7 +13,7 @@ import { incrementEmailGeneration, QuotaExceededError } from '@/lib/quota'
 import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 import { resolveDomain } from '@/lib/domain-resolution-service'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { verifyEmailZeroBounce } from '@/lib/zerobounce'
+import { verifyEmailAbstract } from '@/lib/abstract-email-validation'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const enrichSchema = z.object({
@@ -37,7 +37,7 @@ type EnrichResponse = {
     confidence: number
     verified: boolean
     badge: 'verified' | 'most_probable' | 'domain_no_mx'
-    verificationSource?: 'zerobounce' | 'mx_only'
+    verificationSource?: 'abstract' | 'mx_only'
   }
   domain: string
   metadata: {
@@ -356,7 +356,7 @@ export async function POST(request: NextRequest) {
       throw new Error('Failed to generate email candidates')
     }
 
-    // Phase 3: Verification (MX always first, then up to two ZeroBounce checks).
+    // Phase 3: Verification (MX always first, then up to two Abstract checks).
     const mxInfo = await verifyDomainMX(domain)
 
     if (!mxInfo.hasMX) {
@@ -388,9 +388,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response)
     }
 
-    const zerobounceKey = process.env.ZEROBOUNCE_API_KEY?.trim()
+    const abstractValidationKey = process.env.ABSTRACT_EMAIL_VALIDATION_API_KEY?.trim()
 
-    if (!zerobounceKey) {
+    if (!abstractValidationKey) {
       const response = buildSuccessResponse({
         result: {
           email: top.email,
@@ -423,7 +423,7 @@ export async function POST(request: NextRequest) {
     let checked = 0
 
     for (const candidate of verificationCandidates) {
-      const verification = await verifyEmailZeroBounce(candidate.email)
+      const verification = await verifyEmailAbstract(candidate.email)
       checked += 1
 
       if (verification.deliverability === 'DELIVERABLE') {
@@ -434,7 +434,7 @@ export async function POST(request: NextRequest) {
             confidence: Math.max(candidate.confidence, 90),
             verified: true,
             badge: 'verified',
-            verificationSource: 'zerobounce',
+            verificationSource: 'abstract',
           },
           domain,
           companySize,

@@ -623,30 +623,9 @@ async function ensureDomainCacheTableExists(
         code: probe.error.code,
         message: probe.error.message,
       })
-      return false
     }
 
-    const createSql = `
-      CREATE TABLE IF NOT EXISTS public.domain_resolution_cache (
-        company_name TEXT PRIMARY KEY,
-        domain TEXT NOT NULL,
-        source VARCHAR(20) NOT NULL CHECK (source IN ('known_db', 'clearbit', 'brandfetch', 'heuristic')),
-        timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_domain_resolution_cache_timestamp
-        ON public.domain_resolution_cache(timestamp DESC);
-    `
-
-    const rpcNames = ['execute_sql', 'exec_sql', 'run_sql', 'sql']
-    for (const rpcName of rpcNames) {
-      const { error } = await (serviceClient as any).rpc(rpcName, { sql: createSql })
-      if (!error) {
-        console.warn('[resolve-domain] domain_resolution_cache created via SQL RPC:', rpcName)
-        return true
-      }
-    }
-
-    console.warn('[resolve-domain] Unable to create cache table automatically; SQL RPC is unavailable')
+    console.warn('[resolve-domain] domain_resolution_cache is missing; apply the Supabase migration to enable caching')
     return false
   } catch (error) {
     console.warn('[resolve-domain] Cache table ensure failed:', sanitizeErrorForLog(error))

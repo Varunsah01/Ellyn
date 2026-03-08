@@ -9,7 +9,7 @@ type NormalizedStatus = "discovered" | "sent" | "replied" | "bounced";
 type ContactRow = {
   id: string;
   status: string | null;
-  company_name: string | null;
+  company: string | null;
   role: string | null;
   created_at: string | null;
 };
@@ -22,7 +22,7 @@ type SequenceRow = {
 type EnrollmentRow = {
   id: string;
   sequence_id: string;
-  started_at: string | null;
+  enrolled_at: string | null;
 };
 
 type EnrollmentStepRow = {
@@ -44,7 +44,9 @@ const STATUS_ORDER: NormalizedStatus[] = ["discovered", "sent", "replied", "boun
 function normalizeStatus(value: string | null | undefined): NormalizedStatus {
   const raw = String(value ?? "").trim().toLowerCase();
 
-  if (raw === "sent" || raw === "contacted") return "sent";
+  // Modern contacts use new/contacted/replied/no_response; bucket them into
+  // the legacy analytics groups expected by the existing dashboard.
+  if (raw === "sent" || raw === "contacted" || raw === "no_response") return "sent";
   if (raw === "replied") return "replied";
   if (raw === "bounced") return "bounced";
   return "discovered";
@@ -208,7 +210,7 @@ export async function GET(request: NextRequest) {
 
     let contactsQuery = supabase
       .from("contacts")
-      .select("id, status, company_name, role, created_at")
+      .select("id, status, company, role, created_at")
       .eq("user_id", user.id)
       .order("created_at", { ascending: true });
 
@@ -271,7 +273,7 @@ export async function GET(request: NextRequest) {
 
     const contactsOverTime = buildContactsOverTime(contacts, periodStart, now);
 
-    const topCompanies = buildTopValues(contacts.map((contact) => contact.company_name)).map((item) => ({
+    const topCompanies = buildTopValues(contacts.map((contact) => contact.company)).map((item) => ({
       company_name: item.label,
       count: item.count,
     }));
@@ -296,11 +298,11 @@ export async function GET(request: NextRequest) {
     if (sequenceIds.length > 0) {
       let enrollmentsQuery = supabase
         .from("sequence_enrollments")
-        .select("id, sequence_id, started_at")
+        .select("id, sequence_id, enrolled_at")
         .in("sequence_id", sequenceIds);
 
       if (periodStart) {
-        enrollmentsQuery = enrollmentsQuery.gte("started_at", periodStart.toISOString());
+        enrollmentsQuery = enrollmentsQuery.gte("enrolled_at", periodStart.toISOString());
       }
 
       const { data: enrollmentsData, error: enrollmentsError } = await enrollmentsQuery;
@@ -427,4 +429,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

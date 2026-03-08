@@ -44,6 +44,12 @@ type EnrollmentRow = {
 
 const enrollSchema = z.object({
   contactIds: z.array(z.string().uuid()).min(1).max(500),
+  startDate: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .transform((value) => (value ? value : null)),
   skipSuppressed: z.boolean().default(true),
 })
 
@@ -297,7 +303,12 @@ export async function POST(
   }
 
   const firstStep = sequenceSteps[0]!
-  const nextStepAt = new Date()
+  const startAt = parsed.data.startDate ? new Date(parsed.data.startDate) : new Date()
+  if (Number.isNaN(startAt.getTime())) {
+    return NextResponse.json({ error: 'Invalid startDate' }, { status: 400 })
+  }
+
+  const nextStepAt = new Date(startAt)
   nextStepAt.setDate(nextStepAt.getDate() + (firstStep.delayDays ?? 0))
 
   const enrollmentPayload = validContactIds.map((contactId) => ({
@@ -307,6 +318,7 @@ export async function POST(
     status: 'active',
     current_step_index: 0,
     next_step_at: nextStepAt.toISOString(),
+    enrolled_at: startAt.toISOString(),
   }))
 
   const { data: inserted, error: insertError } = await supabase

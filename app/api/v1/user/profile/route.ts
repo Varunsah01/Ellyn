@@ -12,7 +12,6 @@ const ProfilePatchSchema = z.object({
 type ProfileRow = {
   id: string;
   full_name: string | null;
-  email: string | null;
   avatar_url: string | null;
   updated_at: string | null;
 };
@@ -37,12 +36,17 @@ export async function PATCH(request: NextRequest) {
         },
         { onConflict: "id" }
       )
-      .select("id, full_name, email, avatar_url, updated_at")
+      .select("id, full_name, avatar_url, updated_at")
       .single<ProfileRow>();
 
     if (error) return err(error.message || "Failed to update profile", 500);
 
-    return NextResponse.json({ profile: data });
+    return NextResponse.json({
+      profile: {
+        ...data,
+        email: user.email ?? null,
+      },
+    });
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") return unauthorized();
     return err(error instanceof Error ? error.message : "Failed to update profile", 500);

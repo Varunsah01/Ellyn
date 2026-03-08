@@ -92,7 +92,7 @@ let csrfRefreshPromise = null;
 let csrfTokenBaseUrl = '';
 let backendBaseUrlCache = '';
 let backendBaseUrlCachedAt = 0;
-let zerobouncePreferredBaseUrl = '';
+let abstractPreferredBaseUrl = '';
 let smtpProbeHealthChecked = false;
 let smtpProbeHealthCheckPromise = null;
 
@@ -188,7 +188,7 @@ async function runSmtpProbeHealthCheck() {
 
     try {
       const authToken = await getAuthToken();
-      const probeResponse = await callZeroBounceVerifyWithFallback(
+      const probeResponse = await callAbstractVerifyWithFallback(
         'healthcheck@example.com',
         authToken,
         5000,
@@ -3332,9 +3332,9 @@ function buildApiUrl(baseUrl, path) {
   return `${normalizedBase}${normalizedPath}`;
 }
 
-function getZeroBounceCandidateBases(primaryBase) {
+function getAbstractCandidateBases(primaryBase) {
   const primary = normalizeOrigin(primaryBase);
-  const preferred = normalizeOrigin(zerobouncePreferredBaseUrl);
+  const preferred = normalizeOrigin(abstractPreferredBaseUrl);
   const fallback = normalizeOrigin(CONFIG.API_BASE_URL);
   const localBases = LOCAL_DEV_ORIGINS.map((origin) => normalizeOrigin(origin)).filter(Boolean);
   const ordered = [preferred, primary, ...localBases, fallback].filter(Boolean);
@@ -3349,13 +3349,13 @@ function isLikelyJsonApiResponse(response, payload) {
   return payload && typeof payload === 'object';
 }
 
-async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, context = {}) {
+async function callAbstractVerifyWithFallback(email, authToken, timeoutMs, context = {}) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
   const primaryBase = await getBackendBaseUrl();
-  const candidateBases = getZeroBounceCandidateBases(primaryBase);
+  const candidateBases = getAbstractCandidateBases(primaryBase);
 
   if (candidateBases.length === 0) {
-    throw buildPipelineError('NETWORK_FAILURE', 'No backend origin available for ZeroBounce verification.', {
+    throw buildPipelineError('NETWORK_FAILURE', 'No backend origin available for email verification.', {
       isRecoverable: true,
     });
   }
@@ -3372,7 +3372,7 @@ async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, con
   const attempts = [];
 
   for (const base of candidateBases) {
-    const requestUrl = buildApiUrl(base, '/api/v1/zerobounce-verify');
+    const requestUrl = buildApiUrl(base, '/api/v1/email-verify');
 
     try {
       let { response, payload } = await executeBackendPostWithCsrfRetry(
@@ -3411,7 +3411,7 @@ async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, con
         finalOrigin,
       });
 
-      console.log('[ELLYN ZeroBounce] Endpoint attempt', {
+      console.log('[ELLYN Abstract Verify] Endpoint attempt', {
         operationId: context.operationId || '',
         base,
         status: response?.status,
@@ -3428,7 +3428,7 @@ async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, con
       if (response.ok && redirectedOffOrigin) {
         lastError = buildPipelineError(
           'REDIRECTED_API_RESPONSE',
-          `ZeroBounce verification endpoint redirected from ${base} to ${finalOrigin}.`,
+          `Email verification endpoint redirected from ${base} to ${finalOrigin}.`,
           { status: response.status, isRecoverable: true }
         );
         continue;
@@ -3437,7 +3437,7 @@ async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, con
       if (response.ok && !looksJson) {
         lastError = buildPipelineError(
           'NON_JSON_RESPONSE',
-          `ZeroBounce verification endpoint returned non-JSON response from ${base}.`,
+          `Email verification endpoint returned non-JSON response from ${base}.`,
           { status: response.status, isRecoverable: true }
         );
         continue;
@@ -3466,7 +3466,7 @@ async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, con
         continue;
       }
 
-      zerobouncePreferredBaseUrl = base;
+      abstractPreferredBaseUrl = base;
       backendBaseUrlCache = base;
       backendBaseUrlCachedAt = Date.now();
 
@@ -3485,7 +3485,7 @@ async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, con
         redirected: false,
         finalOrigin: '',
       });
-      console.warn('[ELLYN ZeroBounce] Endpoint attempt failed', {
+      console.warn('[ELLYN Abstract Verify] Endpoint attempt failed', {
         operationId: context.operationId || '',
         base,
         error: error?.message || String(error),
@@ -3502,7 +3502,7 @@ async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, con
         email: normalizedEmail,
         deliverability: 'UNKNOWN',
         reason: 'not_configured',
-        source: 'zerobounce',
+        source: 'abstract',
         attemptedBases: attempts.map((entry) => entry.base).filter(Boolean),
       },
       baseUsed: '',
@@ -3530,7 +3530,7 @@ async function callZeroBounceVerifyWithFallback(email, authToken, timeoutMs, con
       email: normalizedEmail,
       deliverability: 'UNKNOWN',
       reason: 'request_failed',
-      source: 'zerobounce',
+      source: 'abstract',
     },
     baseUsed: '',
     attempts,
@@ -5057,7 +5057,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       mxProvider,
       mxSucceededAttempt,
     });
-    // STAGE 5: Sequential ZeroBounce verification on LLM-ranked top candidates
+    // STAGE 5: Sequential Abstract verification on LLM-ranked top candidates
     stage = 'verify_candidates';
     await updateOperation(operationId, { stage });
     const rankedSmtpPool = (mxPassed.length > 0 ? mxPassed : candidates)
@@ -5074,13 +5074,13 @@ async function handleFindEmail(data, sender, sendResponse) {
     let selected = null;
     const alternativesFromVerification = [];
     const verificationResults = [];
-    let zbCreditsUsed = 0;
+    let validationCreditsUsed = 0;
 
     const verifyCandidateWithSmtpLimit = async (
       candidateEmail,
       maxAttemptsForCandidate = lookupLimits.maxSmtpAttemptsPerCandidate
     ) => {
-      let zbResult = null;
+      let validationResult = null;
       let lastError = null;
       let hadApiResponse = false;
 
@@ -5106,17 +5106,17 @@ async function handleFindEmail(data, sender, sendResponse) {
         });
 
         try {
-          const verificationResponse = await callZeroBounceVerifyWithFallback(candidateEmail, authToken, 15000, {
+          const verificationResponse = await callAbstractVerifyWithFallback(candidateEmail, authToken, 15000, {
             operationId,
           });
-          zbResult = verificationResponse?.payload || null;
-          hadApiResponse = Boolean(zbResult && typeof zbResult === 'object');
+          validationResult = verificationResponse?.payload || null;
+          hadApiResponse = Boolean(validationResult && typeof validationResult === 'object');
           if (verificationResponse?.authTokenUsed) {
             authToken = verificationResponse.authTokenUsed;
           }
-          const zbReason = String(zbResult?.reason || '').trim().toLowerCase();
-          if (hadApiResponse && zbReason !== 'not_configured') {
-            zbCreditsUsed += 1;
+          const validationReason = String(validationResult?.reason || '').trim().toLowerCase();
+          if (hadApiResponse && validationReason !== 'not_configured') {
+            validationCreditsUsed += 1;
           }
           break;
         } catch (err) {
@@ -5139,7 +5139,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       }
 
       return {
-        zbResult,
+        validationResult,
         lastError,
         hadApiResponse,
         attempts: Number(lookupLimits.smtpAttemptsByCandidate.get(candidateEmail) || 0),
@@ -5149,44 +5149,44 @@ async function handleFindEmail(data, sender, sendResponse) {
     for (const candidate of candidatesToVerify) {
       console.log('[ELLYN Stage 5] Verifying:', candidate.email);
       const smtpCheck = await verifyCandidateWithSmtpLimit(candidate.email, 1);
-      let zbResult = smtpCheck.zbResult;
+      let validationResult = smtpCheck.validationResult;
 
-      if (!zbResult) {
-        console.warn('[ELLYN Stage 5] ZeroBounce error for', candidate.email, smtpCheck.lastError?.message || '');
-        zbResult = { deliverability: 'UNKNOWN', reason: 'request_failed' };
+      if (!validationResult) {
+        console.warn('[ELLYN Stage 5] Abstract verification error for', candidate.email, smtpCheck.lastError?.message || '');
+        validationResult = { deliverability: 'UNKNOWN', reason: 'request_failed' };
       }
 
-      const zbReason = String(zbResult?.reason || '').trim().toLowerCase();
+      const validationReason = String(validationResult?.reason || '').trim().toLowerCase();
       if (
-        zbReason === 'not_configured' ||
-        zbReason === 'invalid_api_key' ||
-        zbReason === 'upstream_auth_error'
+        validationReason === 'not_configured' ||
+        validationReason === 'invalid_api_key' ||
+        validationReason === 'upstream_auth_error'
       ) {
-        const attemptedBases = Array.isArray(zbResult?.attemptedBases)
-          ? zbResult.attemptedBases.filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
+        const attemptedBases = Array.isArray(validationResult?.attemptedBases)
+          ? validationResult.attemptedBases.filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
           : [];
         const attemptedSuffix =
           attemptedBases.length > 0 ? ` Checked backend origins: ${attemptedBases.join(', ')}.` : '';
         throw buildPipelineError(
           'SMTP_NOT_CONFIGURED',
-          `Email verification provider is not configured (ZEROBOUNCE_API_KEY).${attemptedSuffix}`,
+          `Email verification provider is not configured (ABSTRACT_EMAIL_VALIDATION_API_KEY).${attemptedSuffix}`,
           { isRecoverable: false }
         );
       }
 
-      const deliverability = String(zbResult?.deliverability || 'UNKNOWN').toUpperCase();
+      const deliverability = String(validationResult?.deliverability || 'UNKNOWN').toUpperCase();
       
       verificationResults.push({
         email: candidate.email,
         deliverability,
-        confidence: zbResult?.confidence ?? candidate.confidence,
-        subStatus: zbResult?.subStatus || null,
+        confidence: validationResult?.confidence ?? candidate.confidence,
+        subStatus: validationResult?.subStatus || null,
         smtpAttempts: smtpCheck.attempts,
         verifiedByApi: smtpCheck.hadApiResponse,
-        source: 'zerobounce',
+        source: 'abstract',
       });
 
-      console.log('[ELLYN Stage 5] ZeroBounce result for', candidate.email, '', deliverability);
+      console.log('[ELLYN Stage 5] Abstract result for', candidate.email, '', deliverability);
       console.log('[ELLYN Debug] SMTP result', {
         operationId,
         email: candidate.email,
@@ -5197,10 +5197,10 @@ async function handleFindEmail(data, sender, sendResponse) {
       if (deliverability === 'DELIVERABLE') {
         selected = {
           ...candidate,
-          source: 'zerobounce_verified',
-          confidence: zbResult?.confidence ?? 0.95,
+          source: 'abstract_verified',
+          confidence: validationResult?.confidence ?? 0.95,
           tier: 'primary',
-          zbSubStatus: zbResult?.subStatus || null,
+          validationSubStatus: validationResult?.subStatus || null,
         };
         console.log('[ELLYN Stage 5]  Found DELIVERABLE email:', selected.email, '- stopping verification');
         break; // Stop immediately - do not verify remaining candidates
@@ -5222,12 +5222,12 @@ async function handleFindEmail(data, sender, sendResponse) {
       }
     }
 
-    // If no DELIVERABLE email was found via ZeroBounce after retry cap,
+    // If no DELIVERABLE email was found via Abstract after retry cap,
     // treat lookup as unknown/undeliverable (do not fall back to pattern guess).
     if (!selected) {
-      const anyZeroBounceResponse = verificationResults.some((row) => row.verifiedByApi === true);
-      if (!anyZeroBounceResponse) {
-        console.warn('[ELLYN Stage 5] ZeroBounce verification unavailable for all candidates. Returning not-found.');
+      const anyVerificationResponse = verificationResults.some((row) => row.verifiedByApi === true);
+      if (!anyVerificationResponse) {
+        console.warn('[ELLYN Stage 5] Abstract verification unavailable for all candidates. Returning not-found.');
         await completeOperation(operationId, 'completed', {
           stage: 'verify_candidates',
           result: { found: false, reason: 'smtp_unavailable' },
@@ -5236,10 +5236,10 @@ async function handleFindEmail(data, sender, sendResponse) {
           success: false,
           found: false,
           reason: 'smtp_unavailable',
-          message: 'SMTP verification could not be completed via ZeroBounce. Please try again.',
+          message: 'Email verification could not be completed via Abstract. Please try again.',
           domain,
           totalCandidates: candidatesToVerify.length,
-          warnings: [...domainWarnings, 'ZeroBounce verification was unavailable for this lookup.'],
+          warnings: [...domainWarnings, 'Abstract email verification was unavailable for this lookup.'],
           llmRankingPulled,
           llmRankingSource,
           llmRankingProvider,
@@ -5292,8 +5292,8 @@ async function handleFindEmail(data, sender, sendResponse) {
       alternativesCount: finalAlternatives.length,
     });
 
-    totalCost = toRoundedMoney(totalCost + (zbCreditsUsed * 0.008)); // $0.008 per ZB credit
-    console.log('[ELLYN Stage 5] Done. Credits used:', zbCreditsUsed, 
+    totalCost = toRoundedMoney(totalCost + (validationCreditsUsed * CONFIG.COSTS.verifyEmail));
+    console.log('[ELLYN Stage 5] Done. Credits used:', validationCreditsUsed, 
       'Selected:', selected?.email, 'Alternatives:', finalAlternatives.length);
 
     const smtpVerifiedCount = verificationResults.filter((r) => r.deliverability === 'DELIVERABLE').length;
@@ -5323,7 +5323,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       pattern: finalResult.pattern,
       confidence: Number(finalResult.confidence || 0),
       source: finalResult.source || 'smtp_verified',
-      smtpVerificationProvider: 'zerobounce',
+      smtpVerificationProvider: 'abstract',
       mxChecked: true,
       mxSelectedHasMx,
       mxSelectedFromAlternative: false,

@@ -75,7 +75,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { showToast } from "@/lib/toast";
 
-type ContactStatus = "discovered" | "sent" | "bounced" | "replied";
+type ContactStatus = "new" | "contacted" | "replied" | "no_response";
 type StatusFilter = "all" | ContactStatus;
 
 type Contact = {
@@ -83,11 +83,12 @@ type Contact = {
   user_id: string;
   first_name: string | null;
   last_name: string | null;
-  email: string | null;
-  company_name: string | null;
+  confirmed_email: string | null;
+  inferred_email: string | null;
+  company: string | null;
   role: string | null;
   status: ContactStatus;
-  discovery_source: string | null;
+  source: string | null;
   linkedin_url: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -96,16 +97,24 @@ type Contact = {
 };
 
 type ContactsResponse = {
+  success?: boolean;
   contacts: Contact[];
-  total: number;
-  hasMore: boolean;
+  total?: number;
+  totalCount?: number;
+  pages?: number;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 type ContactUpsertForm = {
   first_name: string;
   last_name: string;
   email: string;
-  company_name: string;
+  company: string;
   role: string;
   linkedin_url: string;
   status: ContactStatus;
@@ -115,34 +124,34 @@ const PAGE_SIZE = 20;
 
 const STATUS_TABS: Array<{ key: StatusFilter; label: string }> = [
   { key: "all", label: "All" },
-  { key: "discovered", label: "Discovered" },
-  { key: "sent", label: "Sent" },
-  { key: "bounced", label: "Bounced" },
+  { key: "new", label: "New" },
+  { key: "contacted", label: "Contacted" },
   { key: "replied", label: "Replied" },
+  { key: "no_response", label: "No Response" },
 ];
 
-const CONTACT_STATUSES: ContactStatus[] = ["discovered", "sent", "bounced", "replied"];
+const CONTACT_STATUSES: ContactStatus[] = ["new", "contacted", "replied", "no_response"];
 
 const DEFAULT_FORM: ContactUpsertForm = {
   first_name: "",
   last_name: "",
   email: "",
-  company_name: "",
+  company: "",
   role: "",
   linkedin_url: "",
-  status: "discovered",
+  status: "new",
 };
 
 function toStatusLabel(status: ContactStatus): string {
-  if (status === "discovered") return "Discovered";
-  if (status === "sent") return "Sent";
-  if (status === "bounced") return "Bounced";
+  if (status === "new") return "New";
+  if (status === "contacted") return "Contacted";
+  if (status === "no_response") return "No Response";
   return "Replied";
 }
 
 function statusClassName(status: ContactStatus): string {
-  if (status === "sent") return "border-blue-200 bg-blue-50 text-blue-700";
-  if (status === "bounced") return "border-red-200 bg-red-50 text-red-700";
+  if (status === "contacted") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (status === "no_response") return "border-red-200 bg-red-50 text-red-700";
   if (status === "replied") return "border-green-200 bg-green-50 text-green-700";
   return "border-slate-200 bg-slate-100 text-slate-700";
 }
@@ -178,14 +187,18 @@ function normalizeSource(value: string | null): string {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
+function getPrimaryEmail(contact: Pick<Contact, "confirmed_email" | "inferred_email">): string | null {
+  return contact.confirmed_email || contact.inferred_email || null;
+}
+
 function buildContactPayload(form: ContactUpsertForm) {
   return {
-    first_name: form.first_name.trim(),
-    last_name: form.last_name.trim(),
-    email: form.email.trim() || undefined,
-    company_name: form.company_name.trim() || undefined,
+    firstName: form.first_name.trim(),
+    lastName: form.last_name.trim(),
+    confirmedEmail: form.email.trim() || undefined,
+    company: form.company.trim(),
     role: form.role.trim() || undefined,
-    linkedin_url: form.linkedin_url.trim() || undefined,
+    linkedinUrl: form.linkedin_url.trim() || undefined,
     status: form.status,
   };
 }
@@ -211,10 +224,10 @@ export default function ContactsPage() {
 
   const [statusCounts, setStatusCounts] = useState<Record<StatusFilter, number>>({
     all: 0,
-    discovered: 0,
-    sent: 0,
-    bounced: 0,
+    new: 0,
+    contacted: 0,
     replied: 0,
+    no_response: 0,
   });
 
   const [refreshNonce, setRefreshNonce] = useState(0);
@@ -302,8 +315,9 @@ export default function ContactsPage() {
     try {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
-        offset: String(toOffset(page)),
-        sort: "created_at:desc",
+        page: String(page),
+        sortBy: "created_at",
+        sortDir: "desc",
       });
 
       if (debouncedSearch) {
@@ -316,9 +330,13 @@ export default function ContactsPage() {
       const response = await fetch(`/api/v1/contacts?${params.toString()}`, {
         cache: "no-store",
       });
-      const data = (await response.json().catch(() => ({}))) as
+      const raw = (await response.json().catch(() => ({}))) as
         | ContactsResponse
-        | { error?: string };
+        | { error?: string; data?: ContactsResponse };
+      const data =
+        raw && typeof raw === "object" && "data" in raw && raw.data
+          ? raw.data
+          : raw;
 
       if (!response.ok) {
         throw new Error((data as { error?: string }).error || "Failed to fetch contacts");
@@ -326,8 +344,23 @@ export default function ContactsPage() {
 
       const payload = data as ContactsResponse;
       setContacts(Array.isArray(payload.contacts) ? payload.contacts : []);
-      setTotal(typeof payload.total === "number" ? payload.total : 0);
-      setHasMore(Boolean(payload.hasMore));
+      const nextTotal =
+        typeof payload.totalCount === "number"
+          ? payload.totalCount
+          : typeof payload.pagination?.total === "number"
+            ? payload.pagination.total
+            : typeof payload.total === "number"
+              ? payload.total
+              : 0;
+      const totalPages =
+        typeof payload.pagination?.totalPages === "number"
+          ? payload.pagination.totalPages
+          : typeof payload.pages === "number"
+            ? payload.pages
+            : Math.max(1, Math.ceil(nextTotal / PAGE_SIZE));
+
+      setTotal(nextTotal);
+      setHasMore(page < totalPages);
       setSelectedIds(new Set());
     } catch (error) {
       showToast.error(error instanceof Error ? error.message : "Failed to fetch contacts");
@@ -340,7 +373,7 @@ export default function ContactsPage() {
     try {
       const baseParams = new URLSearchParams({
         limit: "1",
-        offset: "0",
+        page: "1",
       });
       if (debouncedSearch) {
         baseParams.set("search", debouncedSearch);
@@ -353,32 +386,52 @@ export default function ContactsPage() {
           const params = new URLSearchParams(baseParams);
           params.set("status", tab.key);
           const response = await fetch(`/api/v1/contacts?${params.toString()}`, { cache: "no-store" });
-          const data = (await response.json().catch(() => ({}))) as
+          const raw = (await response.json().catch(() => ({}))) as
             | ContactsResponse
-            | { error?: string };
+            | { error?: string; data?: ContactsResponse };
+          const data =
+            raw && typeof raw === "object" && "data" in raw && raw.data
+              ? raw.data
+              : raw;
           if (!response.ok) {
             throw new Error((data as { error?: string }).error || "Failed to fetch status counts");
           }
-          return { key: tab.key, total: (data as ContactsResponse).total ?? 0 };
+          const payload = data as ContactsResponse;
+          return {
+            key: tab.key,
+            total:
+              payload.totalCount ??
+              payload.pagination?.total ??
+              payload.total ??
+              0,
+          };
         })
       );
 
       const allResponse = await fetch(`/api/v1/contacts?${baseParams.toString()}`, {
         cache: "no-store",
       });
-      const allData = (await allResponse.json().catch(() => ({}))) as
+      const allRaw = (await allResponse.json().catch(() => ({}))) as
         | ContactsResponse
-        | { error?: string };
+        | { error?: string; data?: ContactsResponse };
+      const allData =
+        allRaw && typeof allRaw === "object" && "data" in allRaw && allRaw.data
+          ? allRaw.data
+          : allRaw;
       if (!allResponse.ok) {
         throw new Error((allData as { error?: string }).error || "Failed to fetch status counts");
       }
 
       const nextCounts: Record<StatusFilter, number> = {
-        all: (allData as ContactsResponse).total ?? 0,
-        discovered: 0,
-        sent: 0,
-        bounced: 0,
+        all:
+          (allData as ContactsResponse).totalCount ??
+          (allData as ContactsResponse).pagination?.total ??
+          (allData as ContactsResponse).total ??
+          0,
+        new: 0,
+        contacted: 0,
         replied: 0,
+        no_response: 0,
       };
 
       for (const item of responses) {
@@ -415,8 +468,8 @@ export default function ContactsPage() {
   const handleAddContact = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!addForm.first_name.trim() || !addForm.last_name.trim()) {
-      showToast.error("First name and last name are required");
+    if (!addForm.first_name.trim() || !addForm.last_name.trim() || !addForm.company.trim()) {
+      showToast.error("First name, last name, and company are required");
       return;
     }
 
@@ -449,11 +502,11 @@ export default function ContactsPage() {
     setEditForm({
       first_name: contact.first_name ?? "",
       last_name: contact.last_name ?? "",
-      email: contact.email ?? "",
-      company_name: contact.company_name ?? "",
+      email: getPrimaryEmail(contact) ?? "",
+      company: contact.company ?? "",
       role: contact.role ?? "",
       linkedin_url: contact.linkedin_url ?? "",
-      status: contact.status ?? "discovered",
+      status: contact.status ?? "new",
     });
   };
 
@@ -461,8 +514,8 @@ export default function ContactsPage() {
     event.preventDefault();
     if (!editingContact) return;
 
-    if (!editForm.first_name.trim() || !editForm.last_name.trim()) {
-      showToast.error("First name and last name are required");
+    if (!editForm.first_name.trim() || !editForm.last_name.trim() || !editForm.company.trim()) {
+      showToast.error("First name, last name, and company are required");
       return;
     }
 
@@ -656,13 +709,14 @@ export default function ContactsPage() {
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Score</TableHead>
-                  <TableHead>Discovery Source</TableHead>
+                  <TableHead>Source</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead className="w-[56px] text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {contacts.map((contact) => {
+                  const primaryEmail = getPrimaryEmail(contact);
                   const rowChecked = selectedIds.has(contact.id);
                   return (
                     <TableRow key={contact.id}>
@@ -684,15 +738,15 @@ export default function ContactsPage() {
                       </TableCell>
                       <TableCell className="font-medium">{displayName(contact)}</TableCell>
                       <TableCell>
-                        {contact.email ? (
+                        {primaryEmail ? (
                           <div className="flex items-center gap-2">
-                            <span className="max-w-[220px] truncate">{contact.email}</span>
+                            <span className="max-w-[220px] truncate">{primaryEmail}</span>
                             <Button
                               type="button"
                               size="icon"
                               variant="ghost"
                               className="h-7 w-7"
-                              onClick={() => void handleCopyEmail(contact.email as string)}
+                              onClick={() => void handleCopyEmail(primaryEmail)}
                             >
                               <Copy className="h-3.5 w-3.5" />
                             </Button>
@@ -701,7 +755,7 @@ export default function ContactsPage() {
                           <span className="text-muted-foreground">-</span>
                         )}
                       </TableCell>
-                      <TableCell>{contact.company_name || "-"}</TableCell>
+                      <TableCell>{contact.company || "-"}</TableCell>
                       <TableCell>{contact.role || "-"}</TableCell>
                       <TableCell>
                         <span
@@ -721,7 +775,7 @@ export default function ContactsPage() {
                           <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </TableCell>
-                      <TableCell>{normalizeSource(contact.discovery_source)}</TableCell>
+                      <TableCell>{normalizeSource(contact.source)}</TableCell>
                       <TableCell>{formatDate(contact.created_at)}</TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -854,10 +908,11 @@ export default function ContactsPage() {
               </label>
               <Input
                 id="add-company"
-                value={addForm.company_name}
+                value={addForm.company}
                 onChange={(event) =>
-                  setAddForm((prev) => ({ ...prev, company_name: event.target.value }))
+                  setAddForm((prev) => ({ ...prev, company: event.target.value }))
                 }
+                required
               />
             </div>
             <div className="space-y-1.5">
@@ -949,10 +1004,11 @@ export default function ContactsPage() {
               </label>
               <Input
                 id="edit-company"
-                value={editForm.company_name}
+                value={editForm.company}
                 onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, company_name: event.target.value }))
+                  setEditForm((prev) => ({ ...prev, company: event.target.value }))
                 }
+                required
               />
             </div>
             <div className="space-y-1.5">
@@ -990,10 +1046,10 @@ export default function ContactsPage() {
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="discovered">Discovered</SelectItem>
-                  <SelectItem value="sent">Sent</SelectItem>
-                  <SelectItem value="bounced">Bounced</SelectItem>
+                  <SelectItem value="new">New</SelectItem>
+                  <SelectItem value="contacted">Contacted</SelectItem>
                   <SelectItem value="replied">Replied</SelectItem>
+                  <SelectItem value="no_response">No Response</SelectItem>
                 </SelectContent>
               </Select>
             </div>

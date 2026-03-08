@@ -1964,7 +1964,7 @@ function buildErrorLookupTrace(code, stage) {
     return "Request blocked: authentication required.";
   }
   if (normalizedCode === "SMTP_NOT_CONFIGURED") {
-    return "ZeroBounce is not configured on the active backend origin.";
+    return "Abstract Email Validation is not configured on the active backend origin.";
   }
   if (normalizedCode === "REDIRECTED_API_RESPONSE" || normalizedCode === "NON_JSON_RESPONSE") {
     return "Backend endpoint mismatch detected. Verify extension API base URL.";
@@ -2959,7 +2959,7 @@ function displayNotFound(response) {
       "We couldn\u2019t verify a mail server for this company\u2019s domain. This person may use a private or undiscoverable email.";
   } else if (reason === "undeliverable") {
     const attemptText =
-      smtpProbeCount >= 2 ? "after two ZeroBounce SMTP checks" : "after ZeroBounce SMTP verification";
+      smtpProbeCount >= 2 ? "after two Abstract API checks" : "after Abstract API verification";
     subtext =
       `We found this company's mail server, but no deliverable email was confirmed ${attemptText}. Email ID is unknown.`;
   } else {
@@ -4117,10 +4117,10 @@ function toConfidencePercent(value) {
 function getSourceConfidenceBadgeMeta(source) {
   const normalized = String(source || "").trim().toLowerCase();
 
-  if (normalized === "zerobounce_verified") {
+  if (normalized === "abstract_verified" || normalized === "zerobounce_verified") {
     return { label: " Verified", color: "#16a34a" };
   }
-  if (normalized === "zerobounce_catchall") {
+  if (normalized === "abstract_catchall" || normalized === "zerobounce_catchall") {
     return { label: "~ Catch-all Domain", color: "#d97706" };
   }
   if (normalized === "mx_confirmed_unverified") {
@@ -4149,6 +4149,7 @@ function getConfidenceDescriptor(percent) {
 function formatSourceLabel(source) {
   const normalized = String(source || "").toLowerCase();
   if (normalized === "abstract_verified") return "Verified";
+  if (normalized === "abstract_catchall") return "Catch-all Domain";
   if (normalized === "smtp_verified") return "SMTP Verified";
   if (normalized === "pattern_confidence") return "Pattern Match";
   if (normalized === "cache_verified") return "Cache Verified";

@@ -6,11 +6,13 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 type ExportRow = {
   first_name: string | null;
   last_name: string | null;
-  email: string | null;
-  company_name: string | null;
+  confirmed_email: string | null;
+  inferred_email: string | null;
+  company: string | null;
   role: string | null;
   status: string | null;
   linkedin_url: string | null;
+  source: string | null;
   created_at: string | null;
 };
 
@@ -32,7 +34,9 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from("contacts")
-      .select("first_name, last_name, email, company_name, role, status, linkedin_url, created_at")
+      .select(
+        "first_name, last_name, confirmed_email, inferred_email, company, role, status, linkedin_url, source, created_at"
+      )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
@@ -48,6 +52,7 @@ export async function GET(request: NextRequest) {
       "Company",
       "Role",
       "Status",
+      "Source",
       "LinkedIn URL",
       "Created At",
     ];
@@ -58,10 +63,11 @@ export async function GET(request: NextRequest) {
         [
           row.first_name ?? "",
           row.last_name ?? "",
-          row.email ?? "",
-          row.company_name ?? "",
+          row.confirmed_email ?? row.inferred_email ?? "",
+          row.company ?? "",
           row.role ?? "",
           row.status ?? "",
+          row.source ?? "",
           row.linkedin_url ?? "",
           formatCsvDate(row.created_at),
         ]

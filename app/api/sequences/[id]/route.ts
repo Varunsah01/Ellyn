@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { z } from 'zod'
 
 import { getAuthenticatedServiceRoleClient } from '@/lib/auth/api-user'
+import { syncSequenceSteps } from '@/lib/sequences/contracts'
 import { formatZodError } from '@/lib/validation/schemas'
 
 type SequenceStatus = 'draft' | 'active' | 'paused' | 'archived'
@@ -431,6 +432,16 @@ export async function PATCH(
   }
 
   const sequenceSteps = normalizeStoredSteps(updated.steps)
+
+  if (parsed.data.steps !== undefined) {
+    const syncResult = await syncSequenceSteps(supabase, updated.id, sequenceSteps)
+    if (syncResult.error) {
+      return NextResponse.json(
+        { error: 'Failed to update sequence steps', details: syncResult.error.message },
+        { status: 500 }
+      )
+    }
+  }
 
   return NextResponse.json({
     success: true,

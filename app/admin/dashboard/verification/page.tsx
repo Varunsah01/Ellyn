@@ -18,7 +18,7 @@ export default async function VerificationPage() {
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-white">Verification Stats</h1>
-        <p className="text-sm text-gray-400 mt-1">ZeroBounce API usage &amp; costs</p>
+        <p className="text-sm text-gray-400 mt-1">Abstract API usage &amp; costs</p>
       </div>
 
       {error || !data?.success ? (

@@ -58,8 +58,8 @@ jest.mock('@/lib/supabase/server', () => ({
   createServiceRoleClient: jest.fn(),
 }))
 
-jest.mock('@/lib/zerobounce', () => ({
-  verifyEmailZeroBounce: jest.fn(),
+jest.mock('@/lib/abstract-email-validation', () => ({
+  verifyEmailAbstract: jest.fn(),
 }))
 
 jest.mock('@/lib/monitoring/sentry', () => ({
