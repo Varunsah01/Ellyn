@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/admin")) {
     if (pathname === "/admin/login") {
       // Already logged in → redirect to dashboard
-      const session = getAdminSessionFromRequest(request);
+      const session = await getAdminSessionFromRequest(request);
       if (session) {
         return NextResponse.redirect(new URL("/admin/dashboard", request.url));
       }
@@ -36,7 +36,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // All other /admin/* routes require a valid session
-    const session = getAdminSessionFromRequest(request);
+    const session = await getAdminSessionFromRequest(request);
     if (!session) {
       const loginUrl = new URL("/admin/login", request.url);
       loginUrl.searchParams.set("next", pathname);

@@ -25,7 +25,7 @@ export class AuthPage extends BasePage {
     const next = encodeURIComponent(nextPath);
     await this.page.goto(`/auth/login?next=${next}`);
     await expect(
-      this.page.getByRole("heading", { name: "Welcome Back" }),
+      this.page.getByRole("heading", { name: "Log in" }),
     ).toBeVisible();
   }
 
@@ -33,27 +33,25 @@ export class AuthPage extends BasePage {
     const next = encodeURIComponent(nextPath);
     await this.page.goto(`/auth/signup?next=${next}`);
     await expect(
-      this.page.getByRole("heading", { name: "Create Your Account" }),
+      this.page.getByRole("heading", { name: "Create your account" }),
     ).toBeVisible();
   }
 
   async signupNewUser(payload: SignupPayload): Promise<void> {
-    await this.page.getByPlaceholder("John Doe").fill(payload.fullName);
-    await this.page.getByPlaceholder("you@example.com").fill(payload.email);
-    await this.page.locator('input[type="password"]').first().fill(payload.password);
-    await this.page.locator('input[type="password"]').nth(1).fill(payload.password);
-
-    await this.page.locator("#terms").click();
-    await this.page.getByRole("button", { name: "Create Account" }).click();
+    await this.page.getByLabel("Full Name").fill(payload.fullName);
+    await this.page.getByLabel("Email Address").fill(payload.email);
+    await this.page.getByLabel("Password", { exact: true }).fill(payload.password);
+    await this.page.getByLabel("Confirm Password").fill(payload.password);
+    await this.page.getByRole("button", { name: "Create account" }).click();
   }
 
   async loginExistingUser(
     payload: LoginPayload,
     nextPath = "/dashboard/contacts",
   ): Promise<void> {
-    await this.page.getByPlaceholder("you@example.com").fill(payload.email);
-    await this.page.locator('input[type="password"]').fill(payload.password);
-    await this.page.getByRole("button", { name: /^Sign In$/ }).click();
+    await this.page.getByLabel("Email Address").fill(payload.email);
+    await this.page.getByLabel("Password").fill(payload.password);
+    await this.page.getByRole("button", { name: "Log in" }).click();
     await expect(this.page).toHaveURL(new RegExp(escapeRegex(nextPath)), {
       timeout: 30_000,
     });

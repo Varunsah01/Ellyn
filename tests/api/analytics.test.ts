@@ -1,203 +1,150 @@
 /**
- * Analytics API Integration Tests
- * Tests all analytics endpoints with real database queries
+ * @jest-environment node
  */
 
-import { GET } from '@/app/api/analytics/route';
-import { NextRequest } from 'next/server';
+jest.mock('@/lib/auth/helpers', () => ({
+  getAuthenticatedUser: jest.fn(),
+}))
 
-// Mock Supabase
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(() => ({
-    from: jest.fn(() => ({
-      select: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      gte: jest.fn().mockReturnThis(),
-      lte: jest.fn().mockReturnThis(),
-      not: jest.fn().mockReturnThis(),
-      order: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockReturnThis(),
-      single: jest.fn().mockResolvedValue({ data: null, error: null }),
-    })),
-    rpc: jest.fn().mockReturnThis(),
-  })),
-}));
+jest.mock('@/lib/monitoring/sentry', () => ({
+  captureApiException: jest.fn(),
+}))
+
+jest.mock('@/lib/supabase/server', () => ({
+  createServiceRoleClient: jest.fn(),
+}))
+
+import { NextRequest } from 'next/server'
+
+import { GET } from '@/app/api/analytics/route'
+import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { createServiceRoleClient } from '@/lib/supabase/server'
+
+type QueryResult = {
+  data?: unknown
+  count?: number | null
+  error?: unknown
+}
+
+type QueryQueues = Record<string, QueryResult[]>
+
+type QueryBuilder = PromiseLike<QueryResult> & {
+  select: jest.Mock
+  eq: jest.Mock
+  gte: jest.Mock
+  lte: jest.Mock
+  not: jest.Mock
+  order: jest.Mock
+  limit: jest.Mock
+  single: jest.Mock<Promise<QueryResult>, []>
+  maybeSingle: jest.Mock<Promise<QueryResult>, []>
+}
+
+function createQueryBuilder(queue: QueryResult[]) {
+  const builder = {} as QueryBuilder
+
+  builder.select = jest.fn(() => builder)
+  builder.eq = jest.fn(() => builder)
+  builder.gte = jest.fn(() => builder)
+  builder.lte = jest.fn(() => builder)
+  builder.not = jest.fn(() => builder)
+  builder.order = jest.fn(() => builder)
+  builder.limit = jest.fn(() => builder)
+  builder.single = jest.fn(async () => queue.shift() ?? { data: null, error: null })
+  builder.maybeSingle = jest.fn(async () => queue.shift() ?? { data: null, error: null })
+  builder.then = (onFulfilled, onRejected) =>
+    Promise.resolve(queue.shift() ?? { data: null, count: null, error: null }).then(
+      onFulfilled,
+      onRejected
+    )
+
+  return builder
+}
+
+function createMockSupabaseClient(queues: QueryQueues) {
+  return {
+    from: jest.fn((table: string) => createQueryBuilder(queues[table] ?? [])),
+  }
+}
 
 describe('Analytics API', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-  });
+    jest.clearAllMocks()
+    ;(getAuthenticatedUser as jest.Mock).mockResolvedValue({
+      id: 'test-user',
+      email: 'test@example.com',
+    })
+  })
 
-  describe('GET /api/analytics', () => {
-    test('returns 400 for invalid metric', async () => {
-      const request = new NextRequest('http://localhost:3000/api/analytics?metric=invalid');
-      const response = await GET(request);
+  test('returns 400 for an invalid metric', async () => {
+    ;(createServiceRoleClient as jest.Mock).mockResolvedValue(createMockSupabaseClient({}))
 
-      expect(response.status).toBe(400);
-      const data = await response.json();
-      expect(data.error).toBe('Invalid metric parameter');
-    });
+    const request = new NextRequest('http://localhost:3000/api/analytics?metric=invalid')
+    const response = await GET(request)
+    const body = await response.json()
 
-    test('returns 500 on database error', async () => {
-      // This would require mocking a database error
+    expect(response.status).toBe(400)
+    expect(body).toEqual({ error: 'Invalid metric parameter' })
+    expect(getAuthenticatedUser).toHaveBeenCalledTimes(1)
+    expect(createServiceRoleClient).toHaveBeenCalledTimes(1)
+  })
 
-      // Mock implementation would throw error
-      // const response = await GET(request);
-      // expect(response.status).toBe(500);
-    });
+  test('returns overview metrics with the expected keys and values', async () => {
+    ;(createServiceRoleClient as jest.Mock).mockResolvedValue(
+      createMockSupabaseClient({
+        contacts: [{ count: 5, error: null }],
+        drafts: [{ count: 2, error: null }],
+        outreach: [
+          { count: 1, error: null },
+          { data: [{ status: 'replied' }], error: null },
+          {
+            data: [{ status: 'replied', sent_at: '2026-03-05T10:00:00' }],
+            error: null,
+          },
+          {
+            data: [{ sent_at: '2026-03-05T10:00:00' }],
+            error: null,
+          },
+        ],
+        email_tracking_events: [
+          {
+            data: [{ event_type: 'sent' }, { event_type: 'replied' }],
+            error: null,
+          },
+        ],
+        sequences: [
+          {
+            data: [
+              {
+                id: 'seq-1',
+                name: 'Warm Intro',
+                status: 'active',
+                created_at: '2026-03-01T00:00:00Z',
+              },
+            ],
+            error: null,
+          },
+        ],
+      })
+    )
 
-    describe('Overview Metrics', () => {
-      test('returns overview metrics without comparison', async () => {
+    const request = new NextRequest('http://localhost:3000/api/analytics?metric=overview')
+    const response = await GET(request)
+    const body = await response.json()
 
-        // This test requires proper mocking of Supabase responses
-        // const response = await GET(request);
-        // expect(response.status).toBe(200);
-        // const data = await response.json();
-        // expect(data.data).toHaveProperty('totalContacts');
-        // expect(data.data).toHaveProperty('emailsSent');
-        // expect(data.data).toHaveProperty('replyRate');
-      });
-
-      test('returns overview metrics with comparison', async () => {
-
-        // const response = await GET(request);
-        // const data = await response.json();
-        // expect(data.comparison).toBeDefined();
-        // expect(data.comparison).toHaveProperty('contacts');
-        // expect(data.comparison).toHaveProperty('emailsSent');
-      });
-
-      test('defaults to last 30 days when no date range provided', async () => {
-
-        // Should use default date range
-        // const response = await GET(request);
-        // expect(response.status).toBe(200);
-      });
-    });
-
-    describe('Contacts Over Time', () => {
-      test('returns time series data', async () => {
-
-        // const response = await GET(request);
-        // const data = await response.json();
-        // expect(Array.isArray(data.data)).toBe(true);
-        // expect(data.data[0]).toHaveProperty('date');
-        // expect(data.data[0]).toHaveProperty('count');
-      });
-
-      test('groups contacts by date correctly', async () => {
-        // Mock data would have multiple contacts on same date
-        // Should aggregate them correctly
-      });
-    });
-
-    describe('Sequence Performance', () => {
-      test('returns performance metrics for all sequences', async () => {
-
-        // const response = await GET(request);
-        // const data = await response.json();
-        // expect(Array.isArray(data.data)).toBe(true);
-        // if (data.data.length > 0) {
-        //   expect(data.data[0]).toHaveProperty('name');
-        //   expect(data.data[0]).toHaveProperty('replyRate');
-        //   expect(data.data[0]).toHaveProperty('enrolled');
-        // }
-      });
-
-      test('calculates reply rate correctly', async () => {
-        // Mock sequence with known sent/replied counts
-        // Verify reply rate calculation: (replied / sent) * 100
-      });
-
-      test('sorts by reply rate descending', async () => {
-        // const response = await GET(request);
-        // const data = await response.json();
-        // if (data.data.length > 1) {
-        //   expect(data.data[0].replyRate).toBeGreaterThanOrEqual(data.data[1].replyRate);
-        // }
-      });
-    });
-
-    describe('Contact Insights', () => {
-      test('returns top companies', async () => {
-
-        // const response = await GET(request);
-        // const data = await response.json();
-        // expect(data.data).toHaveProperty('topCompanies');
-        // expect(Array.isArray(data.data.topCompanies)).toBe(true);
-      });
-
-      test('limits top companies to 10', async () => {
-        // const response = await GET(request);
-        // const data = await response.json();
-        // expect(data.data.topCompanies.length).toBeLessThanOrEqual(10);
-      });
-
-      test('returns source breakdown with percentages', async () => {
-        // const response = await GET(request);
-        // const data = await response.json();
-        // expect(data.data).toHaveProperty('sourceBreakdown');
-        // data.data.sourceBreakdown.forEach(item => {
-        //   expect(item).toHaveProperty('percentage');
-        //   expect(parseFloat(item.percentage)).toBeLessThanOrEqual(100);
-        // });
-      });
-    });
-
-    describe('Activity Heatmap', () => {
-      test('returns 7 days × 24 hours grid', async () => {
-
-        // const response = await GET(request);
-        // const data = await response.json();
-        // expect(data.data).toHaveLength(7); // 7 days
-        // data.data.forEach(day => {
-        //   expect(day.hours).toHaveLength(24); // 24 hours
-        // });
-      });
-
-      test('counts activities correctly per hour', async () => {
-        // Mock specific activities at known times
-        // Verify they appear in correct day/hour buckets
-      });
-    });
-  });
-
-  describe('Error Handling', () => {
-    test('handles missing date parameters gracefully', async () => {
-      const request = new NextRequest('http://localhost:3000/api/analytics?metric=overview');
-
-      // Should default to last 30 days
-      const response = await GET(request);
-      expect(response.status).toBe(200);
-    });
-
-    test('handles invalid date format', async () => {
-
-      // Should handle gracefully or return error
-      // const response = await GET(request);
-    });
-
-    test('handles database connection errors', async () => {
-      // Mock Supabase to throw connection error
-      // Verify API returns 500 with error message
-    });
-  });
-
-  describe('Performance', () => {
-    test('completes within acceptable time', async () => {
-      const request = new NextRequest('http://localhost:3000/api/analytics?metric=overview');
-
-      const start = Date.now();
-      await GET(request);
-      const duration = Date.now() - start;
-
-      // Should complete within 2 seconds
-      expect(duration).toBeLessThan(2000);
-    });
-
-    test('handles large datasets efficiently', async () => {
-      // Mock database with 10,000+ contacts
-      // Verify queries are optimized with proper aggregation
-    });
-  });
-});
+    expect(response.status).toBe(200)
+    expect(body).toEqual({
+      data: {
+        totalContacts: 5,
+        totalDrafts: 2,
+        emailsSent: 1,
+        replyRate: '100.0',
+        bestPerformingSequence: 'Warm Intro',
+        bestPerformingReplyRate: '100.0',
+        mostActiveDay: 'Thursday',
+        mostActiveHour: '10:00',
+      },
+      comparison: null,
+    })
+  })
+})

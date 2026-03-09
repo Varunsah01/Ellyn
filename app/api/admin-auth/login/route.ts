@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
 
   attempts.delete(ip)
 
-  const token = createSessionToken(username.trim())
+  const token = await createSessionToken(username.trim())
 
   const response = NextResponse.json({ success: true })
   response.cookies.set(COOKIE_NAME, token, {

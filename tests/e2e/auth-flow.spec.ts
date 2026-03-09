@@ -41,10 +41,10 @@ test.describe("Authentication flow", () => {
       password: user.password,
     });
 
-    await authPage.expectMessage(
-      "Account created. Check your email to verify your address before signing in.",
-    );
-    await authPage.expectUrlContains("/auth/signup");
+    await expect(page).toHaveURL(/\/dashboard\/contacts(?:\?.*)?$/, {
+      timeout: 30_000,
+    });
+    await expect(page.getByRole("heading", { name: "Contacts" })).toBeVisible();
   });
 
   test("logs in an existing user", async ({ page }) => {

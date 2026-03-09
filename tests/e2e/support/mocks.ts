@@ -7,8 +7,8 @@ type SupabaseSignInOptions = {
 };
 
 type SignupApiOptions = {
-  message?: string;
-  hasSession?: boolean;
+  status?: number;
+  error?: string;
   email?: string;
   fullName?: string;
   userId?: string;
@@ -183,22 +183,27 @@ export async function mockSignupApi(
     }
 
     const rawBody = route.request().postData();
-    const body = parseJsonBody<{ email?: string; name?: string }>(rawBody);
+    const body = parseJsonBody<{ email?: string; full_name?: string; name?: string }>(rawBody);
 
     const email = (body?.email || options.email || "new-user@example.com").toLowerCase();
-    const fullName = body?.name || options.fullName || "New User";
     const userId = options.userId || "mock-signup-user-id";
-    const hasSession = Boolean(options.hasSession);
+    const status = options.status ?? 200;
 
     await route.fulfill({
-      status: 200,
+      status,
       contentType: "application/json",
       body: JSON.stringify({
-        message:
-          options.message ||
-          "Account created. Check your email to verify your address before signing in.",
-        hasSession,
-        user: hasSession ? buildSupabaseUser(email, fullName, userId) : null,
+        ...(status === 200
+          ? {
+              success: true,
+              user: {
+                id: userId,
+                email,
+              },
+            }
+          : {
+              error: options.error || "Failed to create user",
+            }),
       }),
     });
   });

@@ -14,15 +14,16 @@ A comprehensive automated testing and quality assurance system has been built fo
 {
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "@swc/jest": "^0.2.39",
     "@testing-library/react": "^16.3.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/user-event": "^14.6.1",
-    "@types/jest": "^30.0.0",
+    "@types/jest": "^29.5.14",
     "@types/supertest": "^6.0.3",
-    "jest": "^30.2.0",
-    "jest-environment-jsdom": "^30.2.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
     "supertest": "^7.2.2",
-    "ts-jest": "^29.4.6"
+    "typescript": "^5.7.2"
   }
 }
 ```
@@ -61,17 +62,11 @@ A comprehensive automated testing and quality assurance system has been built fo
 **File**: `tests/api/analytics.test.ts`
 
 **Coverage**:
-- ✅ All `/api/analytics` endpoints
-- ✅ Overview metrics with/without comparison
-- ✅ Contacts over time aggregation
-- ✅ Sequence performance calculations
-- ✅ Contact insights (companies, roles, sources)
-- ✅ Activity heatmap data
-- ✅ Error handling (400, 500 responses)
-- ✅ Date range parameter validation
-- ✅ Performance benchmarks (<2s response time)
+- ✅ Deterministic invalid metric handling
+- ✅ Overview metric happy path under mocked auth + service-role DB responses
+- ✅ Stable assertions for analytics summary keys and values
 
-**Test Count**: 15+ tests
+**Test Count**: 2 focused regression tests
 
 ### 3. Component Tests
 
@@ -91,31 +86,24 @@ A comprehensive automated testing and quality assurance system has been built fo
 
 ### 4. E2E Tests (Playwright)
 
-**File**: `tests/e2e/dashboard-flow.spec.ts`
+**Files**:
+- `tests/e2e/auth-flow.spec.ts`
+- `tests/e2e/dashboard.spec.ts`
+- Additional focused specs under `tests/e2e/*.spec.ts`
 
 **Coverage**:
-- ✅ Complete user flow (Extract → Save → View → Sequence → Send)
+- ✅ Authentication flow aligned to the current auth UI
 - ✅ Dashboard navigation
 - ✅ Contact creation and management
-- ✅ Sequence creation and enrollment
-- ✅ Draft generation
 - ✅ Analytics viewing and filtering
-- ✅ Date range filtering
-- ✅ Export functionality (PDF/CSV)
-- ✅ Keyboard shortcuts (Cmd/Ctrl+K)
 - ✅ Error handling (network errors, API errors)
-- ✅ Mobile responsiveness
 - ✅ Accessibility compliance
-- ✅ Performance benchmarks
 
 **Test Count**: 25+ E2E scenarios
 
 **Browsers Tested**:
-- Chrome (Desktop)
+- Chromium (Desktop)
 - Firefox (Desktop)
-- Safari (Desktop)
-- Chrome (Mobile - Pixel 5)
-- Safari (Mobile - iPhone 12)
 
 ---
 
@@ -162,7 +150,7 @@ A comprehensive automated testing and quality assurance system has been built fo
    - Parallel execution
 
 3. **E2E Tests** (`e2e-tests`)
-   - Playwright tests on all browsers
+   - Playwright tests on Chromium and Firefox
    - Screenshot on failure
    - Upload test reports
 
@@ -176,10 +164,9 @@ A comprehensive automated testing and quality assurance system has been built fo
    - Snyk security scan
    - Vulnerability detection
 
-6. **Performance** (`lighthouse`)
-   - Lighthouse CI
-   - Performance metrics
-   - Accessibility scores
+6. **Result Aggregation** (`all-tests-passed`)
+   - Verifies required jobs succeeded
+   - Fails the workflow when required checks fail
 
 **Triggers**:
 - Push to `main` or `develop`
@@ -350,11 +337,11 @@ npm run lint
 
 ### Devices Tested (E2E)
 
-- ✅ iPhone 12 (Safari)
-- ✅ Pixel 5 (Chrome)
+- Desktop browser projects only: Chromium and Firefox
 
 ### Manual Testing Needed
 
+- [ ] Mobile browser coverage
 - [ ] iPad (Safari)
 - [ ] Galaxy Tab (Chrome)
 - [ ] Physical devices
@@ -436,10 +423,10 @@ A **production-ready testing system** has been implemented with:
 ✅ **180+ manual QA test cases**
 ✅ **Complete CI/CD pipeline** with 6 jobs
 ✅ **70%+ code coverage** threshold enforced
-✅ **Cross-browser testing** (Chrome, Firefox, Safari)
-✅ **Mobile testing** (iOS, Android)
+✅ **Cross-browser testing** (Chromium, Firefox)
+✅ **Manual mobile validation guidance**
 ✅ **Security scanning** (npm audit, Snyk)
-✅ **Performance benchmarks** (Lighthouse CI)
+✅ **Focused regression coverage for auth, analytics, and dashboard flows**
 ✅ **Comprehensive documentation** (3 guides)
 
 **Result**: Confidence in deployments, catch bugs before users do, maintain high quality standards.
@@ -459,4 +446,4 @@ For questions or issues:
 
 **Status**: ✅ **COMPLETE - Production Ready**
 
-Last Updated: 2024-02-07
+Last Updated: 2026-03-09

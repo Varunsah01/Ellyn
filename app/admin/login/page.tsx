@@ -29,12 +29,12 @@ function AdminLoginForm() {
       try {
         body = await res.json()
       } catch {
-        setError(`Server error (${res.status}). Check that ADMIN_USERNAME, ADMIN_PASSWORD, and ADMIN_SESSION_SECRET are set in Vercel environment variables.`)
+        setError(`Server error (${res.status}). Check that ADMIN_USERNAME, ADMIN_PASSWORD_HASH, and ADMIN_SESSION_SECRET are set in server environment variables.`)
         return
       }
 
       if (res.status === 503) {
-        setError('Admin auth not configured. Set ADMIN_USERNAME, ADMIN_PASSWORD, and ADMIN_SESSION_SECRET in Vercel environment variables.')
+        setError('Admin auth not configured. Set ADMIN_USERNAME, ADMIN_PASSWORD_HASH, and ADMIN_SESSION_SECRET in server environment variables.')
         return
       }
       if (res.status === 429) {
