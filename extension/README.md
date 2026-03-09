@@ -49,3 +49,15 @@ extension/
 
 - Frontend only (no backend integration changes)
 - CSS intentionally kept simple and compact
+
+## Public Config File (Required)
+
+The extension auth bridge reads public Supabase config from `extension/public-config.js`.
+
+- Generate it from env vars:
+  - `node scripts/security/generate-extension-public-config.mjs`
+- Required source vars:
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+`extension/public-config.js` is gitignored and must not be committed with environment-specific values.

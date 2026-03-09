@@ -82,6 +82,11 @@ This migration is idempotent and includes signup trigger automation for `user_pr
 - `ENABLE_DEBUG_ENDPOINTS`
 - `SECRET_ADMIN_TOKEN`
 - `ADMIN_IP_WHITELIST`
+- `ADMIN_API_SECRET`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD_HASH`
+- `ADMIN_SESSION_SECRET`
+- `CRON_SECRET`
 
 ## Scripts
 
@@ -89,6 +94,9 @@ This migration is idempotent and includes signup trigger automation for `user_pr
 - `npm run lint`
 - `npx tsc --noEmit`
 - `npm run build`
+- `npm run security:scan`
+- `npm run security:install-hooks`
+- `npm run extension:public-config`
 
 ## Documentation
 
@@ -99,3 +107,6 @@ This migration is idempotent and includes signup trigger automation for `user_pr
 - `docs/email-finder.md`
 - `docs/database-infra.md`
 - `docs/extension.md`
+- `docs/security/secret-inventory.md`
+- `docs/security/secret-rotation-runbook.md`
+- `docs/security/history-cleanup.md`

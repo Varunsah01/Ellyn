@@ -3,6 +3,7 @@
  * Handles Microsoft Identity Platform v2.0 OAuth flow, MS Graph API calls,
  * and AES-256-GCM token encryption using a dedicated OUTLOOK_TOKEN_ENCRYPTION_KEY.
  */
+import 'server-only'
 
 import { randomBytes, createCipheriv, createDecipheriv } from 'crypto'
 

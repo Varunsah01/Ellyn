@@ -4,6 +4,7 @@
  * Server-side only - do not import in client components.
  * Never throws; returns UNKNOWN on any failure so callers can degrade gracefully.
  */
+import 'server-only'
 
 export type EmailValidationDeliverability = 'DELIVERABLE' | 'UNDELIVERABLE' | 'CATCHALL' | 'UNKNOWN'
 

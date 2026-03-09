@@ -9,6 +9,7 @@
  *   const result = await callLLMWithFallback({ systemPrompt, userPrompt, maxTokens: 200 })
  *   console.log(result.text, result.provider)
  */
+import 'server-only'
 
 import { getGeminiClient } from '@/lib/gemini'
 import { GoogleGenerativeAI } from '@google/generative-ai'

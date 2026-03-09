@@ -32,7 +32,7 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Send, Loader2, FileText } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/useToast";
-import { replaceTemplateVariables } from "@/lib/gmail-helper";
+import { fillVariables as replaceTemplateVariables } from "@/lib/template-variables";
 import type { Lead } from "@/lib/supabase/types";
 import { CsrfHiddenInput } from "@/components/CsrfHiddenInput";
 
@@ -288,4 +288,3 @@ export function EmailComposer({ open, onOpenChange, lead }: EmailComposerProps) 
     </Dialog>
   );
 }
-

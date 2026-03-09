@@ -5,7 +5,7 @@ import { getAuthenticatedUserFromRequest } from "@/lib/auth/helpers";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { sendEmailViaGmail } from "@/lib/gmail-send";
 import { sendEmailViaOutlook } from "@/lib/outlook-send";
-import { replaceTemplateVariables } from "@/lib/gmail-helper";
+import { fillVariables as replaceTemplateVariables } from "@/lib/template-variables";
 import { generateSequenceTrackingPixelUrl } from "@/lib/tracking";
 
 const ExecuteActionSchema = z.object({
@@ -350,4 +350,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

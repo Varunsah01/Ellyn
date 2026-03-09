@@ -10,6 +10,7 @@ function loadOptionalScript(path, label) {
 }
 
 loadOptionalScript('lib/vendor/supabase.js', 'Supabase UMD library');
+loadOptionalScript('public-config.js', 'extension public config');
 loadOptionalScript('lib/supabase.js', 'Supabase extension auth bridge');
 loadOptionalScript('lib/sync.js', 'Supabase contact sync bridge');
 loadOptionalScript('lib/syncQueue.js', 'Supabase contact sync queue bridge');

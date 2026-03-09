@@ -1,6 +1,9 @@
+import 'server-only'
+
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { requirePublicEnv, requireServerEnv } from '@/lib/env'
 import { instrumentSupabaseClientPerformance } from '@/lib/monitoring/performance'
 
 function instrumentSupabaseClientIfNeeded<T extends object>(
@@ -18,14 +21,6 @@ function instrumentSupabaseClientIfNeeded<T extends object>(
   }
 }
 
-function requireEnv(name: string): string {
-  const value = process.env[name]?.trim()
-  if (!value) {
-    throw new Error(`${name} is required but not set`)
-  }
-  return value
-}
-
 /**
  * Create client.
  * @returns {unknown} Computed unknown.
@@ -35,8 +30,8 @@ function requireEnv(name: string): string {
  */
 export async function createClient() {
   const cookieStore = await cookies()
-  const supabaseUrl = requireEnv('NEXT_PUBLIC_SUPABASE_URL')
-  const supabaseAnonKey = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
+  const supabaseUrl = requirePublicEnv('NEXT_PUBLIC_SUPABASE_URL')
+  const supabaseAnonKey = requirePublicEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
 
   const client = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
@@ -72,8 +67,8 @@ export async function createClient() {
  */
 export async function createServiceRoleClient() {
   return createSupabaseClient(
-    requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
+    requirePublicEnv('NEXT_PUBLIC_SUPABASE_URL'),
+    requireServerEnv('SUPABASE_SERVICE_ROLE_KEY'),
     {
       auth: {
         autoRefreshToken: false,

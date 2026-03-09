@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { clear } from '@/lib/cache/redis'
+import { requireAdminApiSecret } from '@/lib/auth/admin-api-secret'
 import { captureApiException } from '@/lib/monitoring/sentry'
 import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 
@@ -17,12 +18,9 @@ const MX_VERIFICATION_PATTERN    = 'cache:mx-verification:*'
  * Protected by the same x-admin-secret guard used across admin routes.
  */
 export async function DELETE(request: NextRequest) {
-  const adminSecret = process.env.ADMIN_API_SECRET?.trim()
-  if (adminSecret) {
-    const provided = request.headers.get('x-admin-secret')?.trim()
-    if (provided !== adminSecret) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+  const guardResponse = requireAdminApiSecret(request)
+  if (guardResponse) {
+    return guardResponse
   }
 
   const rl = await checkApiRateLimit('admin:cache-purge', 10, 3600)

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v bash >/dev/null 2>&1; then
+  echo "bash is required to run security pre-commit checks." >&2
+  exit 1
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "git is required to run staged secret scan checks." >&2
+  exit 1
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+bash scripts/security/scan-secrets.sh --staged --strict

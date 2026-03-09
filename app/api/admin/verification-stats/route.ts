@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { requireAdminApiSecret } from '@/lib/auth/admin-api-secret'
 import { captureApiException } from '@/lib/monitoring/sentry'
 
 export const dynamic = 'force-dynamic'
@@ -81,13 +82,9 @@ function periodStart(offsetDays: number): string {
  * and deliverability breakdown. Intended for admin dashboards only.
  */
 export async function GET(request: NextRequest) {
-  // Lightweight admin guard — require a server-side secret header
-  const adminSecret = process.env.ADMIN_API_SECRET?.trim()
-  if (adminSecret) {
-    const provided = request.headers.get('x-admin-secret')?.trim()
-    if (provided !== adminSecret) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+  const guardResponse = requireAdminApiSecret(request)
+  if (guardResponse) {
+    return guardResponse
   }
 
   try {

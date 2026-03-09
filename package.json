@@ -7,6 +7,10 @@
   },
   "scripts": {
     "check:env-local": "node scripts/check-env-local-precedence.mjs",
+    "security:scan": "bash scripts/security/scan-secrets.sh --strict",
+    "security:scan:staged": "bash scripts/security/scan-secrets.sh --staged --strict",
+    "security:install-hooks": "bash scripts/security/install-hooks.sh",
+    "extension:public-config": "node scripts/security/generate-extension-public-config.mjs",
     "predev": "npm run check:env-local",
     "prebuild": "npm run check:env-local",
     "prestart": "npm run check:env-local",

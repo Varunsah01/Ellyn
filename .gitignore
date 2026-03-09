@@ -18,15 +18,26 @@
 # misc
 .DS_Store
 *.pem
+*.key
+*.p12
+*.pfx
+*credentials*.json
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
-.env*.local
+# local env files and generated secret-bearing config
 .env
+.env.*
+!.env.example
+!.env.local.example
+/extension/public-config.js
+/supabase/.temp/
+/.codex-tmp/
+/security_findings.md
+/security_findings.json
 
 # vercel
 .vercel

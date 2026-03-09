@@ -2,6 +2,7 @@
  * Gemini Flash fallback for inferring corporate email domains.
  * Used when primary domain resolution yields no MX records.
  */
+import 'server-only'
 
 const GEMINI_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'

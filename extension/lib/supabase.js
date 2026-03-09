@@ -1,7 +1,24 @@
 /* eslint-disable no-console */
 (function initExtensionSupabaseAuth(globalScope) {
-  const SUPABASE_URL = 'https://bgknhoxicrxgqzraregj.supabase.co';
-  const SUPABASE_ANON_KEY = 'sb_publishable_Wh5SfZ81Qd4acYcMPtXEkQ_E0IvwP2B';
+  function readPublicConfig() {
+    const fallback = { supabaseUrl: '', supabaseAnonKey: '' };
+    const config = globalScope?.ELLYN_PUBLIC_CONFIG;
+    if (!config || typeof config !== 'object') {
+      return fallback;
+    }
+
+    return {
+      supabaseUrl:
+        typeof config.supabaseUrl === 'string' ? config.supabaseUrl.trim() : '',
+      supabaseAnonKey:
+        typeof config.supabaseAnonKey === 'string'
+          ? config.supabaseAnonKey.trim()
+          : '',
+    };
+  }
+
+  const { supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY } =
+    readPublicConfig();
   const BRIDGE_KEY = 'ellynSupabaseAuthBridge';
 
   function buildStorageKey(url) {
@@ -44,7 +61,9 @@
   }
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.warn('[Extension] Missing Supabase configuration for extension auth bridge.');
+    console.warn(
+      '[Extension] Missing Supabase public config. Generate extension/public-config.js before packaging.'
+    );
     globalScope[BRIDGE_KEY] = null;
     return;
   }

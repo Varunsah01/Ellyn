@@ -2,6 +2,7 @@
  * Gmail API Helper Functions
  * Handles OAuth, AES-256-GCM token encryption, token refresh, and email formatting
  */
+import 'server-only'
 
 import { randomBytes, createCipheriv, createDecipheriv } from 'crypto'
 
