@@ -64,3 +64,25 @@ export const setOnboardingState = (partial: Partial<OnboardingState>) => {
   const next = { ...current, ...partial }
   window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(next))
 }
+
+/**
+ * Mark a specific onboarding step as complete in the backend database.
+ * The backend handles merging the steps and ensuring idempotency.
+ */
+export const markOnboardingStepComplete = async (step: string) => {
+  if (!isBrowser()) return null
+  try {
+    const res = await fetch("/api/v1/user/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step }),
+    })
+    if (!res.ok) {
+      throw new Error(`Failed to mark onboarding step complete: ${res.statusText}`)
+    }
+    return await res.json()
+  } catch (error) {
+    console.error("Error marking onboarding step complete:", error)
+    return null
+  }
+}

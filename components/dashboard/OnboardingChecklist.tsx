@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { Check, X, HelpCircle } from "lucide-react"
 import { usePersona } from "@/context/PersonaContext"
+import { markOnboardingStepComplete } from "@/lib/onboarding"
 
 const CHECKLIST_DISMISSED_KEY = "ellyn_checklist_dismissed"
 
@@ -63,11 +64,7 @@ export function OnboardingChecklist() {
   const handleMarkExtensionInstalled = async () => {
     setMarkingExtension(true)
     try {
-      await fetch("/api/v1/user/onboarding", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step: "extension_installed" }),
-      })
+      await markOnboardingStepComplete("extension_installed")
       refreshOnboardingSteps()
     } catch {
       // silently fail

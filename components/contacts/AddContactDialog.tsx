@@ -37,6 +37,8 @@ import { CsrfHiddenInput } from "@/components/CsrfHiddenInput";
 import { X } from "lucide-react";
 import { showToast } from "@/lib/toast";
 import { supabaseAuthedFetch } from "@/lib/auth/client-fetch";
+import { markOnboardingStepComplete } from "@/lib/onboarding";
+import { usePersona } from "@/context/PersonaContext";
 
 const contactFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -72,6 +74,7 @@ export function AddContactDialog({
   onContactAdded,
 }: AddContactDialogProps) {
   const router = useRouter();
+  const { refreshOnboardingSteps } = usePersona();
   const [tags, setTags] = useState<string[]>(contact?.tags || []);
   const [tagInput, setTagInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -146,6 +149,11 @@ export function AddContactDialog({
       setTags([]);
       showToast.success("Contact added");
       onContactAdded?.();
+      
+      if (!contact) {
+        markOnboardingStepComplete("first_contact").then(() => refreshOnboardingSteps());
+      }
+      
       router.refresh();
     } catch (error) {
       showToast.error(

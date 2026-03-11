@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 export type PlanType = "free" | "starter" | "pro";
 
@@ -83,6 +84,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     isLoading: true,
   });
 
+  const [userId, setUserId] = useState<string | null>(null);
+
   const fetchStatus = useCallback(async () => {
     try {
       const response = await fetch("/api/v1/subscription/status");
@@ -112,6 +115,62 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     void fetchStatus();
   }, [fetchStatus]);
+
+  // Track the current user ID
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) setUserId(data.user.id);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        setUserId(session?.user?.id || null);
+      } else if (event === "SIGNED_OUT") {
+        setUserId(null);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // Subscribe to realtime quota changes
+  useEffect(() => {
+    if (!userId) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel("user-quotas-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_quotas",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          if (payload.eventType === "UPDATE" || payload.eventType === "INSERT") {
+            const newRecord = payload.new;
+            setState((prev) => ({
+              ...prev,
+              emailLookupsUsed: toSafeInt(newRecord.email_lookups_used, prev.emailLookupsUsed),
+              emailLookupsLimit: toSafeInt(newRecord.email_lookups_limit, prev.emailLookupsLimit),
+              aiDraftUsed: toSafeInt(newRecord.ai_draft_generations_used, prev.aiDraftUsed),
+              aiDraftLimit: toSafeInt(newRecord.ai_draft_generations_limit, prev.aiDraftLimit),
+              resetDate: newRecord.reset_date ?? prev.resetDate,
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   const value = useMemo<SubscriptionState>(() => {
     return {

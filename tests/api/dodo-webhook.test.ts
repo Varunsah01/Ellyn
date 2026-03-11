@@ -188,7 +188,7 @@ describe('Dodo webhook remediation', () => {
 
     const response = await POST(makeWebhookRequest())
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(400)
     expect(calls.profileUpdates).toHaveLength(0)
     expect(calls.quotaUpdates).toHaveLength(0)
   })
@@ -213,7 +213,7 @@ describe('Dodo webhook remediation', () => {
 
     const response = await POST(makeWebhookRequest())
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(400)
     expect(calls.profileUpdates).toHaveLength(0)
     expect(calls.quotaUpdates).toHaveLength(0)
   })

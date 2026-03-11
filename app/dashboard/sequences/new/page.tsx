@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/Dialog";
 import { usePersona } from "@/context/PersonaContext";
 import { showToast } from "@/lib/toast";
+import { markOnboardingStepComplete } from "@/lib/onboarding";
 
 type TemplatePersona = "job_seeker" | "smb_sales";
 
@@ -275,7 +276,7 @@ function toSendDays(value: SequenceBuilderStep["send_on_days"]): number[] {
 
 export default function NewSequencePage() {
   const router = useRouter();
-  const { persona } = usePersona();
+  const { persona, refreshOnboardingSteps } = usePersona();
 
   const [state, setState] = useState<BuilderState>("gallery");
   const [selectedTemplate, setSelectedTemplate] = useState<SequenceTemplate | null>(null);
@@ -366,6 +367,7 @@ export default function NewSequencePage() {
         throw new Error("Failed to create sequence");
       }
 
+      markOnboardingStepComplete("first_sequence").then(() => refreshOnboardingSteps());
       showToast.success("Sequence created");
       router.push(`/dashboard/sequences/${sequenceId}`);
     } catch (error) {

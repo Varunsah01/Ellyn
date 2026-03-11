@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import ContactsWorkspace from "@/components/contacts/ContactsWorkspace";
 
 export default function DashboardTrackerPage() {
-  redirect("/tracker");
+  return <ContactsWorkspace />;
 }

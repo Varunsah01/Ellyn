@@ -11,6 +11,8 @@ import { VisualSequenceBuilder } from "@/components/sequences/VisualSequenceBuil
 import { useSequences } from "@/lib/hooks/useSequences"
 import { SequenceStep } from "@/lib/types/sequence"
 import { AlertCircle, ArrowRight, Loader2 } from "lucide-react"
+import { usePersona } from "@/context/PersonaContext"
+import { markOnboardingStepComplete } from "@/lib/onboarding"
 
 interface SequenceBuilderProps {
   onSaved?: (sequenceId: string) => void
@@ -29,6 +31,7 @@ interface SequenceBuilderProps {
 export function SequenceBuilder({ onSaved, onCancel, initialName, initialSteps }: SequenceBuilderProps) {
   const router = useRouter()
   const { templates } = useSequences()
+  const { refreshOnboardingSteps } = usePersona()
   const [name, setName] = useState(initialName ?? "")
   const [description, setDescription] = useState("")
   const [goal, setGoal] = useState("")
@@ -72,6 +75,7 @@ export function SequenceBuilder({ onSaved, onCancel, initialName, initialSteps }
       const sequenceId = data.sequence?.id
 
       if (sequenceId) {
+        markOnboardingStepComplete("first_sequence").then(() => refreshOnboardingSteps())
         onSaved?.(sequenceId)
         if (!onSaved) {
           router.push("/dashboard/sequences")

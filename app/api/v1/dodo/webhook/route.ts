@@ -167,10 +167,19 @@ async function applyActivePlanAndQuota(
     dodo_product_id: productId,
   });
 
+  const now = new Date();
+  const nextMonth = new Date(now);
+  nextMonth.setMonth(nextMonth.getMonth() + 1);
+
   await ensureQuotaRow(supabase, userId);
   await updateUserQuotas(supabase, userId, {
     email_lookups_limit: limits.email,
     ai_draft_generations_limit: limits.ai,
+    email_lookups_used: 0,
+    ai_draft_generations_used: 0,
+    period_start: now.toISOString(),
+    period_end: nextMonth.toISOString(),
+    reset_date: nextMonth.toISOString(),
   });
 }
 
@@ -271,13 +280,13 @@ export async function POST(request: NextRequest) {
       case "subscription.renewed": {
         const inferredPlan = resolvePlanTypeFromProductId(identifiers.productId);
         if (!inferredPlan) {
-          logWebhook("warn", "unknown or missing product id; skipping paid-plan activation", {
+          logWebhook("error", "Unknown product ID, failing closed", {
             eventType,
             userId: resolvedUserId,
             productId: identifiers.productId,
             metadataPlan: identifiers.metadataPlan,
           });
-          return NextResponse.json({ received: true });
+          return NextResponse.json({ error: "Unknown product ID" }, { status: 400 });
         }
 
         await applyActivePlanAndQuota(

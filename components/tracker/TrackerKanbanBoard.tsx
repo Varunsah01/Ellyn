@@ -28,6 +28,22 @@ import {
   type TrackerBoardLane,
 } from "@/lib/tracker-v2";
 
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
+import { useDraggable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+
 interface TrackerKanbanBoardProps {
   contacts: TrackerContact[];
   selectedContactIds: string[];
@@ -173,6 +189,7 @@ interface KanbanCardProps {
   selected: boolean;
   focused: boolean;
   condensed: boolean;
+  isOverlay?: boolean;
   onToggleSelectContact: (contactId: string) => void;
   onOpenContactDetail: (contact: TrackerContact) => void;
   onFollowUp: (contact: TrackerContact) => void;
@@ -190,6 +207,7 @@ function KanbanCard({
   selected,
   focused,
   condensed,
+  isOverlay,
   onToggleSelectContact,
   onOpenContactDetail,
   onFollowUp,
@@ -207,14 +225,26 @@ function KanbanCard({
   const currentStage = deriveStageFromContact(contact);
   const needsFollowUp = isNeedsFollowUp(contact);
   const company = (contact.company || "Unknown").trim() || "Unknown";
+  const lane = getBoardLaneFromContact(contact);
+
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: contact.id,
+    data: { contact, lane },
+  });
+
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    opacity: isDragging ? 0.4 : undefined,
+  };
 
   return (
     <article
+      ref={setNodeRef}
+      style={style}
       className={`group rounded-xl border bg-white p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 ${
         focused ? "ring-2 ring-[#FF7B7B]/40" : "border-slate-200"
-      }`}
+      } ${isOverlay ? "rotate-2 scale-105 shadow-xl ring-2 ring-purple-500/30 cursor-grabbing" : "cursor-grab"}`}
       aria-label={`${name} at ${company}`}
-      tabIndex={0}
       onClick={() => onOpenContactDetail(contact)}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
@@ -222,6 +252,9 @@ function KanbanCard({
           onOpenContactDetail(contact);
         }
       }}
+      {...attributes}
+      {...listeners}
+      tabIndex={0}
     >
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
@@ -231,6 +264,7 @@ function KanbanCard({
               event.stopPropagation();
               onToggleSelectContact(contact.id);
             }}
+            onPointerDown={(e) => e.stopPropagation()}
             className="shrink-0"
             aria-label={`Select ${name}`}
           >
@@ -254,6 +288,7 @@ function KanbanCard({
         <div
           className="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
           onClick={(event) => event.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <MoreActionsButton
             onViewLinkedIn={() => onViewLinkedIn(contact)}
@@ -285,7 +320,7 @@ function KanbanCard({
         <div className="space-y-2">
           <p className="truncate text-xs text-slate-600 dark:text-slate-300">{contact.role || "No role"}</p>
           <p className="truncate text-xs font-mono text-slate-500 dark:text-slate-400">{email}</p>
-          <div onClick={(event) => event.stopPropagation()}>
+          <div onClick={(event) => event.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
             <StatusPipeline
               currentStatus={currentStage}
               contactId={contact.id}
@@ -296,7 +331,7 @@ function KanbanCard({
         </div>
       ) : null}
 
-      <div className="mt-3 flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+      <div className="mt-3 flex items-center gap-2" onClick={(event) => event.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
         <FollowUpButton onFollowUp={() => onFollowUp(contact)} />
         <EditContactButton onEdit={() => onEdit(contact)} />
       </div>
@@ -350,9 +385,14 @@ function LaneColumn({
   const visibleContacts = contacts.slice(startIndex, endIndex);
   const laneProgress = totalContacts > 0 ? Math.round((contacts.length / totalContacts) * 100) : 0;
 
+  const { isOver, setNodeRef } = useDroppable({
+    id: lane.lane,
+  });
+
   return (
     <section
-      className={`flex min-h-[480px] flex-col rounded-xl border border-slate-200 ${tone.softColumn} ${tone.softColumnDark} dark:border-slate-800`}
+      ref={setNodeRef}
+      className={`flex min-h-[480px] flex-col rounded-xl border border-slate-200 transition-colors ${tone.softColumn} ${tone.softColumnDark} ${isOver ? "ring-2 ring-purple-500/40 bg-purple-50/30 dark:bg-purple-900/10" : ""} dark:border-slate-800`}
       aria-label={`${lane.label} column`}
     >
       <header className="space-y-2 border-b border-slate-200/70 p-3 dark:border-slate-800/70">
@@ -435,6 +475,18 @@ export function TrackerKanbanBoard({
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isDeletingContact, setIsDeletingContact] = useState(false);
   const [isFollowUpOpening, setIsFollowUpOpening] = useState<string | null>(null);
+  const [activeDragContact, setActiveDragContact] = useState<TrackerContact | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const selectedSet = useMemo(() => new Set(selectedContactIds), [selectedContactIds]);
 
@@ -467,6 +519,41 @@ export function TrackerKanbanBoard({
     if (updates.status === "replied") {
       toast.success("Reply milestone reached. Keep momentum.");
     }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const contact = active.data.current?.contact as TrackerContact;
+    if (contact) {
+      setActiveDragContact(contact);
+    }
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveDragContact(null);
+
+    if (!over) return;
+
+    const contactId = active.id as string;
+    const contact = active.data.current?.contact as TrackerContact;
+    const sourceLane = active.data.current?.lane as TrackerBoardLane;
+    const targetLane = over.id as TrackerBoardLane;
+
+    if (!contact || sourceLane === targetLane) return;
+
+    const laneMeta = LANE_META.find((l) => l.lane === targetLane);
+    if (!laneMeta) return;
+
+    const nextPipelineStage = Object.keys(CONTACT_STATUS_BY_STAGE).find(
+      (key) => CONTACT_STATUS_BY_STAGE[key as PipelineStage] === laneMeta.status
+    ) as PipelineStage | undefined;
+
+    await updateContact(contactId, {
+      status: laneMeta.status,
+      outreach_status: nextPipelineStage || null,
+      updated_at: new Date().toISOString(),
+    });
   };
 
   const generateDraftTemplate = (contact: TrackerContact) => {
@@ -622,35 +709,63 @@ Varun`;
           </div>
         ) : null}
 
-        <div className="grid min-h-[calc(100vh-21rem)] gap-3 md:grid-cols-2 2xl:grid-cols-4">
-          {LANE_META.map((lane) => (
-            <LaneColumn
-              key={lane.lane}
-              lane={lane}
-              contacts={contactsByLane[lane.lane]}
-              totalContacts={contacts.length}
-              condensed={condensed}
-              selectedSet={selectedSet}
-              focusedContactId={focusedContactId}
-              onToggleSelectContact={onToggleSelectContact}
-              onOpenContactDetail={onOpenContactDetail}
-              onFollowUp={handleFollowUp}
-              onEdit={(contact) => setEditingContact(contact)}
-              onViewLinkedIn={handleOpenLinkedIn}
-              onMarkReplied={(contact) => {
-                void handleMarkAsReplied(contact);
-              }}
-              onMarkNotInterested={(contact) => {
-                void handleMarkAsNotInterested(contact);
-              }}
-              onAddNote={(contact) => setContactForNote(contact)}
-              onDelete={(contact) => setContactPendingDelete(contact)}
-              onStatusChange={(contact, nextStatus) => {
-                void handlePipelineStatusChange(contact, nextStatus);
-              }}
-            />
-          ))}
-        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragEnd={(event) => void handleDragEnd(event)}
+        >
+          <div className="grid min-h-[calc(100vh-21rem)] gap-3 md:grid-cols-2 2xl:grid-cols-4">
+            {LANE_META.map((lane) => (
+              <LaneColumn
+                key={lane.lane}
+                lane={lane}
+                contacts={contactsByLane[lane.lane]}
+                totalContacts={contacts.length}
+                condensed={condensed}
+                selectedSet={selectedSet}
+                focusedContactId={focusedContactId}
+                onToggleSelectContact={onToggleSelectContact}
+                onOpenContactDetail={onOpenContactDetail}
+                onFollowUp={handleFollowUp}
+                onEdit={(contact) => setEditingContact(contact)}
+                onViewLinkedIn={handleOpenLinkedIn}
+                onMarkReplied={(contact) => {
+                  void handleMarkAsReplied(contact);
+                }}
+                onMarkNotInterested={(contact) => {
+                  void handleMarkAsNotInterested(contact);
+                }}
+                onAddNote={(contact) => setContactForNote(contact)}
+                onDelete={(contact) => setContactPendingDelete(contact)}
+                onStatusChange={(contact, nextStatus) => {
+                  void handlePipelineStatusChange(contact, nextStatus);
+                }}
+              />
+            ))}
+          </div>
+          <DragOverlay>
+            {activeDragContact ? (
+              <KanbanCard
+                contact={activeDragContact}
+                selected={selectedSet.has(activeDragContact.id)}
+                focused={focusedContactId === activeDragContact.id}
+                condensed={condensed}
+                isOverlay
+                onToggleSelectContact={onToggleSelectContact}
+                onOpenContactDetail={onOpenContactDetail}
+                onFollowUp={handleFollowUp}
+                onEdit={(contact) => setEditingContact(contact)}
+                onViewLinkedIn={handleOpenLinkedIn}
+                onMarkReplied={(contact) => void handleMarkAsReplied(contact)}
+                onMarkNotInterested={(contact) => void handleMarkAsNotInterested(contact)}
+                onAddNote={(contact) => setContactForNote(contact)}
+                onDelete={(contact) => setContactPendingDelete(contact)}
+                onStatusChange={(contact, nextStatus) => void handlePipelineStatusChange(contact, nextStatus)}
+              />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       </section>
 
       <EditContactModal

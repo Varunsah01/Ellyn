@@ -22,7 +22,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs"
 import { Textarea } from "@/components/ui/Textarea"
 import { useSubscription } from "@/context/SubscriptionContext"
+import { usePersona } from "@/context/PersonaContext"
 import { supabaseAuthedFetch } from "@/lib/auth/client-fetch"
+import { markOnboardingStepComplete } from "@/lib/onboarding"
 import { showToast } from "@/lib/toast"
 
 const TONE_OPTIONS = [
@@ -105,6 +107,7 @@ export function AiDraftPanel({
   onBusyChange,
 }: AiDraftPanelProps) {
   const { quota, isLoading: isQuotaLoading } = useSubscription()
+  const { refreshOnboardingSteps } = usePersona()
 
   const [expanded, setExpanded] = useState(false)
   const [instructions, setInstructions] = useState("")
@@ -168,6 +171,7 @@ export function AiDraftPanel({
         subject: String(payload.subject || ""),
         body: String(payload.body || ""),
       })
+      markOnboardingStepComplete("first_draft").then(() => refreshOnboardingSteps())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Enhancement failed")
     } finally {
@@ -219,6 +223,7 @@ export function AiDraftPanel({
         subject: String(payload.subject || ""),
         body: String(payload.body || ""),
       })
+      markOnboardingStepComplete("first_draft").then(() => refreshOnboardingSteps())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Draft generation failed")
     } finally {
@@ -258,6 +263,7 @@ export function AiDraftPanel({
       }
 
       setToneAdjustedBody(String(payload.body || ""))
+      markOnboardingStepComplete("first_draft").then(() => refreshOnboardingSteps())
     } catch (err) {
       setError(err instanceof Error ? err.message : "Tone rewrite failed")
     } finally {
