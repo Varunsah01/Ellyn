@@ -63,10 +63,7 @@ type MockAuthMethods = {
 
 const supabase = (jest.requireMock('@/lib/supabase/client') as { __mockAuth: MockAuthMethods }).__mockAuth
 
-function getRouterReplaceMock() {
-  const navModule = jest.requireMock('next/navigation')
-  return navModule.__getRouterReplaceMock()
-}
+
 
 function getRouterPushMock() {
   const navModule = jest.requireMock('next/navigation')

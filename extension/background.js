@@ -485,9 +485,13 @@ async function setAuthenticatedState(payload, sendResponse, context = {}) {
 async function setSupabaseSessionFromExternalMessage(message, sendResponse, context = {}) {
   const bridge = getSupabaseAuthBridge();
   if (!bridge || typeof bridge.setSession !== 'function') {
+    const hasConfig = typeof globalThis?.ELLYN_PUBLIC_CONFIG === 'object' && globalThis.ELLYN_PUBLIC_CONFIG !== null;
+    const errorMsg = hasConfig
+      ? 'Supabase client initialization failed in extension'
+      : 'Extension Supabase config missing. Run: node scripts/security/generate-extension-public-config.mjs';
     sendResponse?.({
       ok: false,
-      error: 'Supabase client unavailable in extension',
+      error: errorMsg,
     });
     return;
   }
