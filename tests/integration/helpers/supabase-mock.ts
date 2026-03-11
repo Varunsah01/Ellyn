@@ -25,6 +25,8 @@ class QueryBuilder implements PromiseLike<QueryResult> {
 
   private singleInvoked = false
 
+  private maybeSingleInvoked = false
+
   private eqFilters: Array<{ field: string; value: unknown }> = []
 
   private inFilters: Array<{ field: string; values: unknown[] }> = []
@@ -97,6 +99,11 @@ class QueryBuilder implements PromiseLike<QueryResult> {
     return this.execute()
   }
 
+  maybeSingle(): Promise<QueryResult> {
+    this.maybeSingleInvoked = true
+    return this.execute()
+  }
+
   then<TResult1 = QueryResult, TResult2 = never>(
     onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -139,6 +146,15 @@ class QueryBuilder implements PromiseLike<QueryResult> {
 
       return {
         data: { ...singleRow },
+        error: null,
+        count: this.selectWantsCount ? totalCount : null,
+      }
+    }
+
+    if (this.maybeSingleInvoked) {
+      const singleRow = ranged[0]
+      return {
+        data: singleRow ? { ...singleRow } : null,
         error: null,
         count: this.selectWantsCount ? totalCount : null,
       }

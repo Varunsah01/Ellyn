@@ -4,23 +4,27 @@ import { NextRequest } from 'next/server'
 
 import { DELETE as deleteLead, GET as getLeadById, PATCH as patchLead } from '@/app/api/leads/[id]/route'
 import { GET as listLeads, POST as createLead } from '@/app/api/leads/route'
-import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { getAuthenticatedUser, getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { resetTestDatabase, seedTestDatabase, testDb } from './helpers/test-db'
 
-jest.mock('@/lib/supabase', () => {
+jest.mock('@/lib/supabase/server', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { supabaseMock } = require('./helpers/supabase-mock')
   return {
     isSupabaseConfigured: true,
+    createClient: jest.fn().mockResolvedValue(supabaseMock),
+    createServiceRoleClient: jest.fn().mockReturnValue(supabaseMock),
     supabase: supabaseMock,
   }
 })
 
 jest.mock('@/lib/auth/helpers', () => ({
   getAuthenticatedUser: jest.fn(),
+  getAuthenticatedUserFromRequest: jest.fn(),
 }))
 
 const getAuthenticatedUserMock = getAuthenticatedUser as jest.MockedFunction<typeof getAuthenticatedUser>
+const getAuthenticatedUserFromRequestMock = getAuthenticatedUserFromRequest as jest.MockedFunction<typeof getAuthenticatedUserFromRequest>
 
 describe('Leads integration management', () => {
   beforeEach(() => {
@@ -64,6 +68,10 @@ describe('Leads integration management', () => {
       id: 'user-1',
       email: 'user1@example.com',
     } as never)
+    getAuthenticatedUserFromRequestMock.mockResolvedValue({
+      id: 'user-1',
+      email: 'user1@example.com',
+    } as never)
   })
 
   afterEach(() => {
@@ -95,6 +103,7 @@ describe('Leads integration management', () => {
 
   test('GET /api/leads returns 401 for unauthorized access', async () => {
     getAuthenticatedUserMock.mockRejectedValueOnce(new Error('Unauthorized'))
+    getAuthenticatedUserFromRequestMock.mockRejectedValueOnce(new Error('Unauthorized'))
 
     const request = new NextRequest('http://localhost:3000/api/leads')
     const response = await listLeads(request)
@@ -193,6 +202,7 @@ describe('Leads integration management', () => {
 
   test('PATCH /api/leads/[id] returns 401 when unauthenticated', async () => {
     getAuthenticatedUserMock.mockRejectedValueOnce(new Error('Unauthorized'))
+    getAuthenticatedUserFromRequestMock.mockRejectedValueOnce(new Error('Unauthorized'))
 
     const request = new NextRequest('http://localhost:3000/api/leads/lead-1', {
       method: 'PATCH',
@@ -262,6 +272,7 @@ describe('Leads integration management', () => {
 
   test('DELETE /api/leads/[id] returns 401 for unauthorized access', async () => {
     getAuthenticatedUserMock.mockRejectedValueOnce(new Error('Unauthorized'))
+    getAuthenticatedUserFromRequestMock.mockRejectedValueOnce(new Error('Unauthorized'))
 
     const request = new NextRequest('http://localhost:3000/api/leads/lead-2', {
       method: 'DELETE',

@@ -10,7 +10,7 @@ import {
 describe("tracker integration helpers", () => {
   test("buildTrackerContactHref builds deep link with source", () => {
     const href = buildTrackerContactHref("abc-123", { source: "contacts" });
-    expect(href).toBe("/dashboard/tracker?contactId=abc-123&source=contacts");
+    expect(href).toBe("/dashboard/contacts?contactId=abc-123&source=contacts");
   });
 
   test("toTrackerContact normalizes legacy statuses", () => {

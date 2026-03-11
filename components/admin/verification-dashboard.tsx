@@ -464,7 +464,7 @@ export function VerificationDashboard() {
                   tick={{ fontSize: 11 }}
                   tickFormatter={v => `$${Number(v).toFixed(3)}`}
                 />
-                <Tooltip formatter={(v: number | undefined) => [`$${Number(v ?? 0).toFixed(4)}`, 'Cost']} />
+                <Tooltip formatter={(v: any) => [`$${Number(v ?? 0).toFixed(4)}`, 'Cost']} />
                 <Area
                   type="monotone"
                   dataKey="costUsd"
@@ -500,7 +500,7 @@ export function VerificationDashboard() {
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v: number | undefined) => [fmt.num(Number(v ?? 0)), 'Addresses']} />
+                  <Tooltip formatter={(v: any) => [fmt.num(Number(v ?? 0)), 'Addresses']} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>

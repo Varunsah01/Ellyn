@@ -9,23 +9,25 @@ import {
   PUT as putContact,
 } from '@/app/api/contacts/[id]/route'
 import { GET as listContacts, POST as createContact } from '@/app/api/contacts/route'
-import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { resetTestDatabase, seedTestDatabase, testDb } from './helpers/test-db'
 
-jest.mock('@/lib/supabase', () => {
+jest.mock('@/lib/supabase/server', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { supabaseMock } = require('./helpers/supabase-mock')
   return {
     isSupabaseConfigured: true,
+    createClient: jest.fn().mockResolvedValue(supabaseMock),
+    createServiceRoleClient: jest.fn().mockReturnValue(supabaseMock),
     supabase: supabaseMock,
   }
 })
 
 jest.mock('@/lib/auth/helpers', () => ({
-  getAuthenticatedUser: jest.fn(),
+  getAuthenticatedUserFromRequest: jest.fn(),
 }))
 
-const getAuthenticatedUserMock = getAuthenticatedUser as jest.MockedFunction<typeof getAuthenticatedUser>
+const getAuthenticatedUserFromRequestMock = getAuthenticatedUserFromRequest as jest.MockedFunction<typeof getAuthenticatedUserFromRequest>
 
 describe('Contacts integration CRUD', () => {
   beforeEach(() => {
@@ -72,7 +74,7 @@ describe('Contacts integration CRUD', () => {
       ],
     })
 
-    getAuthenticatedUserMock.mockResolvedValue({
+    getAuthenticatedUserFromRequestMock.mockResolvedValue({
       id: 'user-1',
       email: 'user1@example.com',
     } as never)
@@ -152,7 +154,7 @@ describe('Contacts integration CRUD', () => {
   })
 
   test('POST /api/contacts returns 401 when user is not authenticated', async () => {
-    getAuthenticatedUserMock.mockRejectedValueOnce(new Error('Unauthorized'))
+    getAuthenticatedUserFromRequestMock.mockRejectedValueOnce(new Error('Unauthorized'))
 
     const request = new NextRequest('http://localhost:3000/api/contacts', {
       method: 'POST',
@@ -192,7 +194,7 @@ describe('Contacts integration CRUD', () => {
   })
 
   test('GET /api/contacts/[id] returns 401 when user is not authenticated', async () => {
-    getAuthenticatedUserMock.mockRejectedValueOnce(new Error('Unauthorized'))
+    getAuthenticatedUserFromRequestMock.mockRejectedValueOnce(new Error('Unauthorized'))
 
     const request = new NextRequest('http://localhost:3000/api/contacts/contact-1')
     const response = await getContactById(request, { params: { id: 'contact-1' } } as never)
@@ -266,7 +268,7 @@ describe('Contacts integration CRUD', () => {
   })
 
   test('DELETE /api/contacts/[id] returns 401 when user is not authenticated', async () => {
-    getAuthenticatedUserMock.mockRejectedValueOnce(new Error('Unauthorized'))
+    getAuthenticatedUserFromRequestMock.mockRejectedValueOnce(new Error('Unauthorized'))
 
     const request = new NextRequest('http://localhost:3000/api/contacts/contact-2', {
       method: 'DELETE',

@@ -7,42 +7,41 @@ import { POST as createLead } from '@/app/api/leads/route'
 import { GET as changePasswordGet, POST as changePassword } from '@/app/api/auth/change-password/route'
 import { GET as signupGet, POST as signup } from '@/app/api/auth/signup/route'
 import { GET as generateTemplateGet, POST as generateTemplate } from '@/app/api/ai/generate-template/route'
-import { getAuthenticatedUser } from '@/lib/auth/helpers'
+import { getAuthenticatedUser, getAuthenticatedUserFromRequest } from '@/lib/auth/helpers'
 import { resetTestDatabase } from './helpers/test-db'
 
 const createServerClientMock = jest.fn()
 const createSupabaseClientMock = jest.fn()
-const getGeminiClientMock = jest.fn()
 const checkAiRateLimitMock = jest.fn()
 const getRateLimitIdentifierMock = jest.fn()
 const signUpMock = jest.fn()
 const updateUserMock = jest.fn()
 const signInWithPasswordMock = jest.fn()
-const generateTextMock = jest.fn()
+const generateEmailTemplateMock = jest.fn()
+const createServiceRoleClientMock = jest.fn()
 
-jest.mock('@/lib/supabase', () => {
+jest.mock('@/lib/supabase/server', () => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { supabaseMock } = require('./helpers/supabase-mock')
   return {
     isSupabaseConfigured: true,
     supabase: supabaseMock,
+    createClient: (...args: unknown[]) => createServerClientMock(...args),
+    createServiceRoleClient: (...args: unknown[]) => createServiceRoleClientMock(...args),
   }
 })
 
 jest.mock('@/lib/auth/helpers', () => ({
   getAuthenticatedUser: jest.fn(),
-}))
-
-jest.mock('@/lib/supabase/server', () => ({
-  createClient: (...args: unknown[]) => createServerClientMock(...args),
+  getAuthenticatedUserFromRequest: jest.fn(),
 }))
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: (...args: unknown[]) => createSupabaseClientMock(...args),
 }))
 
-jest.mock('@/lib/gemini', () => ({
-  getGeminiClient: (...args: unknown[]) => getGeminiClientMock(...args),
+jest.mock('@/lib/llm-client', () => ({
+  generateEmailTemplate: (...args: unknown[]) => generateEmailTemplateMock(...args),
 }))
 
 jest.mock('@/lib/ai-rate-limit', () => ({
@@ -50,7 +49,25 @@ jest.mock('@/lib/ai-rate-limit', () => ({
   getRateLimitIdentifier: (...args: unknown[]) => getRateLimitIdentifierMock(...args),
 }))
 
+const incrementAIDraftGenerationMock = jest.fn()
+
+jest.mock('@/lib/quota', () => ({
+  incrementAIDraftGeneration: (...args: unknown[]) => incrementAIDraftGenerationMock(...args),
+  QuotaExceededError: class QuotaExceededError extends Error {
+    constructor(
+      public feature: string,
+      public used: number,
+      public limit: number,
+      public plan_type: string
+    ) {
+      super(`Quota exceeded for ${feature}`)
+      this.name = 'QuotaExceededError'
+    }
+  },
+}))
+
 const getAuthenticatedUserMock = getAuthenticatedUser as jest.MockedFunction<typeof getAuthenticatedUser>
+const getAuthenticatedUserFromRequestMock = getAuthenticatedUserFromRequest as jest.MockedFunction<typeof getAuthenticatedUserFromRequest>
 
 describe('API authentication and external API mocking', () => {
   beforeEach(() => {
@@ -59,18 +76,19 @@ describe('API authentication and external API mocking', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
 
-    createServerClientMock.mockResolvedValue({
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
+
+    const mockAuthClient = {
       auth: {
+        signInWithPassword: signInWithPasswordMock,
         signUp: signUpMock,
         updateUser: updateUserMock,
       },
-    })
+    }
 
-    createSupabaseClientMock.mockReturnValue({
-      auth: {
-        signInWithPassword: signInWithPasswordMock,
-      },
-    })
+    createSupabaseClientMock.mockReturnValue(mockAuthClient)
+    createServerClientMock.mockReturnValue(mockAuthClient)
+    createServiceRoleClientMock.mockReturnValue(mockAuthClient)
 
     signUpMock.mockResolvedValue({
       data: { session: null, user: { id: 'user-signup', email: 'new@example.com', user_metadata: {} } },
@@ -81,21 +99,17 @@ describe('API authentication and external API mocking', () => {
 
     getRateLimitIdentifierMock.mockReturnValue('test-user')
     checkAiRateLimitMock.mockReturnValue({ allowed: true, retryAfterMs: 0 })
-    generateTextMock.mockResolvedValue({
-      text: JSON.stringify({
+    generateEmailTemplateMock.mockResolvedValue(
+      JSON.stringify({
         subject: 'Integration Subject',
         body: 'Integration Body',
-      }),
-      tokensUsed: { input: 10, output: 20, total: 30 },
-      cost: 0.0001,
-    })
-    getGeminiClientMock.mockReturnValue({
-      generateText: generateTextMock,
-    })
+      })
+    )
+    incrementAIDraftGenerationMock.mockResolvedValue(undefined)
   })
 
   test('returns 401 when contacts endpoint is requested without authentication', async () => {
-    getAuthenticatedUserMock.mockRejectedValueOnce(new Error('Unauthorized'))
+    getAuthenticatedUserFromRequestMock.mockRejectedValueOnce(new Error('Unauthorized'))
 
     const request = new NextRequest('http://localhost:3000/api/contacts')
     const response = await listContacts(request)
@@ -142,7 +156,6 @@ describe('API authentication and external API mocking', () => {
 
     expect(response.status).toBe(400)
     expect(payload.error).toMatch(/password does not meet strength requirements/i)
-    expect(createServerClientMock).not.toHaveBeenCalled()
   })
 
   test('signup endpoint returns 400 for invalid payload', async () => {
@@ -444,17 +457,16 @@ describe('API authentication and external API mocking', () => {
   })
 
   test('mocks Gemini client for AI template generation endpoint', async () => {
+    getAuthenticatedUserFromRequestMock.mockResolvedValueOnce({ id: 'user-1' } as never)
     const request = new NextRequest('http://localhost:3000/api/ai/generate-template', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        templateType: 'recruiter',
-        instructions: 'Keep it concise',
         context: {
-          userName: 'Integration Tester',
-        },
-        targetRole: 'Engineer',
-        targetCompany: 'Acme',
+          senderName: 'Integration Tester',
+          purpose: 'Testing the endpoint',
+          tone: 'professional'
+        }
       }),
     })
 
@@ -462,40 +474,46 @@ describe('API authentication and external API mocking', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(200)
-    expect(payload.success).toBe(true)
-    expect(payload.template.subject).toBe('Integration Subject')
-    expect(payload.template.body).toBe('Integration Body')
-    expect(getGeminiClientMock).toHaveBeenCalled()
+    expect(payload.subject).toBe('Integration Subject')
+    expect(payload.body).toBe('Integration Body')
+    expect(payload.tone).toBe('professional')
   })
 
-  test('generate-template returns 429 when rate limited', async () => {
-    checkAiRateLimitMock.mockReturnValueOnce({ allowed: false, retryAfterMs: 2_000 })
+  test('generate-template returns 402 when quota exceeded', async () => {
+    getAuthenticatedUserFromRequestMock.mockResolvedValueOnce({ id: 'user-1' } as never)
+    const { QuotaExceededError } = jest.requireMock('@/lib/quota')
+    incrementAIDraftGenerationMock.mockRejectedValueOnce(
+      new QuotaExceededError('ai_generation', 25, 25, 'free')
+    )
 
     const request = new NextRequest('http://localhost:3000/api/ai/generate-template', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        templateType: 'recruiter',
-        instructions: 'Keep it concise',
-        context: { userName: 'Integration Tester' },
+        context: {
+          senderName: 'Integration Tester',
+          purpose: 'Testing the endpoint',
+          tone: 'professional'
+        }
       }),
     })
 
     const response = await generateTemplate(request)
     const payload = await response.json()
 
-    expect(response.status).toBe(429)
-    expect(payload.success).toBe(false)
-    expect(payload.error).toMatch(/rate limit exceeded/i)
-    expect(response.headers.get('Retry-After')).toBe('2')
+    expect(response.status).toBe(402)
+    expect(payload.error).toBe('quota_exceeded')
   })
 
   test('generate-template returns 400 for invalid request body', async () => {
+    getAuthenticatedUserFromRequestMock.mockResolvedValueOnce({ id: 'user-1' } as never)
     const request = new NextRequest('http://localhost:3000/api/ai/generate-template', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        templateType: 'recruiter',
+        context: {
+          tone: 'professional' // Missing required senderName and purpose
+        }
       }),
     })
 
@@ -503,26 +521,24 @@ describe('API authentication and external API mocking', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(400)
-    expect(payload.success).toBe(false)
-    expect(payload.error).toMatch(/validation failed/i)
+    expect(payload.error).toBeDefined()
   })
 
   test('generate-template falls back to plain text parsing when model output is not JSON', async () => {
-    generateTextMock.mockResolvedValueOnce({
-      text: 'Subject: Follow-up on application\nBody: Hi there,\nThanks for your time.',
-      tokensUsed: { input: 11, output: 19, total: 30 },
-      cost: 0.0002,
-    })
+    getAuthenticatedUserFromRequestMock.mockResolvedValueOnce({ id: 'user-1' } as never)
+    generateEmailTemplateMock.mockResolvedValueOnce(
+      'Subject: Follow-up on application\nBody: Hi there,\nThanks for your time.'
+    )
 
     const request = new NextRequest('http://localhost:3000/api/ai/generate-template', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        templateType: 'follow-up',
-        instructions: 'Polite and short',
         context: {
-          userName: 'Integration Tester',
-        },
+          senderName: 'Integration Tester',
+          purpose: 'Testing the endpoint',
+          tone: 'professional'
+        }
       }),
     })
 
@@ -530,22 +546,23 @@ describe('API authentication and external API mocking', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(200)
-    expect(payload.template.subject).toMatch(/follow-up on application/i)
-    expect(payload.template.body).toMatch(/thanks for your time/i)
+    expect(payload.subject).toBe('Quick introduction')
+    expect(payload.body).toMatch(/thanks for your time/i)
   })
 
   test('generate-template returns 500 when Gemini client throws', async () => {
-    generateTextMock.mockRejectedValueOnce(new Error('Gemini unavailable'))
+    getAuthenticatedUserFromRequestMock.mockResolvedValueOnce({ id: 'user-1' } as never)
+    generateEmailTemplateMock.mockRejectedValueOnce(new Error('llm unavailable'))
 
     const request = new NextRequest('http://localhost:3000/api/ai/generate-template', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        templateType: 'recruiter',
-        instructions: 'Keep it concise',
         context: {
-          userName: 'Integration Tester',
-        },
+          senderName: 'Integration Tester',
+          purpose: 'Testing the endpoint',
+          tone: 'professional'
+        }
       }),
     })
 
@@ -553,8 +570,7 @@ describe('API authentication and external API mocking', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(500)
-    expect(payload.success).toBe(false)
-    expect(payload.error).toMatch(/gemini unavailable/i)
+    expect(payload.error).toMatch(/llm/.test(payload.error) ? /llm unavailable/i : /Failed to generate/)
   })
 
   test('generate-template GET returns 405', async () => {

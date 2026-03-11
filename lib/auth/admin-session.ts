@@ -141,7 +141,7 @@ async function verify(token: string): Promise<string | null> {
     const isValid = await getWebCrypto().subtle.verify(
       'HMAC',
       await getSigningKey(),
-      provided,
+      provided as BufferSource,
       textEncoder.encode(payload)
     )
 

@@ -41,12 +41,14 @@ export interface TestDatabase {
   contacts: ContactRow[]
   leads: LeadRow[]
   outreach: OutreachRow[]
+  activity_log: Record<string, unknown>[]
 }
 
 export const testDb: TestDatabase = {
   contacts: [],
   leads: [],
   outreach: [],
+  activity_log: [],
 }
 
 let idCounter = 1
@@ -68,6 +70,7 @@ export function resetTestDatabase(): void {
   testDb.contacts = []
   testDb.leads = []
   testDb.outreach = []
+  testDb.activity_log = []
   idCounter = 1
 }
 

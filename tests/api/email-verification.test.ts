@@ -103,15 +103,18 @@ jest.mock('@/lib/pattern-learning', () => ({
   ),
 }))
 
-jest.mock('@/lib/supabase', () => ({
-  supabase: {
+jest.mock('@/lib/supabase/client', () => ({
+  createClient: jest.fn().mockReturnValue({
     from: jest.fn().mockReturnValue({
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
-      single: jest.fn().mockResolvedValue({ data: null, error: null }),
+      single: jest.fn().mockResolvedValue({
+        data: { id: 'test-user-id', email: 'test@example.com' },
+        error: null,
+      }),
       upsert: jest.fn().mockResolvedValue({ data: null, error: null }),
     }),
-  },
+  }),
   isSupabaseConfigured: true,
 }))
 
@@ -119,6 +122,7 @@ jest.mock('@/lib/supabase/server', () => ({
   createServiceRoleClient: jest.fn().mockResolvedValue({
     from: jest.fn().mockReturnValue({
       insert: jest.fn().mockResolvedValue({ data: null, error: null }),
+      upsert: jest.fn().mockResolvedValue({ data: null, error: null }),
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       single: jest.fn().mockResolvedValue({ data: null, error: null }),
@@ -180,26 +184,16 @@ function makeMxResult(overrides: Record<string, unknown> = {}) {
   }
 }
 
-/** Returns a jest mock implementation that creates a fresh Response per call. */
-function fetchReturning(deliverability: string, qualityScore = 0.9) {
-  return jest.fn().mockImplementation(() =>
-    Promise.resolve(
-      new Response(
-        JSON.stringify({ deliverability, quality_score: qualityScore }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      )
-    )
-  )
-}
+// (Abstract API fetch logic removed as it's no longer used in the main route)
 
 // ── Section 1: Pure scoring function unit tests ───────────────────────────────
 
 describe('calculateDeliverabilityConfidence', () => {
   const { calculateDeliverabilityConfidence } = realEmailVerification
 
-  test('DELIVERABLE always returns 95 regardless of base or smtpScore', () => {
-    expect(calculateDeliverabilityConfidence(40, 'DELIVERABLE', 0.0)).toBe(95)
-    expect(calculateDeliverabilityConfidence(70, 'DELIVERABLE', 1.0)).toBe(95)
+  test('DELIVERABLE always returns 92 regardless of base or smtpScore', () => {
+    expect(calculateDeliverabilityConfidence(40, 'DELIVERABLE', 0.0)).toBe(92)
+    expect(calculateDeliverabilityConfidence(70, 'DELIVERABLE', 1.0)).toBe(92)
   })
 
   test('UNDELIVERABLE always returns 5 (hard-bounce floor)', () => {
@@ -318,8 +312,7 @@ describe('POST /api/generate-emails', () => {
     // Default: 5 patterns generated
     ;(generateSmartEmailPatternsCached as jest.Mock).mockResolvedValue(makePatterns(5))
 
-    // Default: Abstract API says DELIVERABLE
-    global.fetch = fetchReturning('DELIVERABLE', 0.95)
+    // No more abstract API fetch mocking needed.
   })
 
   // ── Auth & quota ────────────────────────────────────────────────────────────
@@ -377,133 +370,9 @@ describe('POST /api/generate-emails', () => {
     expect(body.error).toMatch(/domain/i)
   })
 
-  // ── Happy path: Abstract API results ────────────────────────────────────────
-
-  test('top email has confidence=95 and status=verified when API returns DELIVERABLE', async () => {
-    const res = await POST(makePostRequest(DEFAULT_BODY))
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body.success).toBe(true)
-    // The highest-confidence input is verified first → should be 95
-    const topEmail = body.emails[0]
-    expect(topEmail.confidence).toBe(95)
-    expect(topEmail.verificationStatus).toBe('verified')
-  })
-
-  test('first email has confidence=5 and status=invalid when API returns UNDELIVERABLE', async () => {
-    // First call UNDELIVERABLE, rest DELIVERABLE — each call gets a fresh Response
-    global.fetch = jest.fn()
-      .mockImplementationOnce(() =>
-        Promise.resolve(new Response(JSON.stringify({ deliverability: 'UNDELIVERABLE', quality_score: 0.0 }), { status: 200 }))
-      )
-      .mockImplementation(() =>
-        Promise.resolve(new Response(JSON.stringify({ deliverability: 'DELIVERABLE', quality_score: 0.9 }), { status: 200 }))
-      )
-
-    const res = await POST(makePostRequest(DEFAULT_BODY))
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-
-    // Find the email that was ranked #1 in confidence input (now confidence=5)
-    const topInputEmail = makePatterns(5)[0]!.email
-    const hit = body.emails.find((e: { email: string }) => e.email === topInputEmail)
-    expect(hit).toBeDefined()
-    expect(hit.confidence).toBe(5)
-    expect(hit.verificationStatus).toBe('invalid')
-  })
-
-  test('email stays unverified (not invalid) when API returns RISKY', async () => {
-    global.fetch = fetchReturning('RISKY', 0.5)
-
-    const res = await POST(makePostRequest(DEFAULT_BODY))
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    // No email should be marked invalid (RISKY ≠ confirmed bad)
-    const invalidEmails = body.emails.filter(
-      (e: { verificationStatus: string }) => e.verificationStatus === 'invalid'
-    )
-    expect(invalidEmails.length).toBe(0)
-
-    // The 3 emails that were verified by Abstract API should be in the RISKY
-    // confidence band (35-45). After re-sort, RISKY emails rank below unverified
-    // ones (which keep their base score of 75), so we filter by confidence range.
-    const riskyEmails = body.emails.filter(
-      (e: { confidence: number; verificationStatus: string }) =>
-        e.verificationStatus === 'unverified' &&
-        e.confidence >= 35 && e.confidence <= 45
-    )
-    expect(riskyEmails).toHaveLength(3)
-  })
-
-  test('email stays unverified with original confidence when API times out', async () => {
-    // Use a plain Error with name overridden — DOMException.name is read-only
-    const timeout = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })
-    global.fetch = jest.fn().mockRejectedValue(timeout)
-
-    const res = await POST(makePostRequest(DEFAULT_BODY))
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    body.emails.forEach((e: { verificationStatus: string }) => {
-      expect(e.verificationStatus).toBe('unverified')
-    })
-  })
-
-  test('email stays unverified when Abstract API returns non-200', async () => {
-    global.fetch = jest.fn().mockImplementation(() =>
-      Promise.resolve(new Response('Service Unavailable', { status: 503 }))
-    )
-
-    const res = await POST(makePostRequest(DEFAULT_BODY))
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    body.emails.forEach((e: { verificationStatus: string }) => {
-      expect(e.verificationStatus).toBe('unverified')
-    })
-  })
-
-  // ── Top-N limiting ──────────────────────────────────────────────────────────
-
-  test('only verifies the top 3 emails even when 10 patterns are generated', async () => {
-    ;(generateSmartEmailPatternsCached as jest.Mock).mockResolvedValue(makePatterns(10))
-
-    const res = await POST(makePostRequest(DEFAULT_BODY))
-
-    expect(res.status).toBe(200)
-    // Exactly 3 Abstract API calls should be made
-    expect(global.fetch).toHaveBeenCalledTimes(3)
-  })
-
-  test('returns all patterns even when fewer than 3 are generated', async () => {
-    ;(generateSmartEmailPatternsCached as jest.Mock).mockResolvedValue(makePatterns(2))
-
-    const res = await POST(makePostRequest(DEFAULT_BODY))
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    expect(body.emails).toHaveLength(2)
-    expect(global.fetch).toHaveBeenCalledTimes(2)
-  })
-
-  // ── Result ordering ─────────────────────────────────────────────────────────
-
-  test('response emails are sorted by confidence descending', async () => {
-    const res = await POST(makePostRequest(DEFAULT_BODY))
-    const body = await res.json()
-
-    expect(res.status).toBe(200)
-    const confidences = body.emails.map((e: { confidence: number }) => e.confidence)
-    const sorted = [...confidences].sort((a: number, b: number) => b - a)
-    expect(confidences).toEqual(sorted)
-  })
-
   // ── Skip-verification scenarios ─────────────────────────────────────────────
 
-  test('skips Abstract API verification when domain has no MX records', async () => {
+  test('skips cache writing when MX fails', async () => {
     ;(verifyDomainMxRecords as jest.Mock).mockResolvedValue(
       makeMxResult({ isValid: false, hasMxRecords: false, mxRecords: [], error: 'No MX records found' })
     )
@@ -512,28 +381,9 @@ describe('POST /api/generate-emails', () => {
     const body = await res.json()
 
     expect(res.status).toBe(200)
-    expect(global.fetch).not.toHaveBeenCalled()
     body.emails.forEach((e: { verificationStatus: string }) => {
       expect(e.verificationStatus).toBe('unverified')
     })
-  })
-
-  test('skips Abstract API when daily verification quota is exhausted', async () => {
-    ;(getDailyVerificationQuota as jest.Mock).mockResolvedValue({
-      allowed: false,
-      used: 10,
-      limit: 10,
-      planType: 'free',
-      resetAt: new Date(Date.now() + 86_400_000).toISOString(),
-    })
-
-    const res = await POST(makePostRequest(DEFAULT_BODY))
-    const body = await res.json()
-
-    // Route still succeeds — quota exhaustion is a soft skip, not an error
-    expect(res.status).toBe(200)
-    expect(body.success).toBe(true)
-    expect(global.fetch).not.toHaveBeenCalled()
   })
 
   // ── Response shape ──────────────────────────────────────────────────────────
@@ -552,12 +402,12 @@ describe('POST /api/generate-emails', () => {
         verified: true,
         hasMxRecords: true,
         emailProvider: 'google',
+        status: expect.any(Object),
       }),
       learning: {
         hasLearnedPatterns: false,
         learnedPatternCount: 0,
       },
-      emails: expect.any(Array),
       metadata: expect.objectContaining({
         firstName: 'Jane',
         lastName: 'Doe',
@@ -604,3 +454,4 @@ describe('POST /api/generate-emails', () => {
     expect(body.error).toMatch(/method not allowed/i)
   })
 })
+

@@ -25,7 +25,8 @@ export async function PATCH(
     const user = await getAuthenticatedUser();
     const supabase = await createServiceRoleClient();
     const { id } = params;
-    const parsed = LeadUpdateSchema.safeParse(await request.json());
+    const reqJson = await request.json();
+    const parsed = LeadUpdateSchema.safeParse(reqJson);
     if (!parsed.success) {
       return NextResponse.json(
         { error: 'Validation failed', details: formatZodError(parsed.error) },
