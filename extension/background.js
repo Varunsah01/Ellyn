@@ -5174,7 +5174,7 @@ async function handleFindEmail(data, sender, sendResponse) {
           attemptedBases.length > 0 ? ` Checked backend origins: ${attemptedBases.join(', ')}.` : '';
         throw buildPipelineError(
           'SMTP_NOT_CONFIGURED',
-          `Email verification provider is not configured (ABSTRACT_EMAIL_VALIDATION_API_KEY).${attemptedSuffix}`,
+          `Email verification provider is not configured (EMAILABLE_API_KEY).${attemptedSuffix}`,
           { isRecoverable: false }
         );
       }
@@ -5202,7 +5202,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       if (deliverability === 'DELIVERABLE') {
         selected = {
           ...candidate,
-          source: 'abstract_verified',
+          source: 'emailable_verified',
           confidence: validationResult?.confidence ?? 0.95,
           tier: 'primary',
           validationSubStatus: validationResult?.subStatus || null,
@@ -5328,7 +5328,7 @@ async function handleFindEmail(data, sender, sendResponse) {
       pattern: finalResult.pattern,
       confidence: Number(finalResult.confidence || 0),
       source: finalResult.source || 'smtp_verified',
-      smtpVerificationProvider: 'abstract',
+      smtpVerificationProvider: 'emailable',
       mxChecked: true,
       mxSelectedHasMx,
       mxSelectedFromAlternative: false,

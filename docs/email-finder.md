@@ -4,7 +4,7 @@ Last updated: 2026-03-05
 
 ## Purpose
 
-The Email Finder is Ellyn's core differentiator — a 3-phase pipeline that discovers professional email addresses with 95%+ accuracy at ~100x lower cost than competitors like Hunter.io. It takes a person's name and company, resolves the company domain, generates candidate email patterns, and verifies them via SMTP probe or ZeroBounce.
+The Email Finder is Ellyn's core differentiator — a 3-phase pipeline that discovers professional email addresses with high accuracy at ~100x lower cost than competitors like Hunter.io. It takes a person's name and company, resolves the company domain, generates candidate email patterns, and verifies them via SMTP probe or MX validation.
 
 ---
 
@@ -34,8 +34,6 @@ User Input (firstName, lastName, company)
 ┌──────────────────────────────────────────────┐
 │ Phase 3: Verification                        │
 │  MX check → SMTP probe (custom servers)      │
-│           → ZeroBounce (Google/MS domains)   │
-│  Up to 2 ZeroBounce checks per request       │
 │  Confidence scoring: 10–92 scale             │
 └──────────────────────────────────────────────┘
   │
@@ -51,7 +49,7 @@ Response: { email, pattern, confidence, verified, badge }
 
 3. **Graceful degradation**: Every external dependency is optional. The pipeline never crashes due to a missing API key — it simply skips that layer and falls through to the next.
 
-4. **SMTP probe vs. ZeroBounce**: For non-Google/non-Microsoft domains, direct SMTP handshake is free and definitive. Google Workspace and Microsoft 365 block SMTP probing, so ZeroBounce (paid API) is used as fallback.
+4. **SMTP probe**: For non-Google/non-Microsoft domains, direct SMTP handshake is free and definitive.
 
 ---
 
@@ -64,7 +62,6 @@ Response: { email, pattern, confidence, verified, badge }
 | LLM-assisted pattern ranking | ✅ Done | Gemini Flash 2.0 ranks candidates by likelihood. Falls back to static ordering. |
 | MX record verification | ✅ Done | DNS-based MX lookup via `lib/mx-verification.ts`. |
 | SMTP probe (direct handshake) | ✅ Done | External Go microservice at `smtp-probe-service/`. API route: `POST /api/v1/smtp-probe` |
-| ZeroBounce integration | ✅ Done | Up to 2 verification attempts per request. `lib/zerobounce.ts` |
 | Pattern learning (recording) | ✅ Done | Records success/failure per domain pattern. `lib/pattern-learning.ts` |
 | Pattern learning (boosting) | ✅ Done | Learned patterns get confidence boost in ranking. `lib/db/migrations/037_intelligence_system.sql` |
 | Admin pattern injection | ✅ Done | `POST /api/admin/inject-patterns` for manual pattern seeding. |
@@ -100,8 +97,7 @@ All routes have both a legacy (`/api/`) and versioned (`/api/v1/`) form.
 | `/api/v1/predict-email` | POST | Extended AI-assisted prediction with LLM ranking. |
 | `/api/v1/resolve-domain` | POST | Domain-only lookup (no pattern generation). |
 | `/api/v1/resolve-domain-v2` | POST | Improved domain resolution with v2 cascade logic. |
-| `/api/v1/verify-email` | POST | Standalone email verification (ZeroBounce or MX). |
-| `/api/v1/zerobounce-verify` | POST | ZeroBounce-only verification endpoint. |
+| `/api/v1/verify-email` | POST | Standalone email verification (MX-only). |
 | `/api/v1/confirm-domain` | POST | Confirm/lock a domain association to a company. |
 | `/api/v1/learning/record` | POST | Record outcome of email prediction for pattern learning. |
 | `/api/v1/pattern-feedback` | POST | User feedback on suggested email patterns. |
@@ -126,9 +122,8 @@ All routes have both a legacy (`/api/`) and versioned (`/api/v1/`) form.
 | `lib/smart-tld-resolver.ts` | TLD resolution and validation. |
 | `lib/enhanced-email-patterns.ts` | Candidate email pattern generation (10+ formats). |
 | `lib/email-patterns.ts` | Base pattern generation utilities. |
-| `lib/email-verification.ts` | Verification orchestration (MX → SMTP → ZeroBounce). |
+| `lib/email-verification.ts` | Verification orchestration (MX → SMTP). |
 | `lib/mx-verification.ts` | DNS MX record lookup and validation. |
-| `lib/zerobounce.ts` | ZeroBounce API integration. |
 | `lib/smtp-probe.ts` | SMTP probe client (calls external Go service). |
 | `lib/pattern-learning.ts` | Pattern learning system (record + boost). |
 | `lib/llm-domain-prediction.ts` | LLM-based domain prediction. |
@@ -165,11 +160,10 @@ All routes have both a legacy (`/api/`) and versioned (`/api/v1/`) form.
 | Missing Resource | Behavior |
 |-----------------|----------|
 | `GOOGLE_AI_API_KEY` | Skip Gemini ranking; use static confidence ordering. |
-| `ZEROBOUNCE_API_KEY` | Skip SMTP verification; return `most_probable` result with pattern confidence only. |
 | `CLEARBIT_API_KEY` | Skip Clearbit layer in domain resolution; fall through to Brandfetch/Google CSE. |
 | `MISTRAL_API_KEY` / `DEEPSEEK_API_KEY` | Skip fallback LLM providers; return best available non-LLM output. |
 | Redis/KV unavailable | Fall through to direct DB lookups; no caching. Pipeline logs a warning. |
-| SMTP probe service down | Skip SMTP verification; fall through to ZeroBounce or pattern-only confidence. |
+| SMTP probe service down | Skip SMTP verification; return result with pattern confidence only. |
 
 All optional-provider failures are caught and logged — they never crash the request.
 
@@ -185,7 +179,6 @@ All optional-provider failures are caught and logged — they never crash the re
 | `GOOGLE_AI_API_KEY` | No | Gemini Flash 2.0 for pattern ranking |
 | `MISTRAL_API_KEY` | No | Mistral 3B fallback LLM |
 | `DEEPSEEK_API_KEY` | No | DeepSeek R1 fallback LLM |
-| `ZEROBOUNCE_API_KEY` | No | ZeroBounce SMTP verification |
 | `CLEARBIT_API_KEY` | No | Clearbit domain resolution |
 | `GOOGLE_CUSTOM_SEARCH_API_KEY` | No | Google Custom Search for domain resolution |
 | `GOOGLE_SEARCH_ENGINE_ID` | No | Google CSE engine ID |
@@ -203,7 +196,7 @@ All optional-provider failures are caught and logged — they never crash the re
     "confidence": 85,
     "verified": true,
     "badge": "verified | most_probable | domain_no_mx",
-    "verificationSource": "zerobounce | mx_only | smtp_probe"
+    "verificationSource": "mx_only | smtp_probe"
   },
   "domain": "acme.com",
   "metadata": {
@@ -234,6 +227,5 @@ All optional-provider failures are caught and logged — they never crash the re
 The SMTP probe is an external Go microservice (`smtp-probe-service/`) that performs direct SMTP handshakes. It is deployed separately from the Next.js app.
 
 - **Why Go?** SMTP handshakes require raw TCP connections with timeouts, which Go handles more efficiently than Node.js edge functions with their 10s timeout.
-- **Limitation**: Google Workspace and Microsoft 365 block SMTP probing, so these domains fall back to ZeroBounce.
 - **Health check**: `GET /api/v1/smtp-probe/health`
 - **Deployment docs**: `smtp-probe-service/DEPLOY.md`

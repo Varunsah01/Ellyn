@@ -13,7 +13,7 @@ import { incrementEmailGeneration, QuotaExceededError } from '@/lib/quota'
 import { checkApiRateLimit, rateLimitExceeded } from '@/lib/rate-limit'
 import { resolveDomain } from '@/lib/domain-resolution-service'
 import { createServiceRoleClient } from '@/lib/supabase/server'
-import { verifyEmailAbstract } from '@/lib/abstract-email-validation'
+import { verifyEmailEmailable } from '@/lib/emailable-verification'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const enrichSchema = z.object({
@@ -37,7 +37,7 @@ type EnrichResponse = {
     confidence: number
     verified: boolean
     badge: 'verified' | 'most_probable' | 'domain_no_mx'
-    verificationSource?: 'abstract' | 'mx_only'
+    verificationSource?: 'emailable' | 'mx_only'
   }
   domain: string
   metadata: {
@@ -388,9 +388,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response)
     }
 
-    const abstractValidationKey = process.env.ABSTRACT_EMAIL_VALIDATION_API_KEY?.trim()
+    const emailableKey = process.env.EMAILABLE_API_KEY?.trim()
 
-    if (!abstractValidationKey) {
+    if (!emailableKey) {
       const response = buildSuccessResponse({
         result: {
           email: top.email,
@@ -423,7 +423,7 @@ export async function POST(request: NextRequest) {
     let checked = 0
 
     for (const candidate of verificationCandidates) {
-      const verification = await verifyEmailAbstract(candidate.email)
+      const verification = await verifyEmailEmailable(candidate.email)
       checked += 1
 
       if (verification.deliverability === 'DELIVERABLE') {
@@ -434,7 +434,7 @@ export async function POST(request: NextRequest) {
             confidence: Math.max(candidate.confidence, 90),
             verified: true,
             badge: 'verified',
-            verificationSource: 'abstract',
+            verificationSource: 'emailable',
           },
           domain,
           companySize,

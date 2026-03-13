@@ -26,11 +26,21 @@ const publicSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const publicSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 const isSupabaseConfigured = Boolean(publicSupabaseUrl && publicSupabaseAnonKey);
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://ellyn.app";
+
 export const metadata: Metadata = {
-  title: "Ellyn - Professional Email Finder & Outreach Platform | Find Anyone's Email",
+  metadataBase: new URL(APP_URL),
+  title: {
+    default: "Ellyn — Email Finder & Outreach Platform | Find Anyone's Professional Email",
+    template: "%s | Ellyn",
+  },
   description:
-    "Find verified professional emails for hiring managers, prospects, or decision-makers. AI-powered outreach drafts, contact management, and email verification. 95%+ accuracy. Start free.",
+    "Ellyn is the fast, affordable email finder that surfaces verified professional emails with 95%+ accuracy. AI-powered outreach drafts, contact management, and email verification. Free to start.",
   keywords: [
+    "ellyn",
+    "ellyn email finder",
+    "ellyn.app",
+    "ellyn email",
     "professional email finder",
     "email discovery platform",
     "find professional emails",
@@ -46,13 +56,50 @@ export const metadata: Metadata = {
     "hiring manager emails",
     "cold outreach platform",
     "AI email drafting",
+    "email finder tool",
+    "find business email",
   ],
-  authors: [{ name: "Ellyn" }],
+  authors: [{ name: "Ellyn", url: APP_URL }],
+  creator: "Ellyn",
+  publisher: "Eigenspace Technologies PVT. Ltd.",
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
-    title: "Ellyn - Find Professional Emails & Send Personalized Outreach",
+    title: "Ellyn — Find Professional Emails & Send Personalized Outreach",
     description:
-      "Discover verified emails, craft AI-powered messages, and manage your outreach pipeline. Trusted by job seekers and sales teams. Free to start.",
+      "Ellyn finds verified professional emails with 95%+ accuracy at a fraction of Hunter.io's cost. AI-powered outreach drafts, contact management, and email verification. Free to start.",
     type: "website",
+    url: APP_URL,
+    siteName: "Ellyn",
+    locale: "en_US",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Ellyn — Professional Email Finder & Outreach Platform",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Ellyn — Find Anyone's Professional Email",
+    description:
+      "Verified professional emails with 95%+ accuracy. AI-powered outreach drafts. Free to start.",
+    images: ["/og-image.png"],
+    creator: "@ellyn_app",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
   },
 };
 

@@ -237,17 +237,15 @@ export function calculateEnhancedConfidence(
  *
  * Confidence score reference:
  * | Score | Source |
- * | 95 | Abstract API: DELIVERABLE (DEPRECATED -- kept for historical records) |
- * | 92 | SMTP probe: DELIVERABLE -- mail server accepted RCPT TO |
+ * | 92 | SMTP probe: DELIVERABLE â€” mail server accepted RCPT TO |
  * | 70-85 | Pattern confidence: high (Google first.last, learned patterns) |
  * | 50-69 | Pattern confidence: medium |
- * | 35-45 | SMTP/Abstract: RISKY -- catch-all domain |
+ * | 35-45 | SMTP: RISKY â€” catch-all domain |
  * | 10-34 | Pattern confidence: low |
- * | 5 | Abstract API: UNDELIVERABLE (DEPRECATED) |
  *
  * Maps a verification result to a final confidence score.
- * Used for both SMTP probe results and legacy Abstract API results.
- * SMTP DELIVERABLE maps to 92 (slightly below the legacy Abstract 95).
+ * Used for SMTP probe results.
+ * SMTP DELIVERABLE maps to 92.
  *
  * @param baseConfidence  Score produced by calculateEnhancedConfidence (0-100).
  * @param deliverability  Deliverability label from verification response.

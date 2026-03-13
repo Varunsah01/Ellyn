@@ -33,7 +33,6 @@ type AdminSummary = {
   successRate: number
   cacheHitRate: number
   anthropicCost: number
-  abstractCost: number
   burnRateUsdPerHour: number
 }
 

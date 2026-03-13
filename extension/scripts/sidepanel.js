@@ -4117,10 +4117,10 @@ function toConfidencePercent(value) {
 function getSourceConfidenceBadgeMeta(source) {
   const normalized = String(source || "").trim().toLowerCase();
 
-  if (normalized === "abstract_verified" || normalized === "zerobounce_verified") {
+  if (normalized === "emailable_verified" || normalized === "abstract_verified" || normalized === "zerobounce_verified") {
     return { label: " Verified", color: "#16a34a" };
   }
-  if (normalized === "abstract_catchall" || normalized === "zerobounce_catchall") {
+  if (normalized === "emailable_catchall" || normalized === "abstract_catchall" || normalized === "zerobounce_catchall") {
     return { label: "~ Catch-all Domain", color: "#d97706" };
   }
   if (normalized === "mx_confirmed_unverified") {
@@ -4148,8 +4148,8 @@ function getConfidenceDescriptor(percent) {
 
 function formatSourceLabel(source) {
   const normalized = String(source || "").toLowerCase();
-  if (normalized === "abstract_verified") return "Verified";
-  if (normalized === "abstract_catchall") return "Catch-all Domain";
+  if (normalized === "emailable_verified" || normalized === "abstract_verified") return "Verified";
+  if (normalized === "emailable_catchall" || normalized === "abstract_catchall") return "Catch-all Domain";
   if (normalized === "smtp_verified") return "SMTP Verified";
   if (normalized === "pattern_confidence") return "Pattern Match";
   if (normalized === "cache_verified") return "Cache Verified";
