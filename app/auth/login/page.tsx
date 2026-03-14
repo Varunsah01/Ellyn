@@ -174,7 +174,7 @@ function LoginPageContent() {
       const callbackParams = new URLSearchParams();
       callbackParams.set("next", redirectPath);
       const redirectTo = origin
-        ? `${origin}/auth/callback?${callbackParams.toString()}`
+        ? `${origin}/auth/callback-client?${callbackParams.toString()}`
         : undefined;
 
       const supabase = createClient();
