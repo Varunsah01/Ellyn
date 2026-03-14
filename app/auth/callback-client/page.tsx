@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { AuthPageLoading } from "@/components/auth/AuthFormLayout";
@@ -12,7 +13,7 @@ function sanitizeNextPath(value: string | null): string {
   return value;
 }
 
-export default function AuthCallbackClientPage() {
+function AuthCallbackClientContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -81,4 +82,12 @@ export default function AuthCallbackClientPage() {
   }, [router, searchParams]);
 
   return <AuthPageLoading text="Completing sign in..." />;
+}
+
+export default function AuthCallbackClientPage() {
+  return (
+    <Suspense fallback={<AuthPageLoading text="Completing sign in..." />}>
+      <AuthCallbackClientContent />
+    </Suspense>
+  );
 }
