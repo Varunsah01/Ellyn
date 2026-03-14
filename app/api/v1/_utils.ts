@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { handleApiError } from '@/lib/errors/error-handler'
 import { monitorApiRoute } from '@/lib/monitoring/performance'
 
-type RouteHandler = (...args: unknown[]) => Promise<Response> | Response
+type RouteHandler<TArgs extends unknown[] = unknown[]> = (...args: TArgs) => Promise<Response> | Response
 
 function isObjectPayload(payload: unknown): payload is Record<string, unknown> {
   return typeof payload === 'object' && payload !== null && !Array.isArray(payload)
@@ -99,8 +99,8 @@ async function wrapVersionedResponse(response: Response): Promise<Response> {
  * @example
  * const GET = createVersionedHandler(async () => NextResponse.json({ success: true }))
  */
-export function createVersionedHandler(handler?: RouteHandler): RouteHandler {
-  return async (...args: unknown[]) => {
+export function createVersionedHandler<TArgs extends unknown[]>(handler?: RouteHandler<TArgs>): RouteHandler<TArgs> {
+  return async (...args: TArgs) => {
     const requestLike = args[0] as { nextUrl?: { pathname?: string }; method?: string } | undefined
     const route = requestLike?.nextUrl?.pathname || '/api/v1/unknown'
     const method = String(requestLike?.method || 'UNKNOWN').toUpperCase()
