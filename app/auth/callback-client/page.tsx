@@ -80,5 +80,5 @@ export default function AuthCallbackClientPage() {
     };
   }, [router, searchParams]);
 
-  return <AuthPageLoading />;
+  return <AuthPageLoading text="Completing sign in..." />;
 }
