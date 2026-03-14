@@ -67,7 +67,7 @@ const POST_HANDLER = async (req: NextRequest) => {
     })
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Invalid request payload', details: error.errors }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid request payload', details: error.issues }, { status: 400 })
     }
     
     console.error('[Email Verify API] Error:', error)
