@@ -35,6 +35,15 @@
 
 const ELLYN_DEBUG_MODE = false;
 
+const extractorLogger =
+  globalThis.EllynLogger?.createLogger('LinkedInExtractor') || {
+    debug: (...args) => console.log(...args),
+    info: (...args) => console.log(...args),
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+  };
+
+
 const CONFIG = {
   DOM_READY_TIMEOUT_MS: 10000,
   OBSERVER_DEBOUNCE_MS: 80,
@@ -107,23 +116,23 @@ class LinkedInExtractor {
       profileCardCount: 0,
     };
 
-    console.group('[LinkedInExtractor] DOM Audit');
+    extractorLogger.debug('[LinkedInExtractor] DOM Audit');
 
     const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
     audit.jsonLdCount = jsonLdScripts.length;
-    console.log('JSON-LD scripts found:', jsonLdScripts.length);
+    extractorLogger.debug('JSON-LD scripts found:', jsonLdScripts.length);
     jsonLdScripts.forEach((script, i) => {
       try {
         const parsed = JSON.parse(script.textContent || '');
         audit.jsonLd.push(parsed);
-        console.log(`JSON-LD ${i}:`, parsed);
+        extractorLogger.debug(`JSON-LD ${i}:`, parsed);
       } catch (error) {
         const parseError = {
           index: i,
           error: error?.message || 'Unknown parse error',
         };
         audit.jsonLd.push(parseError);
-        console.error(`JSON-LD ${i} parse error:`, error);
+        extractorLogger.error(`JSON-LD ${i} parse error:`, error);
       }
     });
 
@@ -131,12 +140,12 @@ class LinkedInExtractor {
     const ogDescription = document.querySelector('meta[property="og:description"]');
     audit.openGraph.title = ogTitle?.content || null;
     audit.openGraph.description = ogDescription?.content || null;
-    console.log('OG Title:', audit.openGraph.title);
-    console.log('OG Description:', audit.openGraph.description);
+    extractorLogger.debug('OG Title:', audit.openGraph.title);
+    extractorLogger.debug('OG Description:', audit.openGraph.description);
 
     const allH1s = document.querySelectorAll('h1');
     audit.h1Count = allH1s.length;
-    console.log('All H1 elements:', allH1s.length);
+    extractorLogger.debug('All H1 elements:', allH1s.length);
     allH1s.forEach((h1, i) => {
       const entry = {
         text: h1.textContent?.trim() || '',
@@ -144,16 +153,16 @@ class LinkedInExtractor {
         parent: h1.parentElement?.className || '',
       };
       audit.h1.push(entry);
-      console.log(`H1 ${i}:`, entry);
+      extractorLogger.debug(`H1 ${i}:`, entry);
     });
 
     const main = document.querySelector('main');
     audit.hasMain = Boolean(main);
-    console.log('Main element:', main);
+    extractorLogger.debug('Main element:', main);
 
     const profileCards = document.querySelectorAll('[class*="profile"], [class*="top-card"], [class*="pv-"]');
     audit.profileCardCount = profileCards.length;
-    console.log('Profile card elements:', profileCards.length);
+    extractorLogger.debug('Profile card elements:', profileCards.length);
 
     audit.selectorTests = {
       company: this._testSelectors([
@@ -185,10 +194,10 @@ class LinkedInExtractor {
       },
     };
     audit.profileType = this.detectProfileType?.() || null;
-    console.log('Selector tests:', audit.selectorTests);
-    console.log('Profile type:', audit.profileType);
+    extractorLogger.debug('Selector tests:', audit.selectorTests);
+    extractorLogger.debug('Profile type:', audit.profileType);
 
-    console.groupEnd();
+    
     return audit;
   }
 
@@ -2690,10 +2699,12 @@ class LinkedInExtractor {
     if (!this.verboseLogging) return;
 
     if (typeof data === 'undefined') {
-      console.log(`[LinkedInExtractor] ${message}`);
-    } else {
-      console.log(`[LinkedInExtractor] ${message}`, data);
+      extractorLogger.debug(message);
+      return;
     }
+
+    const safeData = globalThis.EllynLogger?.sanitizeFields?.(data) || undefined;
+    extractorLogger.debug(message, safeData);
   }
 }
 
@@ -2742,7 +2753,7 @@ function makeSafeResponder(sendResponse) {
     } catch (error) {
       // Channel was closed (user closed side panel during extraction).
       // This is expected - log at debug level only.
-      console.log(
+      extractorLogger.debug(
         '[LinkedInExtractor] sendResponse failed - channel closed:',
         error?.message || String(error)
       );
@@ -2792,7 +2803,7 @@ async function handleExtraction(message, sendResponse) {
 
     respond(response);
   } catch (error) {
-    console.error('[LinkedInExtractor] Extraction failed:', error);
+    extractorLogger.error('[LinkedInExtractor] Extraction failed:', error);
     const response = {
       success: false,
       error: error?.message || 'Unknown extraction error',
@@ -2831,7 +2842,7 @@ function handleCompanyPageUrlExtraction(message, sendResponse) {
     const result = extractor.extractCompanyWebsite(String(message?.companyName || '').trim());
     respond(result);
   } catch (error) {
-    console.error('[LinkedInExtractor] Company page extraction failed:', error);
+    extractorLogger.error('[LinkedInExtractor] Company page extraction failed:', error);
     respond({
       companyName: String(message?.companyName || '').trim(),
       companyPageUrl: null,

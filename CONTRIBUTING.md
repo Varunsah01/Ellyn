@@ -44,3 +44,22 @@ npm run lint
 npx tsc --noEmit
 ```
 
+
+## Logging Policy
+
+Use the shared logger utilities instead of raw `console.*` in application code:
+
+- Browser extension scripts should use `globalThis.EllynLogger.createLogger('<Scope>')` from `extension/utils/logger.js`.
+- TypeScript/runtime code should use `createLogger('<Scope>')` from `lib/logger.ts`.
+
+### Levels and environment gating
+
+- Supported levels: `debug`, `info`, `warn`, `error`.
+- Debug logs are disabled in production by default.
+- To override level locally, set `LOG_LEVEL` (server/runtime) or `ELLYN_LOG_LEVEL` / `localStorage.ellyn_log_level` (extension).
+
+### Sensitive data
+
+- Never log full payloads from extraction, LLM responses, auth data, or user-generated content.
+- Only log diagnostic metadata (IDs, counts, statuses, codes, timings, and similar non-sensitive fields).
+- Prefer sanitized fields through `sanitizeLogFields` (TypeScript) or `EllynLogger.sanitizeFields` (extension).

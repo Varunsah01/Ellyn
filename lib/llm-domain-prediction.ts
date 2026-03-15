@@ -12,12 +12,15 @@ import { callLLMWithFallback } from '@/lib/llm-client'
 import { batchVerifyDomains } from '@/lib/mx-verification'
 import { buildCacheKey, getOrSet } from '@/lib/cache/redis'
 import { CACHE_TAGS } from '@/lib/cache/tags'
+import { createLogger, sanitizeLogFields } from '@/lib/logger'
 
 export interface LlmDomainPrediction {
   domain: string
   confidence: number    // 0–1 as returned by the LLM
   reasoning: string
 }
+
+const domainLog = createLogger('LLMDomain')
 
 export interface LlmDomainResult {
   domain: string
@@ -92,7 +95,7 @@ export async function predictDomainWithLLM(
   companyName: string
 ): Promise<LlmDomainResult | null> {
   if (!process.env.GOOGLE_AI_API_KEY && !process.env.MISTRAL_API_KEY && !process.env.DEEPSEEK_API_KEY) {
-    console.warn('[LLMDomain] No LLM API keys set — skipping LLM layer')
+    domainLog.warn('No LLM API keys set — skipping LLM layer')
     return null
   }
 
@@ -121,21 +124,21 @@ export async function predictDomainWithLLM(
           costUsd: response.costUsd,
         }
       } catch (err) {
-        console.error('[LLMDomain] All LLM tiers failed:', err)
+        domainLog.error('All LLM tiers failed', sanitizeLogFields({ error: err instanceof Error ? err.message : String(err) }))
         return null
       }
 
       const { text, inputTokens, outputTokens, costUsd } = llmResult
 
-      console.log(`[LLMDomain] ${companyName}: ${inputTokens} in / ${outputTokens} out / $${costUsd.toFixed(6)}`)
+      domainLog.debug('LLM token usage', sanitizeLogFields({ companyId: companyName.toLowerCase().replace(/\s+/g, '-'), inputTokens, outputTokens, costUsd }))
 
       const predictions = parsePredictions(text)
       if (predictions.length === 0) {
-        console.warn('[LLMDomain] No parseable predictions for:', companyName)
+        domainLog.warn('No parseable predictions', sanitizeLogFields({ companyId: companyName.toLowerCase().replace(/\s+/g, '-') }))
         return null
       }
 
-      console.log('[LLMDomain] Predictions for', companyName, ':', predictions.map(p => p.domain))
+      domainLog.debug('Predictions generated', sanitizeLogFields({ companyId: companyName.toLowerCase().replace(/\s+/g, '-'), predictionCount: predictions.length }))
 
       // MX-verify all predictions in parallel
       const candidates = predictions.map(p => p.domain)
@@ -148,14 +151,14 @@ export async function predictDomainWithLLM(
           ),
         ])
       } catch {
-        console.warn('[LLMDomain] MX verification timed out for:', companyName)
+        domainLog.warn('MX verification timed out', sanitizeLogFields({ companyId: companyName.toLowerCase().replace(/\s+/g, '-') }))
         return null
       }
 
       // Return the highest-confidence MX-verified prediction
       for (const prediction of predictions) {
         if (mxResults.get(prediction.domain)?.hasMX) {
-          console.log('[LLMDomain] Verified:', prediction.domain, `(LLM confidence: ${prediction.confidence})`)
+          domainLog.info('Prediction verified', sanitizeLogFields({ domain: prediction.domain, confidence: prediction.confidence }))
           return {
             domain: prediction.domain,
             confidence: Math.round(prediction.confidence * 100),  // rescale to 0–100
@@ -167,7 +170,7 @@ export async function predictDomainWithLLM(
         }
       }
 
-      console.log('[LLMDomain] No MX-verified predictions for:', companyName)
+      domainLog.info('No MX-verified predictions', sanitizeLogFields({ companyId: companyName.toLowerCase().replace(/\s+/g, '-') }))
       return null
     },
   })

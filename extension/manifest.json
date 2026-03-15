@@ -3,7 +3,15 @@
   "name": "Ellyn Email Finder",
   "version": "1.0.0",
   "description": "Find professional emails on LinkedIn with 95%+ accuracy",
-  "permissions": ["storage", "unlimitedStorage", "activeTab", "tabs", "sidePanel", "scripting", "alarms"],
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "activeTab",
+    "tabs",
+    "sidePanel",
+    "scripting",
+    "alarms"
+  ],
   "host_permissions": [
     "https://linkedin.com/*",
     "https://*.linkedin.com/*",
@@ -24,8 +32,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://linkedin.com/*", "https://*.linkedin.com/*"],
+      "matches": [
+        "https://linkedin.com/*",
+        "https://*.linkedin.com/*"
+      ],
       "js": [
+        "utils/logger.js",
         "content/linkedin-company-extractor.js",
         "content/email-scanner.js",
         "content/linkedin-extractor.js"
@@ -66,12 +78,23 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["assets/icons/*", "icons/*", "data/university-domains.json"],
-      "matches": ["https://linkedin.com/*", "https://*.linkedin.com/*"]
+      "resources": [
+        "assets/icons/*",
+        "icons/*",
+        "data/university-domains.json"
+      ],
+      "matches": [
+        "https://linkedin.com/*",
+        "https://*.linkedin.com/*"
+      ]
     },
     {
-      "resources": ["privacy.html"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "privacy.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

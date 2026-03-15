@@ -1,4 +1,5 @@
 import { heuristicGuessDomain, normalizeCompanyName, normalizeDomain } from '@/lib/domain-utils'
+import { createLogger, sanitizeLogFields } from '@/lib/logger'
 
 export interface MxVerifyResult {
   domain: string
@@ -27,7 +28,7 @@ export interface ApiErrorClassification {
   message: string
 }
 
-type PipelineLogLevel = 'info' | 'warn' | 'error'
+type PipelineLogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 type PipelineLogFields = Record<string, unknown>
 
@@ -90,33 +91,34 @@ const REDIS_CACHE_PREFIX = 'cache:mx-verification:pipeline:'
 
 let defaultRedisCachePromise: Promise<MxCacheStore | null> | null = null
 
+const pipelineLog = createLogger('EmailFinder')
+
 const defaultLogger: PipelineLogger = {
   log: (level, event, fields = {}) => {
-    const payload = {
-      scope: 'email_finder',
-      level,
+    const payload = sanitizeLogFields({
       event,
       ...fields,
-    }
+    })
 
     if (level === 'error') {
-      console.error('[EmailFinder]', payload)
+      pipelineLog.error(event, payload)
       return
     }
 
     if (level === 'warn') {
-      console.warn('[EmailFinder]', payload)
+      pipelineLog.warn(event, payload)
       return
     }
 
-    console.log('[EmailFinder]', payload)
+    if (level === 'info') {
+      pipelineLog.info(event, payload)
+      return
+    }
+
+    pipelineLog.debug(event, payload)
   },
   metric: (name, fields = {}) => {
-    console.log('[EmailFinder][Metric]', {
-      scope: 'email_finder',
-      metric: name,
-      ...fields,
-    })
+    pipelineLog.info('metric', sanitizeLogFields({ metric: name, ...fields }))
   },
 }
 

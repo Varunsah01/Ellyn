@@ -1,3 +1,12 @@
+
+const sidepanelLogger =
+  globalThis.EllynLogger?.createLogger("Sidepanel") || {
+    debug: (...args) => console.log(...args),
+    info: (...args) => console.log(...args),
+    warn: (...args) => console.warn(...args),
+    error: (...args) => console.error(...args),
+  };
+
 const DEFAULT_AUTH_BASE_URL = "https://www.useellyn.com";
 const PRICING_URL = "https://www.useellyn.com/pricing";
 const DEFAULT_API_BASE_URL = "https://www.useellyn.com";
@@ -491,7 +500,7 @@ function bindEvents() {
   });
   elements.logoutButton?.addEventListener("click", signOut);
   elements.findEmailBtn?.addEventListener("click", () => {
-    console.log("[Sidepanel] Access Email click received");
+    sidepanelLogger.debug("[Sidepanel] Access Email click received");
     void findEmail();
   });
   elements.phoneNumberBtn?.addEventListener("click", () => {
@@ -691,7 +700,7 @@ function bindEvents() {
     void openDashboardPath("/dashboard");
   });
   elements.draftViewContainer?.addEventListener("dv-sent", (e) => {
-    console.log("[Sidepanel] Draft sent via Gmail:", e.detail);
+    sidepanelLogger.debug("[Sidepanel] Draft sent via Gmail:", e.detail);
     // The draft view and gmail-action-button handle storage and toast internally
   });
 
@@ -947,7 +956,7 @@ async function refreshProfileContext(reason = "auto") {
   if (!emailFinderState.isAuthenticated) return;
   if (emailFinderState.profileRefreshInFlight) return;
 
-  console.log("[Sidepanel] Refreshing profile context", { reason });
+  sidepanelLogger.debug("[Sidepanel] Refreshing profile context", { reason });
   emailFinderState.profileRefreshInFlight = true;
   setProfileRefreshButtonBusy(true);
 
@@ -959,7 +968,7 @@ async function refreshProfileContext(reason = "auto") {
     const onLinkedInProfilePage = isLinkedInProfile(tabUrl);
     const onLinkedInCompanyPage = isLinkedInCompanyPage(tabUrl);
     const previousProfileKey = emailFinderState.lastProfileKey;
-    console.log("[Sidepanel] Active tab for profile context", { tabId, tabUrl });
+    sidepanelLogger.debug("[Sidepanel] Active tab for profile context", { tabId, tabUrl });
 
     if (!Number.isFinite(tabId) || (!onLinkedInProfilePage && !onLinkedInCompanyPage)) {
       setProfileDependentSectionsVisible("none");
@@ -990,7 +999,7 @@ async function refreshProfileContext(reason = "auto") {
     }
 
     const extractorResponse = await requestProfileExtraction(tabId, reason === "manual");
-    console.log("[Sidepanel] Extraction response", extractorResponse);
+    sidepanelLogger.debug("[Sidepanel] Extraction response", extractorResponse);
     if (!extractorResponse?.success || !extractorResponse?.data) {
       const failure = String(extractorResponse?.error || "");
       const isNeutral = /not on a linkedin profile page/i.test(failure);
@@ -1052,11 +1061,11 @@ async function refreshProfileContext(reason = "auto") {
 
     renderProfileContext(nextContext, tone, status);
     setProfileDependentSectionsVisible("profile");
-    console.log("[Sidepanel] Profile context updated", nextContext);
+    sidepanelLogger.debug("[Sidepanel] Profile context updated", nextContext);
     emailFinderState.lastProfileKey = buildProfileContextKey(tabId, profileUrl || tabUrl);
     void restoreLookupResultForActiveProfile();
   } catch (error) {
-    console.warn("[Sidepanel] Failed refreshing profile context:", error);
+    sidepanelLogger.warn("[Sidepanel] Failed refreshing profile context:", error);
     renderProfileContext(emailFinderState.profileContext || getDefaultProfileContext(), "error", "Unable to load profile.");
   } finally {
     emailFinderState.profileRefreshInFlight = false;
@@ -1081,7 +1090,7 @@ function normalizeProfileResponseData(response, fallbackUrl = "") {
   } else if (data?.company && typeof data.company === "object" && data.company.name) {
     company = String(data.company.name).trim();
   } else if (data?.company && typeof data.company === "object") {
-    console.warn("[Sidepanel] Company is an object without a name field:", data.company);
+    sidepanelLogger.warn("[Sidepanel] Company is an object without a name field:", data.company);
   }
 
   let role = "";
@@ -1450,7 +1459,7 @@ function renderProfileContext(context, statusTone = "neutral", statusText = PROF
       elements.profileContextCompany.classList.remove("hidden");
       elements.profileContextCompany.textContent = displayCompany || "Company not found yet";
       if (merged.company && typeof merged.company === "object" && !displayCompany) {
-        console.warn("[Sidepanel] Company was object in renderProfileContext:", merged.company);
+        sidepanelLogger.warn("[Sidepanel] Company was object in renderProfileContext:", merged.company);
       }
     }
   }
@@ -2079,7 +2088,7 @@ async function loadTodosFromCache() {
     const stored = await storageGet([TODO_CACHE_KEY]);
     emailFinderState.todoItems = sanitizeTodoItems(stored?.[TODO_CACHE_KEY]);
   } catch (error) {
-    console.warn("[Sidepanel] Failed to load todo cache:", error);
+    sidepanelLogger.warn("[Sidepanel] Failed to load todo cache:", error);
     emailFinderState.todoItems = [];
   }
 }
@@ -2171,7 +2180,7 @@ async function syncTodosFromServer() {
       renderTodoList();
     }
   } catch (error) {
-    console.warn("[Sidepanel] Failed to sync todos from server:", error);
+    sidepanelLogger.warn("[Sidepanel] Failed to sync todos from server:", error);
   }
 }
 
@@ -2183,7 +2192,7 @@ async function persistTodoItems(items) {
   try {
     await persistTodosToCache(normalized);
   } catch (error) {
-    console.warn("[Sidepanel] Failed to persist todo cache:", error);
+    sidepanelLogger.warn("[Sidepanel] Failed to persist todo cache:", error);
   }
 
   if (!emailFinderState.isAuthenticated) return;
@@ -2196,7 +2205,7 @@ async function persistTodoItems(items) {
     emailFinderState.todoItems = synced;
     await persistTodosToCache(synced);
   } catch (error) {
-    console.warn("[Sidepanel] Failed to save todos to server:", error);
+    sidepanelLogger.warn("[Sidepanel] Failed to save todos to server:", error);
     showToast("To-do saved locally. We'll sync it soon.", "info");
   } finally {
     emailFinderState.todoSaveInFlight = false;
@@ -2253,7 +2262,7 @@ async function consumeLookupCredits(credits, label = "action") {
     await updateQuotaStatus();
     return true;
   } catch (error) {
-    console.warn("[Sidepanel] Failed to consume credits:", error);
+    sidepanelLogger.warn("[Sidepanel] Failed to consume credits:", error);
     showToast("Could not verify credits. Try again.", "error");
     return false;
   }
@@ -2351,7 +2360,7 @@ function clearLookupStateForProfileChange(reason = "profile-changed") {
   _dvLastContactKey = "";
 
   if (hadVisibleState) {
-    console.log("[Sidepanel] Cleared stale lookup state", { reason });
+    sidepanelLogger.debug("[Sidepanel] Cleared stale lookup state", { reason });
     setStatus("Profile changed. Previous result cleared.", "neutral");
   }
 }
@@ -2430,9 +2439,9 @@ async function persistLookupResultForActiveProfile(result) {
       profileUrl: String(emailFinderState.profileContext?.profileUrl || ""),
     };
     await storageSet({ [EMAIL_LOOKUP_CACHE_KEY]: normalizeLookupCacheMap(cache) });
-    console.log("[Sidepanel] Lookup result persisted", { key, email });
+    sidepanelLogger.debug("[Sidepanel] Lookup result persisted", { key, email });
   } catch (error) {
-    console.warn("[Sidepanel] Failed persisting lookup result", { key, error: error?.message || String(error) });
+    sidepanelLogger.warn("[Sidepanel] Failed persisting lookup result", { key, error: error?.message || String(error) });
   }
 }
 
@@ -2449,7 +2458,7 @@ async function readPersistedLookupResultForActiveProfile() {
     if (!email) return null;
     return entry.data;
   } catch (error) {
-    console.warn("[Sidepanel] Failed reading persisted lookup result", { key, error: error?.message || String(error) });
+    sidepanelLogger.warn("[Sidepanel] Failed reading persisted lookup result", { key, error: error?.message || String(error) });
     return null;
   }
 }
@@ -2467,7 +2476,7 @@ async function restoreLookupResultForActiveProfile() {
   const restored = await readPersistedLookupResultForActiveProfile();
   if (!restored) return;
 
-  console.log("[Sidepanel] Restoring persisted lookup result", { key, email: restored.email });
+  sidepanelLogger.debug("[Sidepanel] Restoring persisted lookup result", { key, email: restored.email });
   displayResults(restored);
   setStatus("Loaded saved email for this profile.", "neutral");
 }
@@ -2480,7 +2489,7 @@ async function openDraftForCurrentResult() {
       emailFinderState.currentResult = restored;
       emailFinderState.resultProfileKey = getActiveProfileLookupKey();
       email = String(restored.email || "").trim();
-      console.log("[Sidepanel] Draft flow restored email from persisted lookup", { email });
+      sidepanelLogger.debug("[Sidepanel] Draft flow restored email from persisted lookup", { email });
       updateFoundEmailText(email, "Access Email");
       setPrimaryFinderAction("draft");
     }
@@ -2628,13 +2637,13 @@ async function findEmail() {
 
   if (!emailFinderState.isAuthenticated) {
     resetContactDetailView();
-    console.log("[Sidepanel] Access Email gate result", { allowed: false, reason: "not_authenticated" });
+    sidepanelLogger.debug("[Sidepanel] Access Email gate result", { allowed: false, reason: "not_authenticated" });
     setStatus("Please sign in first.", "error");
     return;
   }
 
   const gateStatus = getProfileContextGateStatus();
-  console.log("[Sidepanel] Access Email gate result", {
+  sidepanelLogger.debug("[Sidepanel] Access Email gate result", {
     allowed: gateStatus.ready,
     reason: gateStatus.ready ? "ok" : gateStatus.message,
   });
@@ -2657,7 +2666,7 @@ async function findEmail() {
     }
 
     const pipelineData = { tabId: tab.id, ...contextPayload };
-    console.log("[Sidepanel] Sending FIND_EMAIL request", {
+    sidepanelLogger.debug("[Sidepanel] Sending FIND_EMAIL request", {
       tabId: pipelineData.tabId,
       firstName: pipelineData.firstName,
       lastName: pipelineData.lastName,
@@ -2675,7 +2684,7 @@ async function findEmail() {
     if (!response?.success || !response?.data) {
       // Check for graceful "not found" (pipeline completed, no valid email)
       if (response?.found === false) {
-        console.log("[Sidepanel] FIND_EMAIL returned not_found", response);
+        sidepanelLogger.debug("[Sidepanel] FIND_EMAIL returned not_found", response);
         displayNotFound(response);
         await updateQuotaStatus();
         return;
@@ -2688,7 +2697,7 @@ async function findEmail() {
     }
 
     displayResults(response.data);
-    console.log("[Sidepanel] FIND_EMAIL success", {
+    sidepanelLogger.debug("[Sidepanel] FIND_EMAIL success", {
       email: response?.data?.email || "",
       source: response?.data?.source || "",
     });
@@ -2699,7 +2708,7 @@ async function findEmail() {
     const code = error?.code || "";
     const resetDate = error?.resetDate || null;
     const stage = error?.stage || "";
-    console.warn("[Sidepanel] FIND_EMAIL failed", { message, code, stage });
+    sidepanelLogger.warn("[Sidepanel] FIND_EMAIL failed", { message, code, stage });
     showError(message, code, resetDate, stage);
     await updateQuotaStatus();
   }
@@ -2808,7 +2817,7 @@ function displayResults(data) {
   }
   openContactDetailView("email");
   updateFoundEmailText(email, "Access Email");
-  console.log("[Sidepanel] UI update: email result rendered", {
+  sidepanelLogger.debug("[Sidepanel] UI update: email result rendered", {
     profileKey: emailFinderState.resultProfileKey,
     email,
     source: String(data?.source || ""),
@@ -2888,7 +2897,7 @@ function displayNotFound(response) {
   emailFinderState.currentError = null;
   emailFinderState.resultProfileKey = "";
   emailFinderState.revealedPhone = "";
-  console.log("[Sidepanel] UI update: email not found state rendered", {
+  sidepanelLogger.debug("[Sidepanel] UI update: email not found state rendered", {
     reason: String(response?.reason || "unknown"),
   });
 
@@ -2932,7 +2941,7 @@ function showError(message, code, resetDate, stage) {
   emailFinderState.currentResult = null;
   emailFinderState.resultProfileKey = "";
   emailFinderState.revealedPhone = "";
-  console.log("[Sidepanel] UI update: email error state rendered", {
+  sidepanelLogger.debug("[Sidepanel] UI update: email error state rendered", {
     message: String(message || ""),
     code: String(code || ""),
     stage: String(stage || ""),
@@ -3273,7 +3282,7 @@ async function updateSavedRowSyncState(savedRow, syncState, extras = {}) {
   };
   list.unshift(fallbackRow);
   await storageSet({ [SAVED_CONTACTS_KEY]: list.slice(0, 250) });
-  console.warn("[Sidepanel] updateSavedRowSyncState: row not found, inserted fallback row", {
+  sidepanelLogger.warn("[Sidepanel] updateSavedRowSyncState: row not found, inserted fallback row", {
     email: savedRow?.email,
     createdAt: savedRow?.createdAt,
     localId: savedRow?.localId,
@@ -3447,7 +3456,7 @@ async function syncContactToBackend(savedRow, profileContext) {
     };
   } catch (err) {
     const message = String(err?.message || "Supabase sync failed");
-    console.warn("[Sidepanel] syncContactToBackend failed:", err);
+    sidepanelLogger.warn("[Sidepanel] syncContactToBackend failed:", err);
     await updateSavedRowSyncState(savedRow, CONTACT_SYNC_STATE.FAILED, {
       syncError: message,
     });
@@ -3590,7 +3599,7 @@ async function submitFeedback(worked) {
     });
     await storageSet({ [FEEDBACK_QUEUE_KEY]: queue.slice(0, 100) });
 
-    console.warn("[Sidepanel] Feedback submission failed, queued locally:", error);
+    sidepanelLogger.warn("[Sidepanel] Feedback submission failed, queued locally:", error);
     showToast("Feedback queued offline.", "info");
     elements.feedbackSection?.classList.add("hidden");
   }
@@ -3923,7 +3932,7 @@ async function updateQuotaStatus() {
 
     applyFindEmailAvailability();
   } catch (error) {
-    console.warn("[Sidepanel] Failed to update quota:", error);
+    sidepanelLogger.warn("[Sidepanel] Failed to update quota:", error);
     emailFinderState.quotaKnown = false;
     emailFinderState.quotaAllowsLookup = true;
     setQuotaVisibility(false);
