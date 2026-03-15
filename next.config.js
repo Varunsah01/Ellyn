@@ -22,6 +22,10 @@ const nextConfig = {
 module.exports = withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Only run the Sentry plugin if an auth token is provided to avoid build errors in Vercel.
+  dryRun: !process.env.SENTRY_AUTH_TOKEN,
 
   // Suppress Sentry CLI output during builds
   silent: !process.env.CI,
