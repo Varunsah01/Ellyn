@@ -137,7 +137,10 @@ export function AppRefreshProvider({ children }: { children: ReactNode }) {
           .split(",")
           .map((value) => value.trim())
           .filter(Boolean) as ScopeInput[]
-        if (scopes.length > 0) triggerRefresh(scopes)
+
+        if (scopes.length > 0) {
+          triggerRefresh(scopes)
+        }
       }
 
       return response
