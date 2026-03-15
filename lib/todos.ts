@@ -6,18 +6,34 @@ export interface TodoItem {
   updated_at: string
 }
 
-const MAX_TODO_ITEMS = 30
-const MAX_TEXT_LENGTH = 180
-const MAX_COMPLETED_ITEMS = 2
+export const TODO_CONTRACT = {
+  maxTodoItems: 30,
+  maxTextLength: 180,
+  maxCompletedItems: 2,
+  maxIdLength: 80,
+} as const
 
-function toIsoOrNow(value: unknown): string {
+export function normalizeTodoText(value: unknown): string {
+  if (typeof value !== 'string') {
+    return ''
+  }
+
+  return value
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, TODO_CONTRACT.maxTextLength)
+}
+
+export function normalizeTodoTimestamp(value: unknown): string {
   if (typeof value !== 'string' || !value.trim()) {
     return new Date().toISOString()
   }
+
   const parsed = new Date(value)
   if (!Number.isFinite(parsed.getTime())) {
     return new Date().toISOString()
   }
+
   return parsed.toISOString()
 }
 
@@ -30,12 +46,12 @@ function toMillis(value: string): number {
 function normalizeTodoItem(value: unknown): TodoItem | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const row = value as Record<string, unknown>
-  const id = typeof row.id === 'string' ? row.id.trim().slice(0, 80) : ''
-  const text = typeof row.text === 'string' ? row.text.trim().slice(0, MAX_TEXT_LENGTH) : ''
+  const id = typeof row.id === 'string' ? row.id.trim().slice(0, TODO_CONTRACT.maxIdLength) : ''
+  const text = normalizeTodoText(row.text)
   if (!id || !text) return null
 
-  const createdAt = toIsoOrNow(row.created_at)
-  const updatedAt = toIsoOrNow(row.updated_at)
+  const createdAt = normalizeTodoTimestamp(row.created_at)
+  const updatedAt = normalizeTodoTimestamp(row.updated_at)
 
   return {
     id,
@@ -63,16 +79,16 @@ export function sanitizeTodoItems(rawItems: unknown): TodoItem[] {
   const active = items.filter((item) => !item.completed)
   const completed = items
     .filter((item) => item.completed)
-    .slice(0, MAX_COMPLETED_ITEMS)
+    .slice(0, TODO_CONTRACT.maxCompletedItems)
 
-  return [...active, ...completed].slice(0, MAX_TODO_ITEMS)
+  return [...active, ...completed].slice(0, TODO_CONTRACT.maxTodoItems)
 }
 
 export function makeTodoItem(text: string): TodoItem {
   const now = new Date().toISOString()
   return {
     id: `todo_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-    text: text.trim().slice(0, MAX_TEXT_LENGTH),
+    text: normalizeTodoText(text),
     completed: false,
     created_at: now,
     updated_at: now,
@@ -93,4 +109,3 @@ export function toggleTodoItem(items: TodoItem[], id: string): TodoItem[] {
     )
   )
 }
-

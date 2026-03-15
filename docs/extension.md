@@ -62,6 +62,8 @@ The Ellyn Chrome Extension brings email discovery and AI drafting directly into 
 
 5. **Vendored Supabase**: `lib/vendor/supabase.js` is a vendored copy of the Supabase client library, since the extension can't use npm modules directly.
 
+6. **Shared todo contract with generated browser artifact**: `lib/todos.ts` is the canonical implementation for todo normalization (id/text limits, duplicate handling, completed retention, timestamp normalization). For the non-bundled extension runtime, `scripts/generate-extension-todos-contract.mjs` generates `extension/scripts/todos-contract.js`, which is loaded before `scripts/sidepanel.js`.
+
 ---
 
 ## What Is Accomplished
@@ -135,7 +137,8 @@ The Ellyn Chrome Extension brings email discovery and AI drafting directly into 
 | `manifest.json` | Extension manifest (permissions, content scripts, side panel) |
 | `background.js` | Service worker — message routing, auth bridge, email prediction |
 | `sidepanel.html` | Side panel UI shell (HTML) |
-| `scripts/sidepanel.js` | **Authoritative** side panel logic (mounted in sidepanel.html) |
+| `scripts/sidepanel.js` | Side panel orchestration logic (mounted in sidepanel.html) |
+| `scripts/todos-contract.js` | Generated extension-safe todo contract artifact (loaded before sidepanel.js) |
 | `popup/popup.html` | Popup UI (toolbar button click) |
 | `popup/popup.js` | Popup logic |
 | `privacy.html` | In-extension privacy policy |
@@ -173,6 +176,7 @@ The Ellyn Chrome Extension brings email discovery and AI drafting directly into 
 | `lib/vendor/supabase.js` | Vendored Supabase JS library (no npm) |
 | `lib/sync.js` | Contact sync logic (single + batch push to web app) |
 | `lib/syncQueue.js` | Queue manager for batched sync operations |
+| `lib/todos.ts` | **Authoritative todo contract** shared with web app tests and extension artifact generation |
 
 ### Utilities
 

@@ -12,14 +12,24 @@ const SYNC_STATUS_KEY = "sync_status";
 const SYNC_QUEUE_KEY = "sync_queue";
 const TODO_CACHE_KEY = "ellyn_todo_items_cache";
 const EMAIL_LOOKUP_CACHE_KEY = "ellyn_email_lookup_cache";
-const TODO_MAX_ITEMS = 30;
-const TODO_VISIBLE_COMPLETED = 2;
 const PROFILE_SYNC_INTERVAL_MS = 2000;
 const PROFILE_CONTEXT_FRESH_MS = 15000;
 const PROFILE_CONTEXT_EMPTY_NAME = "Open a LinkedIn profile";
 const PROFILE_CONTEXT_EMPTY_SUBTEXT = "to unlock email IDs and contact details.";
 const PROFILE_CONTEXT_EMPTY_STATUS = "Open a user's LinkedIn profile to view email IDs.";
 const ABOUT_BRIEF_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const todoContract = globalThis.EllynTodoContract;
+if (!todoContract) {
+  throw new Error("[Sidepanel] Missing todo contract script. Ensure scripts/todos-contract.js is loaded.");
+}
+
+const {
+  normalizeTodoText,
+  sanitizeTodoItems,
+  makeTodoItem,
+  toggleTodoItem,
+} = todoContract;
+
 const ABOUT_BRIEF_FAILURE_TTL_MS = 30 * 60 * 1000;
 const ABOUT_BRIEF_MAX_CACHE_ENTRIES = 40;
 const ABOUT_BRIEF_UNAVAILABLE_MESSAGE =
@@ -728,7 +738,7 @@ function bindRuntimeListeners() {
       void renderQueueCard();
     }
     if (changes[TODO_CACHE_KEY]) {
-      const cached = normalizeTodoItems(changes[TODO_CACHE_KEY].newValue);
+      const cached = sanitizeTodoItems(changes[TODO_CACHE_KEY].newValue);
       emailFinderState.todoItems = cached;
       renderTodoList();
     }
@@ -1988,60 +1998,9 @@ function updateAccessEmailButtonState() {
   elements.findEmailBtn?.classList.toggle("is-busy", emailFinderState.isLoading);
 }
 
-function normalizeTodoText(value) {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 180);
-}
-
-function normalizeTodoTimestamp(value) {
-  const candidate = String(value || "").trim();
-  if (!candidate) return new Date().toISOString();
-
-  const parsed = new Date(candidate);
-  if (!Number.isFinite(parsed.getTime())) return new Date().toISOString();
-  return parsed.toISOString();
-}
-
-function toTodoMillis(value) {
-  const parsed = new Date(String(value || ""));
-  const millis = parsed.getTime();
-  return Number.isFinite(millis) ? millis : 0;
-}
-
-function normalizeTodoItems(rawItems) {
-  const source = Array.isArray(rawItems) ? rawItems : [];
-  const deduped = new Map();
-
-  source.forEach((rawItem) => {
-    if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) return;
-    const id = String(rawItem.id || "")
-      .trim()
-      .slice(0, 80);
-    const text = normalizeTodoText(rawItem.text);
-    if (!id || !text) return;
-
-    deduped.set(id, {
-      id,
-      text,
-      completed: Boolean(rawItem.completed),
-      created_at: normalizeTodoTimestamp(rawItem.created_at),
-      updated_at: normalizeTodoTimestamp(rawItem.updated_at),
-    });
-  });
-
-  const normalized = Array.from(deduped.values()).sort(
-    (a, b) => toTodoMillis(b.updated_at) - toTodoMillis(a.updated_at)
-  );
-  const active = normalized.filter((item) => !item.completed);
-  const completed = normalized.filter((item) => item.completed).slice(0, TODO_VISIBLE_COMPLETED);
-  return [...active, ...completed].slice(0, TODO_MAX_ITEMS);
-}
-
 function areTodoItemsEqual(a, b) {
-  const left = normalizeTodoItems(a);
-  const right = normalizeTodoItems(b);
+  const left = sanitizeTodoItems(a);
+  const right = sanitizeTodoItems(b);
   if (left.length !== right.length) return false;
   for (let index = 0; index < left.length; index += 1) {
     const lhs = left[index];
@@ -2063,7 +2022,7 @@ function areTodoItemsEqual(a, b) {
 function renderTodoList() {
   if (!elements.todoList || !elements.todoEmptyState) return;
 
-  const items = normalizeTodoItems(emailFinderState.todoItems);
+  const items = sanitizeTodoItems(emailFinderState.todoItems);
   emailFinderState.todoItems = items;
 
   if (items.length === 0) {
@@ -2118,7 +2077,7 @@ function closeTodoComposer(clearInput = false) {
 async function loadTodosFromCache() {
   try {
     const stored = await storageGet([TODO_CACHE_KEY]);
-    emailFinderState.todoItems = normalizeTodoItems(stored?.[TODO_CACHE_KEY]);
+    emailFinderState.todoItems = sanitizeTodoItems(stored?.[TODO_CACHE_KEY]);
   } catch (error) {
     console.warn("[Sidepanel] Failed to load todo cache:", error);
     emailFinderState.todoItems = [];
@@ -2126,7 +2085,7 @@ async function loadTodosFromCache() {
 }
 
 async function persistTodosToCache(items) {
-  const normalized = normalizeTodoItems(items);
+  const normalized = sanitizeTodoItems(items);
   emailFinderState.todoItems = normalized;
   await storageSet({ [TODO_CACHE_KEY]: normalized });
 }
@@ -2161,7 +2120,7 @@ async function fetchTodosFromApi() {
     throw new Error(parseTodoApiError(payload, "Failed to load to-do list"));
   }
 
-  return normalizeTodoItems(payload?.items);
+  return sanitizeTodoItems(payload?.items);
 }
 
 async function saveTodosToApi(items) {
@@ -2180,7 +2139,7 @@ async function saveTodosToApi(items) {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ items: normalizeTodoItems(items) }),
+      body: JSON.stringify({ items: sanitizeTodoItems(items) }),
     },
     10000
   );
@@ -2190,7 +2149,7 @@ async function saveTodosToApi(items) {
     throw new Error(parseTodoApiError(payload, "Failed to save to-do list"));
   }
 
-  return normalizeTodoItems(payload?.items);
+  return sanitizeTodoItems(payload?.items);
 }
 
 async function syncTodosFromServer() {
@@ -2198,8 +2157,8 @@ async function syncTodosFromServer() {
 
   try {
     const remoteItems = await fetchTodosFromApi();
-    const localItems = normalizeTodoItems(emailFinderState.todoItems);
-    const mergedItems = normalizeTodoItems([...localItems, ...remoteItems]);
+    const localItems = sanitizeTodoItems(emailFinderState.todoItems);
+    const mergedItems = sanitizeTodoItems([...localItems, ...remoteItems]);
 
     emailFinderState.todoItems = mergedItems;
     await persistTodosToCache(mergedItems);
@@ -2217,7 +2176,7 @@ async function syncTodosFromServer() {
 }
 
 async function persistTodoItems(items) {
-  const normalized = normalizeTodoItems(items);
+  const normalized = sanitizeTodoItems(items);
   emailFinderState.todoItems = normalized;
   renderTodoList();
 
@@ -2253,14 +2212,7 @@ async function handleTodoSave() {
     return;
   }
 
-  const now = new Date().toISOString();
-  const nextItem = {
-    id: `todo_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
-    text,
-    completed: false,
-    created_at: now,
-    updated_at: now,
-  };
+  const nextItem = makeTodoItem(text);
 
   if (elements.todoInput) {
     elements.todoInput.value = "";
@@ -2275,17 +2227,7 @@ async function toggleTodoItemById(todoId) {
   const normalizedId = String(todoId || "").trim();
   if (!normalizedId) return;
 
-  const now = new Date().toISOString();
-  const nextItems = emailFinderState.todoItems.map((item) =>
-    item.id === normalizedId
-      ? {
-          ...item,
-          completed: !item.completed,
-          updated_at: now,
-        }
-      : item
-  );
-
+  const nextItems = toggleTodoItem(emailFinderState.todoItems, normalizedId);
   await persistTodoItems(nextItems);
 }
 
