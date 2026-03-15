@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, MouseEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent, useEffect, useMemo, useState } from "react";
 import { Copy, Loader2, Plus, Sparkles, Trash2, Wand2 } from "lucide-react";
 
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
@@ -47,124 +47,20 @@ import {
 import { Textarea } from "@/components/ui/Textarea";
 import { useSubscription } from "@/context/SubscriptionContext";
 import { showToast } from "@/lib/toast";
-
-type TemplateTone = "professional" | "casual" | "friendly" | "confident" | "humble";
-
-type TemplateRecord = {
-  id: string;
-  user_id: string;
-  name: string;
-  subject: string;
-  body: string;
-  tone: TemplateTone | null;
-  is_ai_generated: boolean | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
-
-type TemplateFormState = {
-  name: string;
-  subject: string;
-  body: string;
-  tone: TemplateTone;
-};
-
-type GenerateFormState = {
-  purpose: string;
-  senderName: string;
-  recipientRole: string;
-  tone: TemplateTone;
-};
-
-type GeneratedTemplate = {
-  subject: string;
-  body: string;
-  tone: TemplateTone;
-};
-
-type QuotaPromptState = {
-  feature: string;
-  used: number;
-  limit: number;
-};
-
-const TONE_OPTIONS: TemplateTone[] = [
-  "professional",
-  "casual",
-  "friendly",
-  "confident",
-  "humble",
-];
-
-const EMPTY_TEMPLATE_FORM: TemplateFormState = {
-  name: "",
-  subject: "",
-  body: "",
-  tone: "professional",
-};
-
-const EMPTY_GENERATE_FORM: GenerateFormState = {
-  purpose: "",
-  senderName: "",
-  recipientRole: "",
-  tone: "professional",
-};
-
-function toToneLabel(tone: TemplateTone | null): string {
-  const value = tone ?? "professional";
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function toneBadgeClassName(tone: TemplateTone | null): string {
-  if (tone === "casual") return "border-blue-200 bg-blue-50 text-blue-700";
-  if (tone === "friendly") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (tone === "confident") return "border-violet-200 bg-violet-50 text-violet-700";
-  if (tone === "humble") return "border-amber-200 bg-amber-50 text-amber-700";
-  return "border-slate-200 bg-slate-100 text-slate-700";
-}
-
-function parseErrorMessage(payload: unknown, fallback: string): string {
-  if (payload && typeof payload === "object") {
-    const raw = payload as { error?: unknown; data?: { error?: unknown } };
-    if (typeof raw.error === "string" && raw.error.trim()) {
-      return raw.error;
-    }
-    if (typeof raw.data?.error === "string" && raw.data.error.trim()) {
-      return raw.data.error;
-    }
-  }
-  return fallback;
-}
-
-function normalizeTone(value: unknown): TemplateTone {
-  if (
-    value === "professional" ||
-    value === "casual" ||
-    value === "friendly" ||
-    value === "confident" ||
-    value === "humble"
-  ) {
-    return value;
-  }
-  return "professional";
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-async function parseJson(response: Response): Promise<unknown> {
-  return response.json().catch(() => ({}));
-}
+import { TemplatesGridSection } from "@/components/templates-dashboard/TemplatesGridSection";
+import { useTemplateData } from "@/components/templates-dashboard/useTemplateData";
+import {
+  TONE_OPTIONS,
+  TemplateRecord,
+  TemplateTone,
+  normalizeTone,
+  toToneLabel,
+} from "@/components/templates-dashboard/types";
 
 export default function TemplatesPage() {
   const { planType, aiDraftUsed, aiDraftLimit, refresh: refreshSubscription } = useSubscription();
 
-  const [templates, setTemplates] = useState<TemplateRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { templates, setTemplates, isLoading, fetchTemplates } = useTemplateData();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState<TemplateFormState>(EMPTY_TEMPLATE_FORM);
@@ -198,24 +94,6 @@ export default function TemplatesPage() {
   const isPaidPlan = planType === "starter" || planType === "pro";
   const aiCreditsRemaining = Math.max(0, aiDraftLimit - aiDraftUsed);
 
-  const fetchTemplates = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/email-templates", { cache: "no-store" });
-      const payload = await parseJson(response);
-
-      if (!response.ok) {
-        throw new Error(parseErrorMessage(payload, "Failed to load templates"));
-      }
-
-      const rows = (payload as { templates?: unknown }).templates;
-      setTemplates(Array.isArray(rows) ? (rows as TemplateRecord[]) : []);
-    } catch (error) {
-      showToast.error(error instanceof Error ? error.message : "Failed to load templates");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     void fetchTemplates();

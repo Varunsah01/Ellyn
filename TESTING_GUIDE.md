@@ -4,12 +4,21 @@ Comprehensive testing documentation for Ellyn.
 
 ## Table of Contents
 
+
 1. [Quick Start](#quick-start)
 2. [Test Structure](#test-structure)
 3. [Running Tests](#running-tests)
 4. [Writing Tests](#writing-tests)
 5. [CI/CD Integration](#cicd-integration)
 6. [Best Practices](#best-practices)
+
+## Test Runner Policy
+
+Ellyn standardizes on a single JavaScript test runner:
+
+- **Jest** runs unit, component, and API integration tests.
+- **Playwright** runs end-to-end browser tests.
+- **Vitest is not used in this repository.**
 
 ## Quick Start
 
@@ -317,10 +326,10 @@ Tests run automatically on:
 - Manual workflow dispatch
 
 Pipeline includes:
-1. **Lint** - ESLint + TypeScript checks
-2. **Unit Tests** - Jest with coverage
-3. **E2E Tests** - Playwright (Chrome, Firefox, Safari)
-4. **Build** - Production build verification
+1. **Lint** - ESLint + TypeScript checks (`npm run lint`)
+2. **Unit Tests** - Jest with coverage (`npm test -- --coverage --maxWorkers=2`)
+3. **E2E Tests** - Playwright (`npx playwright test`)
+4. **Build** - Production build verification (`npm run build`)
 5. **Security** - npm audit + Snyk scan
 6. **Performance** - Lighthouse CI
 

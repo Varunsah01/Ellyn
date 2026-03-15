@@ -94,9 +94,22 @@ This migration is idempotent and includes signup trigger automation for `user_pr
 - `npm run lint`
 - `npx tsc --noEmit`
 - `npm run build`
+- `npm test` (Jest unit + integration tests)
+- `npm run test:coverage` (Jest coverage)
+- `npm run test:e2e` (Playwright end-to-end suite)
+- `npm run test:all` (lint + Jest coverage + Playwright)
 - `npm run security:scan`
 - `npm run security:install-hooks`
 - `npm run extension:public-config`
+
+## Testing Strategy
+
+Ellyn uses a **Jest + Playwright** testing stack:
+
+- **Jest** for unit, component, and API integration tests.
+- **Playwright** for end-to-end browser tests.
+
+There is no secondary JavaScript unit test runner configured. See `TESTING_GUIDE.md` for command details and workflow expectations.
 
 ## Documentation
 

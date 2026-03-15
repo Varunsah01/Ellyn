@@ -46,6 +46,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Check file size guardrails
+        run: npm run check:file-size
+
       - name: Check TypeScript
         run: npx tsc --noEmit
 

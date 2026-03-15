@@ -19,8 +19,20 @@ loadOptionalScript('utils/analytics.js', 'analytics utility script');
 loadOptionalScript('utils/saved-templates.js', 'saved templates utility script');
 loadOptionalScript('background/email-predictor.js', 'AI email predictor utility script');
 loadOptionalScript('utils/safety.js', 'safety utility script');
+loadOptionalScript('shared/message-contract.js', 'runtime message contract');
+loadOptionalScript('background/domains/auth-bridge.js', 'background auth bridge domain');
+loadOptionalScript('background/domains/sync.js', 'background sync domain');
+loadOptionalScript('background/domains/analytics.js', 'background analytics domain');
+loadOptionalScript('background/domains/email-actions.js', 'background email actions domain');
 
 // Configuration
+const messageContract = globalThis.EllynMessageContract || { MESSAGE_TYPES: {} };
+const MESSAGE_TYPES = messageContract.MESSAGE_TYPES;
+const authBridgeDomain = globalThis.EllynBackgroundAuthBridge;
+const syncDomain = globalThis.EllynBackgroundSyncDomain;
+const analyticsDomain = globalThis.EllynBackgroundAnalyticsDomain;
+const emailActionsDomain = globalThis.EllynBackgroundEmailActionsDomain;
+
 const CONFIG = {
   API_BASE_URL: 'https://www.useellyn.com',
   WEBAPP_URL: 'https://www.useellyn.com',
@@ -1237,6 +1249,37 @@ async function handleGetCompanyBriefGeminiMessage(message, sendResponse) {
   }
 }
 
+async function handleExtractAndEnrichEnhanced(message, sender, sendResponse) {
+  const requestedTabId = Number.isFinite(message?.tabId)
+    ? message.tabId
+    : Number.isFinite(sender?.tab?.id)
+    ? sender.tab.id
+    : null;
+
+  try {
+    if (!Number.isFinite(requestedTabId)) {
+      throw new Error('Missing tab id for enhanced extraction');
+    }
+
+    const profileData = await extractProfileWithCompany(requestedTabId);
+    const companyName = String(profileData?.company?.name || '').trim();
+    if (!companyName) {
+      throw new Error('Company name not available from profile extraction');
+    }
+
+    const authToken = await getAuthToken();
+    const domainResult = await resolveDomainEnhanced(
+      companyName,
+      typeof profileData?.company?.pageUrl === 'string' ? profileData.company.pageUrl : '',
+      authToken || ''
+    );
+
+    sendResponse({ success: true, data: { profile: profileData, domain: domainResult } });
+  } catch (error) {
+    sendResponse({ success: false, error: error?.message || 'Enhanced extraction failed' });
+  }
+}
+
 // ============================================================================
 // MESSAGE HANDLERS
 // ============================================================================
@@ -1246,217 +1289,69 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   console.log('[Extension] Received message:', message.type);
 
-  if (message.type === 'ELLYN_PING') {
-    sendResponse?.({ success: true, version: '1.0.0' });
-    return false;
-  }
+  const deps = {
+    handleFindEmail,
+    handleExtractProfileFromTabMessage,
+    handleExtractAndEnrichEnhanced,
+    handleSaveContactToSupabaseMessage,
+    handleProcessSyncQueueMessage,
+    handleGetSyncQueueStatusMessage,
+    handleSaveTemplateMessage,
+    handleGetTemplatesMessage,
+    handleDeleteTemplateMessage,
+    handleGenerateAiDraftMessage,
+    handleGenerateAiDraftGeminiMessage,
+    handleGetCompanyBriefGeminiMessage,
+    getAuthToken,
+    clearAuthenticatedState,
+    checkQuota,
+    canPerformLookup,
+  };
 
-  if (message.type === 'FIND_EMAIL') {
-    handleFindEmail(message.data, sender, sendResponse);
-    return true; // Keep channel open for async response
+  if (emailActionsDomain?.handleRuntimeEmailActions?.(message, sender, sendResponse, deps) === true) {
+    return true;
   }
-
-  if (message.type === 'EXTRACT_PROFILE_FROM_TAB') {
-    const payload = message.data && typeof message.data === 'object' ? message.data : message;
-    handleExtractProfileFromTabMessage(payload, sender, sendResponse);
+  if (syncDomain?.handleRuntimeSync?.(message, sender, sendResponse, deps) === true) {
+    return true;
+  }
+  if (analyticsDomain?.handleRuntimeAnalytics?.(message, sender, sendResponse, deps) === true) {
+    return true;
+  }
+  if (authBridgeDomain?.handleRuntimeAuthBridge?.(message, sender, sendResponse, deps) === true) {
     return true;
   }
 
-  if (message.type === 'EXTRACT_AND_ENRICH_ENHANCED') {
-    const requestedTabId = Number.isFinite(message?.tabId)
-      ? message.tabId
-      : Number.isFinite(sender?.tab?.id)
-      ? sender.tab.id
-      : null;
-
-    (async () => {
-      try {
-        if (!Number.isFinite(requestedTabId)) {
-          throw new Error('Missing tab id for enhanced extraction');
-        }
-
-        const profileData = await extractProfileWithCompany(requestedTabId);
-        const companyName = String(profileData?.company?.name || '').trim();
-        if (!companyName) {
-          throw new Error('Company name not available from profile extraction');
-        }
-
-        const authToken = await getAuthToken();
-        const domainResult = await resolveDomainEnhanced(
-          companyName,
-          typeof profileData?.company?.pageUrl === 'string' ? profileData.company.pageUrl : '',
-          authToken || ''
-        );
-
-        sendResponse({
-          success: true,
-          data: {
-            profile: profileData,
-            domain: domainResult,
-          },
-        });
-      } catch (error) {
-        sendResponse({
-          success: false,
-          error: error?.message || 'Enhanced extraction failed',
-        });
-      }
-    })();
-
-    return true;
-  }
-
-  if (message.type === 'SAVE_CONTACT_TO_SUPABASE') {
-    void handleSaveContactToSupabaseMessage(message, sendResponse);
-    return true;
-  }
-
-  if (message.type === 'PROCESS_SYNC_QUEUE') {
-    void handleProcessSyncQueueMessage(sendResponse);
-    return true;
-  }
-
-  if (message.type === 'GET_SYNC_QUEUE_STATUS') {
-    void handleGetSyncQueueStatusMessage(sendResponse);
-    return true;
-  }
-
-  if (message.type === 'ELLYN_SAVE_TEMPLATE') {
-    void handleSaveTemplateMessage(message, sendResponse);
-    return true;
-  }
-
-  if (message.type === 'ELLYN_GET_TEMPLATES') {
-    void handleGetTemplatesMessage(sendResponse);
-    return true;
-  }
-
-  if (message.type === 'ELLYN_DELETE_TEMPLATE') {
-    void handleDeleteTemplateMessage(message, sendResponse);
-    return true;
-  }
-
-  if (message.type === 'GENERATE_AI_DRAFT') {
-    void handleGenerateAiDraftMessage(message, sendResponse);
-    return true;
-  }
-
-  if (message.type === 'GENERATE_AI_DRAFT_GEMINI') {
-    void handleGenerateAiDraftGeminiMessage(message, sendResponse);
-    return true;
-  }
-
-  if (message.type === 'GET_COMPANY_BRIEF_GEMINI') {
-    void handleGetCompanyBriefGeminiMessage(message, sendResponse);
-    return true;
-  }
-
-  if (message.type === 'GET_AUTH_TOKEN') {
-    getAuthToken()
-      .then((token) => sendResponse(token))
-      .catch((error) => {
-        console.error('[Extension] GET_AUTH_TOKEN failed:', error);
-        sendResponse('');
-      });
-    return true;
-  }
-
-  if (message.type === 'CHECK_QUOTA') {
-    checkQuota()
-      .then((result) => sendResponse(result))
-      .catch((error) => {
-        console.error('[Extension] CHECK_QUOTA failed:', error);
-        sendResponse({
-          allowed: false,
-          error: error?.message || 'Failed to fetch quota',
-        });
-      });
-    return true;
-  }
-
-  if (message.type === 'CONSUME_LOOKUP_CREDITS') {
-    const requestedAmount = Number(message?.amount);
-    const amount = Number.isFinite(requestedAmount)
-      ? Math.max(1, Math.min(100, Math.floor(requestedAmount)))
-      : 1;
-
-    canPerformLookup(amount)
-      .then((result) => sendResponse(result))
-      .catch((error) => {
-        console.error('[Extension] CONSUME_LOOKUP_CREDITS failed:', error);
-        sendResponse({
-          allowed: false,
-          remaining: null,
-          resetDate: null,
-          requestedCost: amount,
-          error: error?.message || 'Failed to consume credits',
-        });
-      });
-    return true;
-  }
-
-  if (message.type === 'AUTH_LOGOUT_LOCAL') {
-    void clearAuthenticatedState(sendResponse);
-    return true;
-  }
+  return false;
 });
 
 chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
   if (!message || typeof message !== 'object') return;
   const senderOrigin = normalizeOrigin(_sender?.url || _sender?.origin || '');
   if (!isAllowedExternalOrigin(senderOrigin)) {
-    sendResponse?.({
-      ok: false,
-      error: 'Origin not allowed',
-    });
+    sendResponse?.({ ok: false, error: 'Origin not allowed' });
     return false;
   }
 
-  if (message.type === 'ELLYN_PING') {
-    sendResponse?.({ success: true, version: '1.0.0' });
+  const deps = {
+    handleSaveTemplateMessage,
+    handleGetTemplatesMessage,
+    handleDeleteTemplateMessage,
+    setSupabaseSessionFromExternalMessage,
+    setAuthenticatedState,
+    clearAuthenticatedState,
+  };
+
+  if (emailActionsDomain?.handleExternalEmailActions?.(message, sendResponse, deps) === true) {
+    return true;
+  }
+  if (emailActionsDomain?.handleExternalEmailActions?.(message, sendResponse, deps) === false && message.type === MESSAGE_TYPES.ELLYN_PING) {
     return false;
   }
-
-  if (message.type === 'ELLYN_SAVE_TEMPLATE') {
-    void handleSaveTemplateMessage(message, sendResponse);
+  if (authBridgeDomain?.handleExternalAuthBridge?.(message, senderOrigin, sendResponse, deps) === true) {
     return true;
   }
 
-  if (message.type === 'ELLYN_GET_TEMPLATES') {
-    void handleGetTemplatesMessage(sendResponse);
-    return true;
-  }
-
-  if (message.type === 'ELLYN_DELETE_TEMPLATE') {
-    void handleDeleteTemplateMessage(message, sendResponse);
-    return true;
-  }
-
-  if (message.type === 'ELLYN_SET_SESSION') {
-    void setSupabaseSessionFromExternalMessage(message, sendResponse, {
-      sourceOrigin: senderOrigin,
-    });
-    return true;
-  }
-
-  if (message.type === 'WEBAPP_AUTH_SYNC') {
-    void setAuthenticatedState(message.payload || null, sendResponse, {
-      sourceOrigin: senderOrigin,
-    });
-    return true;
-  }
-
-  if (message.type === 'AUTH_SUCCESS') {
-    void setAuthenticatedState(message.payload || null, sendResponse, {
-      sourceOrigin: senderOrigin,
-    });
-    return true;
-  }
-
-  if (message.type === 'AUTH_LOGOUT') {
-    void clearAuthenticatedState(sendResponse);
-    return true;
-  }
+  return false;
 });
 
 if (chrome.alarms?.onAlarm) {

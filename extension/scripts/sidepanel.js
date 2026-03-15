@@ -7,6 +7,27 @@ const sidepanelLogger =
     error: (...args) => console.error(...args),
   };
 
+const messageContract = globalThis.EllynMessageContract;
+if (!messageContract) {
+  throw new Error("[Sidepanel] Missing message contract script. Ensure shared/message-contract.js is loaded.");
+}
+
+const sidepanelStateContract = globalThis.EllynSidepanelState;
+const sidepanelApi = globalThis.EllynSidepanelApi;
+const sidepanelProfileExtraction = globalThis.EllynSidepanelProfileExtraction;
+const sidepanelQuota = globalThis.EllynSidepanelQuota;
+const sidepanelRendering = globalThis.EllynSidepanelRendering;
+const sidepanelTodoFactory = globalThis.EllynSidepanelTodo;
+
+const { sendRuntimeMessage, sendTabMessage, queryTabs, storageGet, storageSet, storageRemove, fetchWithTimeout } = sidepanelApi;
+const { isLinkedInProfile, isLinkedInCompanyPage, getLinkedInProfileTab, hasLinkedInProfileOpen, requestProfileExtraction: requestProfileExtractionViaModule } = sidepanelProfileExtraction;
+const { escapeHtml, formatResetDate, toFiniteNumber } = sidepanelRendering;
+const MESSAGE_TYPES = messageContract.MESSAGE_TYPES;
+
+if (!sidepanelStateContract || !sidepanelApi || !sidepanelProfileExtraction || !sidepanelQuota || !sidepanelRendering || !sidepanelTodoFactory) {
+  throw new Error("[Sidepanel] Missing sidepanel domain modules. Ensure scripts/sidepanel/*.js are loaded.");
+}
+
 const DEFAULT_AUTH_BASE_URL = "https://www.useellyn.com";
 const PRICING_URL = "https://www.useellyn.com/pricing";
 const DEFAULT_API_BASE_URL = "https://www.useellyn.com";
@@ -43,58 +64,9 @@ const ABOUT_BRIEF_FAILURE_TTL_MS = 30 * 60 * 1000;
 const ABOUT_BRIEF_MAX_CACHE_ENTRIES = 40;
 const ABOUT_BRIEF_UNAVAILABLE_MESSAGE =
   "We couldn't fetch company details right now. Try again later.";
-const CONTACT_SYNC_STATE = Object.freeze({
-  SYNCED: "synced",
-  QUEUED: "queued",
-  AUTH_FAILED: "auth_failed",
-  FAILED: "failed",
-});
-
-const STAGES = Object.freeze({
-  EXTRACTION: "extraction",
-  DRAFT: "draft",
-  TRACKING: "tracking",
-});
-
-const appState = {
-  stage: STAGES.EXTRACTION,
-  contact: null,
-};
-
-const PIPELINE_STAGES = [
-  { label: "Extracting LinkedIn data...", progress: 18 },
-  { label: "Resolving company domain...", progress: 42 },
-  { label: "Generating email patterns...", progress: 68 },
-  { label: "Verifying email...", progress: 90 },
-];
-
-const emailFinderState = {
-  isAuthenticated: false,
-  user: null,
-  isLoading: false,
-  quotaKnown: false,
-  quotaAllowsLookup: true,
-  quotaVisibleRequested: false,
-  profileSectionMode: "none",
-  currentResult: null,
-  currentError: null,
-  resultProfileKey: "",
-  loadingTimer: null,
-  stageIndex: 0,
-  upgradeUrl: PRICING_URL,
-  profileContext: null,
-  profileSyncTimer: null,
-  profileRefreshInFlight: false,
-  lastProfileKey: "",
-  profileListenersBound: false,
-  pendingSyncInFlight: false,
-  aboutBriefCache: new Map(),
-  aboutBriefRequestId: 0,
-  activeAboutBriefKey: "",
-  todoItems: [],
-  todoSaveInFlight: false,
-  revealedPhone: "",
-};
+const { STAGES, CONTACT_SYNC_STATE, PIPELINE_STAGES } = sidepanelStateContract;
+const appState = sidepanelStateContract.createAppState();
+const emailFinderState = sidepanelStateContract.createEmailFinderState(PRICING_URL);
 
 const elements = {
   statusText: null,
@@ -2028,44 +2000,26 @@ function areTodoItemsEqual(a, b) {
   return true;
 }
 
+const todoModule = sidepanelTodoFactory.createTodoModule({
+  sanitizeTodoItems,
+  normalizeTodoText,
+  makeTodoItem,
+  toggleTodoItem,
+  escapeHtml,
+  state: emailFinderState,
+  elements,
+  storageGet,
+  storageSet,
+  todoCacheKey: TODO_CACHE_KEY,
+  isAuthenticated: () => emailFinderState.isAuthenticated,
+  fetchTodosFromApi,
+  saveTodosToApi,
+  showToast,
+  logger: sidepanelLogger,
+});
+
 function renderTodoList() {
-  if (!elements.todoList || !elements.todoEmptyState) return;
-
-  const items = sanitizeTodoItems(emailFinderState.todoItems);
-  emailFinderState.todoItems = items;
-
-  if (items.length === 0) {
-    elements.todoList.innerHTML = "";
-    elements.todoEmptyState.classList.remove("hidden");
-  } else {
-    elements.todoEmptyState.classList.add("hidden");
-    elements.todoList.innerHTML = items
-      .map((item) => {
-        const isCompleted = item.completed === true;
-        const disabled = emailFinderState.todoSaveInFlight ? "disabled" : "";
-        return `
-          <li>
-            <button type="button" class="ellyn-todo-item ${isCompleted ? "is-completed" : ""}" data-todo-toggle="true" data-todo-id="${escapeHtml(item.id)}" ${disabled}>
-              <span class="ellyn-todo-check" aria-hidden="true">
-                <svg viewBox="0 0 12 12" fill="none">
-                  <path d="M2 6.25 4.8 9 10 3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-              </span>
-              <span class="ellyn-todo-text">${escapeHtml(item.text)}</span>
-            </button>
-          </li>
-        `;
-      })
-      .join("");
-  }
-
-  if (elements.todoSaveBtn) {
-    elements.todoSaveBtn.disabled = emailFinderState.todoSaveInFlight;
-  }
-
-  if (elements.todoAddMoreBtn) {
-    elements.todoAddMoreBtn.disabled = emailFinderState.todoSaveInFlight;
-  }
+  return todoModule.renderTodoList();
 }
 
 function openTodoComposer() {
@@ -2084,13 +2038,7 @@ function closeTodoComposer(clearInput = false) {
 }
 
 async function loadTodosFromCache() {
-  try {
-    const stored = await storageGet([TODO_CACHE_KEY]);
-    emailFinderState.todoItems = sanitizeTodoItems(stored?.[TODO_CACHE_KEY]);
-  } catch (error) {
-    sidepanelLogger.warn("[Sidepanel] Failed to load todo cache:", error);
-    emailFinderState.todoItems = [];
-  }
+  return todoModule.loadTodosFromCache();
 }
 
 async function persistTodosToCache(items) {
@@ -2162,110 +2110,42 @@ async function saveTodosToApi(items) {
 }
 
 async function syncTodosFromServer() {
-  if (!emailFinderState.isAuthenticated) return;
-
-  try {
-    const remoteItems = await fetchTodosFromApi();
-    const localItems = sanitizeTodoItems(emailFinderState.todoItems);
-    const mergedItems = sanitizeTodoItems([...localItems, ...remoteItems]);
-
-    emailFinderState.todoItems = mergedItems;
-    await persistTodosToCache(mergedItems);
-    renderTodoList();
-
-    if (!areTodoItemsEqual(remoteItems, mergedItems)) {
-      const synced = await saveTodosToApi(mergedItems);
-      emailFinderState.todoItems = synced;
-      await persistTodosToCache(synced);
-      renderTodoList();
-    }
-  } catch (error) {
-    sidepanelLogger.warn("[Sidepanel] Failed to sync todos from server:", error);
-  }
+  return todoModule.syncTodosFromServer();
 }
 
 async function persistTodoItems(items) {
-  const normalized = sanitizeTodoItems(items);
-  emailFinderState.todoItems = normalized;
-  renderTodoList();
-
-  try {
-    await persistTodosToCache(normalized);
-  } catch (error) {
-    sidepanelLogger.warn("[Sidepanel] Failed to persist todo cache:", error);
-  }
-
-  if (!emailFinderState.isAuthenticated) return;
-
-  emailFinderState.todoSaveInFlight = true;
-  renderTodoList();
-
-  try {
-    const synced = await saveTodosToApi(normalized);
-    emailFinderState.todoItems = synced;
-    await persistTodosToCache(synced);
-  } catch (error) {
-    sidepanelLogger.warn("[Sidepanel] Failed to save todos to server:", error);
-    showToast("To-do saved locally. We'll sync it soon.", "info");
-  } finally {
-    emailFinderState.todoSaveInFlight = false;
-    renderTodoList();
-  }
+  return todoModule.persistTodoItems(items);
 }
 
 async function handleTodoSave() {
-  if (emailFinderState.todoSaveInFlight) return;
-  const text = normalizeTodoText(elements.todoInput?.value);
-  if (!text) {
+  if (!normalizeTodoText(elements.todoInput?.value)) {
     closeTodoComposer();
     return;
   }
-
-  const nextItem = makeTodoItem(text);
-
-  if (elements.todoInput) {
-    elements.todoInput.value = "";
-  }
   closeTodoComposer();
-  await persistTodoItems([nextItem, ...emailFinderState.todoItems]);
+  return todoModule.handleTodoSave();
 }
 
 async function toggleTodoItemById(todoId) {
-  if (emailFinderState.todoSaveInFlight) return;
-
-  const normalizedId = String(todoId || "").trim();
-  if (!normalizedId) return;
-
-  const nextItems = toggleTodoItem(emailFinderState.todoItems, normalizedId);
-  await persistTodoItems(nextItems);
+  return todoModule.toggleTodoItemById(todoId);
 }
 
 async function consumeLookupCredits(credits, label = "action") {
-  const requestedCredits = Math.max(1, Math.min(100, Number(credits) || 1));
-  try {
-    const response = await sendRuntimeMessage({
-      type: "CONSUME_LOOKUP_CREDITS",
-      amount: requestedCredits,
-    });
-
-    const allowed = response?.allowed !== false;
-    if (!allowed) {
-      const resetLabel = formatResetDate(response?.resetDate);
-      const message = resetLabel
-        ? `Not enough credits for ${label}. Resets ${resetLabel}.`
-        : `Not enough credits for ${label}.`;
+  return sidepanelQuota.consumeLookupCredits(
+    credits,
+    label,
+    (message) => {
       showToast(message, "error");
       setUpgradeState(true, message, PRICING_URL);
-      return false;
+    },
+    async () => {
+      await updateQuotaStatus();
+    },
+    (error) => {
+      sidepanelLogger.warn("[Sidepanel] Failed to consume credits:", error);
+      showToast("Could not verify credits. Try again.", "error");
     }
-
-    await updateQuotaStatus();
-    return true;
-  } catch (error) {
-    sidepanelLogger.warn("[Sidepanel] Failed to consume credits:", error);
-    showToast("Could not verify credits. Try again.", "error");
-    return false;
-  }
+  );
 }
 
 async function handlePhoneNumberAccess() {
@@ -4026,37 +3906,9 @@ function showToast(message, tone = "info") {
   }, 2400);
 }
 
-async function getLinkedInProfileTab() {
-  const [activeTab] = await queryTabs({ active: true, currentWindow: true });
-  if (isLinkedInProfile(activeTab?.url) && Number.isFinite(activeTab?.id)) {
-    return activeTab;
-  }
 
-  const allTabs = await queryTabs({ currentWindow: true });
-  const candidate = allTabs.find((tab) => isLinkedInProfile(tab?.url) && Number.isFinite(tab?.id));
-  if (candidate) {
-    return candidate;
-  }
 
-  throw new Error(PROFILE_CONTEXT_EMPTY_STATUS);
-}
 
-async function hasLinkedInProfileOpen() {
-  try {
-    const tabs = await queryTabs({ currentWindow: true });
-    return tabs.some((tab) => isLinkedInProfile(tab?.url) || isLinkedInCompanyPage(tab?.url));
-  } catch {
-    return false;
-  }
-}
-
-function isLinkedInProfile(url) {
-  return typeof url === "string" && /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/in\/[^/?#]+/i.test(url);
-}
-
-function isLinkedInCompanyPage(url) {
-  return typeof url === "string" && /^https:\/\/([a-z0-9-]+\.)?linkedin\.com\/company\/[^/?#]+/i.test(url);
-}
 
 function toConfidencePercent(value) {
   const n = toFiniteNumber(value);
@@ -4122,41 +3974,9 @@ function formatCost(cost) {
   return `$${value.toFixed(4)}`;
 }
 
-function formatResetDate(value) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
 
-function toFiniteNumber(value) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : NaN;
-}
 
-function escapeHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
-function sendRuntimeMessage(message) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      resolve(response || null);
-    });
-  });
-}
 
 function isMissingReceiverError(error) {
   const msg = String(error?.message || error || "").toLowerCase();
@@ -4168,92 +3988,13 @@ function isMissingReceiverError(error) {
 }
 
 async function requestProfileExtraction(tabId, debug = false) {
-  let directResponse = null;
-
-  try {
-    directResponse = await sendTabMessage(tabId, { type: "EXTRACT_PROFILE", debug });
-    if (directResponse && hasUsableProfileIdentity(directResponse)) {
-      return directResponse;
-    }
-  } catch (error) {
-    if (!isMissingReceiverError(error)) {
-      throw error;
-    }
-  }
-
-  const runtimeResponse = await sendRuntimeMessage({
-    type: "EXTRACT_PROFILE_FROM_TAB",
-    tabId,
-    debug,
-    data: { tabId, debug },
-  });
-
-  if (runtimeResponse && hasUsableProfileIdentity(runtimeResponse)) {
-    return runtimeResponse;
-  }
-
-  return runtimeResponse || directResponse;
+  return requestProfileExtractionViaModule(tabId, debug, hasUsableProfileIdentity);
 }
 
-function sendTabMessage(tabId, message) {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, message, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      resolve(response || null);
-    });
-  });
-}
 
-function queryTabs(query) {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.query(query, (tabs) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      resolve(Array.isArray(tabs) ? tabs : []);
-    });
-  });
-}
 
-function storageGet(keys) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get(keys, (data) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      resolve(data || {});
-    });
-  });
-}
 
-function storageSet(payload) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.set(payload, () => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      resolve();
-    });
-  });
-}
 
-function storageRemove(keys) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.remove(keys, () => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      resolve();
-    });
-  });
-}
 
 async function getAuthToken() {
   try {
@@ -4261,26 +4002,13 @@ async function getAuthToken() {
     const storedToken = typeof auth.auth_token === "string" ? auth.auth_token : "";
     if (storedToken) return storedToken;
 
-    const runtimeToken = await sendRuntimeMessage({ type: "GET_AUTH_TOKEN" });
+    const runtimeToken = await sendRuntimeMessage({ type: MESSAGE_TYPES.GET_AUTH_TOKEN });
     return typeof runtimeToken === "string" ? runtimeToken : "";
   } catch {
     return "";
   }
 }
 
-async function fetchWithTimeout(url, options, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      cache: "no-store",
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
 
 // ── Session-expired banner helpers ──────────────────────────────────────────
 
@@ -4703,4 +4431,3 @@ function _hideStatsView() {
   elements.statsViewContainer.innerHTML = "";
   elements.statsViewContainer.classList.add("hidden");
 }
-
