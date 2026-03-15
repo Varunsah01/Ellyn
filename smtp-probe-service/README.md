@@ -12,6 +12,11 @@ This service runs on a VPS and is **not part of the Next.js app runtime**.
 - Vercel runs on AWS networking where outbound port `25` is blocked.
 - Therefore this service must be deployed outside Vercel (for example, a VPS).
 
+## Local development note
+
+- Install dependencies locally with `npm install` (or `npm ci` in clean environments).
+- `node_modules/` is local-only build/install output and must never be committed.
+
 ## Deploy
 
 1. Copy environment values:
