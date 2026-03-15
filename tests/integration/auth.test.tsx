@@ -6,11 +6,15 @@ jest.mock('next/navigation', () => {
   const push = jest.fn()
   const refresh = jest.fn()
   const useSearchParams = jest.fn(() => new URLSearchParams())
+
   return {
     useRouter: () => ({ replace, push, refresh }),
     useSearchParams,
     __getRouterReplaceMock: () => replace,
     __getRouterPushMock: () => push,
+    __setSearchParamsMock: (params: URLSearchParams) => {
+      useSearchParams.mockImplementation(() => params)
+    },
   }
 })
 
@@ -63,11 +67,14 @@ type MockAuthMethods = {
 
 const supabase = (jest.requireMock('@/lib/supabase/client') as { __mockAuth: MockAuthMethods }).__mockAuth
 
-
-
 function getRouterPushMock() {
   const navModule = jest.requireMock('next/navigation')
   return navModule.__getRouterPushMock()
+}
+
+function setSearchParams(params: string) {
+  const navModule = jest.requireMock('next/navigation')
+  navModule.__setSearchParamsMock(new URLSearchParams(params))
 }
 
 describe('Auth integration flows', () => {
@@ -78,6 +85,8 @@ describe('Auth integration flows', () => {
       data: { session: null },
       error: null,
     })
+
+    setSearchParams('')
 
     ;(supabase.onAuthStateChange as jest.Mock).mockReturnValue({
       data: {
@@ -93,7 +102,7 @@ describe('Auth integration flows', () => {
 
     fireEvent.input(screen.getByPlaceholderText('Jane Doe'), { target: { name: 'full_name', value: 'Test User' } })
     fireEvent.input(screen.getByPlaceholderText('you@example.com'), { target: { name: 'email', value: 'test@example.com' } })
-    
+
     const weakPasswordInput = screen.getByPlaceholderText('Minimum 8 characters')
     fireEvent.input(weakPasswordInput, { target: { name: 'password', value: 'weak' } })
 
@@ -105,7 +114,7 @@ describe('Auth integration flows', () => {
     await waitFor(() => {
       expect(screen.getByText(/password must be at least 8 characters/i)).toBeInTheDocument()
     })
-    
+
     expect(apiFetch).not.toHaveBeenCalled()
   })
 
@@ -189,7 +198,7 @@ describe('Auth integration flows', () => {
 
     fireEvent.input(screen.getByPlaceholderText('you@example.com'), { target: { name: 'email', value: 'wrong@example.com' } })
     fireEvent.input(screen.getByPlaceholderText('Your password'), { target: { name: 'password', value: 'wrong' } })
-    
+
     await act(async () => {
       const form = container.querySelector('form')
       if (form) fireEvent.submit(form)
@@ -198,5 +207,30 @@ describe('Auth integration flows', () => {
     expect(await screen.findByText(/invalid login credentials/i)).toBeInTheDocument()
     expect(getRouterPushMock()).not.toHaveBeenCalledWith('/dashboard')
   })
-})
 
+  test('login Google OAuth uses server start route and preserves extension redirect', async () => {
+    setSearchParams('next=%2Fextension-auth%3Fsource%3Dpopup&extensionId=ext-123')
+
+    render(<LoginPage />)
+
+    const googleLink = screen.getByRole('link', { name: /continue with google/i })
+    expect(googleLink).toHaveAttribute(
+      'href',
+      '/auth/oauth/start?provider=google&next=%2Fextension-auth%3Fsource%3Dpopup%26extensionId%3Dext-123',
+    )
+    expect(supabase.signInWithOAuth).not.toHaveBeenCalled()
+  })
+
+  test('signup Google OAuth uses server start route and sanitizes unsafe next redirects', async () => {
+    setSearchParams('next=https%3A%2F%2Fevil.example')
+
+    render(<SignupPage />)
+
+    const googleLink = screen.getByRole('link', { name: /continue with google/i })
+    expect(googleLink).toHaveAttribute(
+      'href',
+      '/auth/oauth/start?provider=google&next=%2Fdashboard',
+    )
+    expect(supabase.signInWithOAuth).not.toHaveBeenCalled()
+  })
+})

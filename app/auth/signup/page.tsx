@@ -110,7 +110,6 @@ function SignupPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(signupSchema),
@@ -145,6 +144,13 @@ function SignupPageContent() {
     () => buildAuthSwitchHref(searchParams, "/auth/login"),
     [searchParams]
   );
+
+  const googleAuthHref = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("provider", "google");
+    params.set("next", redirectPath);
+    return `/auth/oauth/start?${params.toString()}`;
+  }, [redirectPath]);
 
   const onSubmit = async (values: SignupFormValues) => {
     setIsSubmitting(true);
@@ -195,63 +201,26 @@ function SignupPageContent() {
     }
   };
 
-  const handleGoogleAuth = async () => {
-    setIsGoogleSubmitting(true);
-    form.clearErrors("root");
-
-    try {
-      const origin =
-        typeof window !== "undefined"
-          ? window.location.origin
-          : process.env.NEXT_PUBLIC_APP_URL;
-      const callbackParams = new URLSearchParams();
-      callbackParams.set("next", redirectPath);
-      const redirectTo = origin
-        ? `${origin}/auth/callback-client?${callbackParams.toString()}`
-        : undefined;
-
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: redirectTo ? { redirectTo } : undefined,
-      });
-
-      if (error) {
-        form.setError("root", { message: error.message });
-      }
-    } catch (error) {
-      form.setError("root", {
-        message: error instanceof Error ? error.message : "Google sign-up failed",
-      });
-    } finally {
-      setIsGoogleSubmitting(false);
-    }
-  };
-
   return (
     <AuthFormLayout
       title="Create your account"
       subtitle="Start using ELLYN with your free account."
       isSupabaseConfigured={isSupabaseConfigured}
       errorMessage={form.formState.errors.root?.message}
-      isBusy={isSubmitting || isGoogleSubmitting}
+      isBusy={isSubmitting}
     >
       <div className="space-y-5">
         <Button
-          type="button"
           variant="outline"
           className="h-11 w-full border-[#D8D6EA] bg-white text-[#2D2B55] hover:bg-[#F5F3FD]"
-          onClick={() => void handleGoogleAuth()}
-          disabled={isGoogleSubmitting}
+          asChild
         >
-          {isGoogleSubmitting ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
+          <Link href={googleAuthHref}>
             <span className="mr-2">
               <GoogleIcon />
             </span>
-          )}
-          Continue with Google
+            Continue with Google
+          </Link>
         </Button>
 
         <div className="relative">
