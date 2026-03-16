@@ -102,6 +102,11 @@ export default async function AdminDashboardPage() {
           title="Verification"
           description="Abstract API usage & costs"
         />
+        <QuickLink
+          href="/admin/dashboard/webhooks"
+          title="Webhooks"
+          description="Billing and integration event logs"
+        />
       </div>
     </div>
   )
