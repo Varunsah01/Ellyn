@@ -104,3 +104,11 @@
 - `lib/api/auth.ts` `getAuthUser()` not yet wired to all routes (existing `getAuthenticatedUser` still used; both are valid)
 - `lib/env.ts` imported in new routes only; existing routes still use `process.env` directly
 - Rate limiting not applied to low-volume CRUD operations (PATCH/DELETE individual records) — acceptable given low attack surface
+
+---
+
+## Service-role-only configuration tables
+
+- `public.system_configs` is intentionally **not client-accessible**.
+- RLS is `service_role`-only in migration `040_system_configs.sql`, and direct reads/writes from normal client JWTs (`anon`/`authenticated`) are blocked.
+- Any future API endpoint touching system configs must use trusted server-side credentials (service role) and enforce explicit admin authorization in route logic before mutation.

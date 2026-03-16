@@ -44,6 +44,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             Health
           </Link>
 
+
+          <Link href="/admin/dashboard/settings"
+            className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5
+                       rounded-md hover:bg-gray-800">
+            Settings
+          </Link>
           <Link href="/admin/dashboard/webhooks"
             className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5
                        rounded-md hover:bg-gray-800">

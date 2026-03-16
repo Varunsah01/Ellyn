@@ -112,6 +112,11 @@ export default async function AdminDashboardPage() {
           title="Webhooks"
           description="Billing and integration event logs"
         />
+        <QuickLink
+          href="/admin/dashboard/settings"
+          title="Settings"
+          description="Fallbacks, lookup efficiency, and admin IP controls"
+        />
       </div>
     </div>
   )
