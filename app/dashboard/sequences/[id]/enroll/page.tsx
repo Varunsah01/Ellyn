@@ -8,6 +8,8 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  Lock,
+  Mail,
   Search,
 } from "lucide-react";
 
@@ -20,6 +22,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { showToast } from "@/lib/toast";
+import { useEmailIntegrations } from "@/hooks/useEmailIntegrations";
 
 type WizardStep = 1 | 2 | 3;
 
@@ -107,6 +110,9 @@ const STEP_META: Array<{ step: WizardStep; label: string }> = [
 export default function EnrollContactsPage() {
   const params = useParams();
   const sequenceId = params.id as string;
+  const { gmail, outlook } = useEmailIntegrations();
+  const hasEmailConnected = gmail.connected || outlook.connected;
+  const emailCheckLoading = gmail.loading || outlook.loading;
 
   const [wizardStep, setWizardStep] = useState<WizardStep>(1);
   const [isLoading, setIsLoading] = useState(true);
@@ -361,6 +367,30 @@ export default function EnrollContactsPage() {
           })}
         </div>
 
+        {!emailCheckLoading && !hasEmailConnected && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="flex items-center gap-4 p-4">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-amber-100">
+                <Lock className="h-5 w-5 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-900">
+                  Connect an Email Account to Enroll Contacts
+                </p>
+                <p className="mt-0.5 text-xs text-amber-700">
+                  Bulk enrollment requires a connected Gmail or Outlook account so Ellyn can send emails on your behalf.
+                </p>
+              </div>
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/dashboard/settings">
+                  <Mail className="mr-2 h-4 w-4" />
+                  Connect
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {isLoading ? (
           <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-[#E6E4F2] bg-white">
             <Loader2 className="h-5 w-5 animate-spin text-[#2D2B55]" />
@@ -507,7 +537,7 @@ export default function EnrollContactsPage() {
                     <Button type="button" variant="outline" onClick={() => setWizardStep(1)}>
                       ← Back
                     </Button>
-                    <Button type="button" onClick={() => void handleSubmitEnrollment()} disabled={isSubmitting || selectedCount === 0}>
+                    <Button type="button" onClick={() => void handleSubmitEnrollment()} disabled={isSubmitting || selectedCount === 0 || !hasEmailConnected}>
                       {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                       Enroll {selectedCount} Contact{selectedCount === 1 ? "" : "s"} →
                       <ChevronRight className="h-4 w-4" />

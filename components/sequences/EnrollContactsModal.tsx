@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   Check,
   Loader2,
+  Lock,
+  Mail,
   Search,
   ShieldOff,
   Users,
@@ -26,6 +28,7 @@ import { showToast } from "@/lib/toast"
 import { useContacts } from "@/lib/hooks/useContacts"
 import { supabaseAuthedFetch } from "@/lib/auth/client-fetch"
 import { cn } from "@/lib/utils"
+import { useEmailIntegrations } from "@/hooks/useEmailIntegrations"
 
 const STATUS_BADGE: Record<string, string> = {
   new: "border-slate-200 bg-slate-50 text-slate-600",
@@ -51,6 +54,10 @@ export function EnrollContactsModal({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [enrolling, setEnrolling] = useState(false)
   const [suppressedEmails, setSuppressedEmails] = useState<Set<string>>(new Set())
+
+  const { gmail, outlook } = useEmailIntegrations()
+  const hasEmailConnected = gmail.connected || outlook.connected
+  const emailCheckLoading = gmail.loading || outlook.loading
 
   const { contacts, loading } = useContacts({
     limit: 200,
@@ -182,8 +189,39 @@ export function EnrollContactsModal({
           </DialogTitle>
         </DialogHeader>
 
+        {/* Email connection gate */}
+        {!emailCheckLoading && !hasEmailConnected && (
+          <div className="flex-shrink-0 border-b px-5 py-6">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50">
+                <Lock className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Connect an Email Account to Enroll
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Bulk enrollment requires a connected Gmail or Outlook account so
+                  Ellyn can send emails on your behalf.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setOpen(false)
+                  window.location.href = "/dashboard/settings"
+                }}
+              >
+                <Mail className="mr-2 h-4 w-4" />
+                Connect Email Account
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Filters */}
-        <div className="flex-shrink-0 space-y-3 border-b px-5 py-3">
+        <div className={cn("flex-shrink-0 space-y-3 border-b px-5 py-3", !hasEmailConnected && !emailCheckLoading && "pointer-events-none opacity-40")}>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -222,7 +260,7 @@ export function EnrollContactsModal({
         </div>
 
         {/* Contact list */}
-        <div className="flex-1 overflow-y-auto px-2 py-1">
+        <div className={cn("flex-1 overflow-y-auto px-2 py-1", !hasEmailConnected && !emailCheckLoading && "pointer-events-none opacity-40")}>
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -366,7 +404,7 @@ export function EnrollContactsModal({
             Cancel
           </Button>
           <Button
-            disabled={selected.size === 0 || enrolling}
+            disabled={selected.size === 0 || enrolling || !hasEmailConnected}
             style={{ backgroundColor: "#7C3AED", color: "#fff" }}
             onClick={() => void handleEnroll()}
           >

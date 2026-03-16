@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react"
 import { X, ArrowLeft, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { cn } from "@/lib/utils"
-import { getOnboardingState, setOnboardingState } from "@/lib/onboarding"
+import { getOnboardingState, setOnboardingState, markOnboardingStepComplete } from "@/lib/onboarding"
+import { usePersona } from "@/context/PersonaContext"
 
 type TourStep = {
   id: string
@@ -22,14 +23,14 @@ const tourSteps: TourStep[] = [
   },
   {
     id: "contacts",
-    title: "Review Extracted Contacts",
-    description: "All captured contacts appear here. You can enrich, tag, and manage them.",
+    title: "Find Your First Email",
+    description: "Use the Email Discovery tool to look up any professional's email address with 95%+ accuracy.",
     selector: '[data-tour="contacts"]',
   },
   {
     id: "sequences",
-    title: "Create Outreach Sequences",
-    description: "Build multi-step email sequences to stay organized and consistent.",
+    title: "Create Your First Sequence",
+    description: "Build a multi-step outreach sequence to automate follow-ups and stay organized.",
     selector: '[data-tour="sequences"]',
   },
 ]
@@ -48,17 +49,26 @@ export function DashboardTour() {
   const [stepIndex, setStepIndex] = useState(0)
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({})
+  const { onboardingStepsCompleted, isLoading, refreshOnboardingSteps } = usePersona()
 
   const step = tourSteps[stepIndex]
 
-  // Start tour if tourPending flag is set in localStorage
+  // Start tour if tourPending flag is set in localStorage, OR if the
+  // server-side onboarding state indicates the user hasn't taken the tour yet
   useEffect(() => {
+    if (isLoading) return
     const state = getOnboardingState()
-    if (state.tourPending && !state.tourDismissed && !state.tourCompleted) {
+    if (state.tourDismissed || state.tourCompleted) return
+
+    // Auto-trigger for new users who selected a persona but haven't taken the tour
+    const hasPersona = onboardingStepsCompleted.includes("persona_selected")
+    const shouldAutoStart = state.tourPending || (hasPersona && !state.tourCompleted && !state.tourDismissed)
+
+    if (shouldAutoStart) {
       setOpen(true)
       setStepIndex(0)
     }
-  }, [])
+  }, [isLoading, onboardingStepsCompleted])
 
   // Also listen for the imperative start event dispatched after persona selection
   useEffect(() => {
@@ -150,6 +160,8 @@ export function DashboardTour() {
   const handleComplete = () => {
     setOpen(false)
     setOnboardingState({ tourPending: false, tourCompleted: true })
+    // Persist tour completion to the server as a known onboarding milestone
+    void markOnboardingStepComplete("first_contact").then(() => refreshOnboardingSteps())
   }
 
   const nextStep = () => {

@@ -18,6 +18,8 @@ interface DateRangeFilterProps {
   onDateRangeChange: (range: DateRange | undefined) => void;
   compareEnabled: boolean;
   onCompareToggle: (enabled: boolean) => void;
+  /** When provided and zero, shows guidance that there is no email data to filter yet. */
+  totalSentEmails?: number;
 }
 
 /**
@@ -32,7 +34,9 @@ export function DateRangeFilter({
   onDateRangeChange,
   compareEnabled,
   onCompareToggle,
+  totalSentEmails,
 }: DateRangeFilterProps) {
+  const showNoDataGuidance = typeof totalSentEmails === "number" && totalSentEmails === 0;
   const presets = [
     {
       label: "Last 7 days",
@@ -63,8 +67,14 @@ export function DateRangeFilter({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
+      {showNoDataGuidance && (
+        <div className="w-full rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800">
+          No sent emails recorded yet. Send your first outreach to see analytics data here.
+        </div>
+      )}
+
       {/* Quick presets */}
-      <div className="flex flex-wrap gap-2">
+      <div className={cn("flex flex-wrap gap-2", showNoDataGuidance && "opacity-50 pointer-events-none")}>
         {presets.map((preset) => (
           <Button
             key={preset.label}
