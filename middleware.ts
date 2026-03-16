@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getAdminSessionFromRequest } from "@/lib/auth/admin-session";
+import { getImpersonationSessionFromRequest } from "@/lib/auth/admin-impersonation";
 
 const PUBLIC_PATHS = ["/", "/auth", "/api/v1/auth", "/api/v1/pricing-region"] as const;
 
@@ -48,6 +49,12 @@ export async function middleware(request: NextRequest) {
 
   // ── Regular app route protection (Supabase) ─────────────────────────────
   if (isPublicPath(pathname) || !isProtectedPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  const adminSession = await getAdminSessionFromRequest(request);
+  const impersonationSession = await getImpersonationSessionFromRequest(request);
+  if (adminSession && impersonationSession) {
     return NextResponse.next();
   }
 

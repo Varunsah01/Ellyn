@@ -1,7 +1,9 @@
 import { createClient as createSupabaseJsClient, type User } from '@supabase/supabase-js'
 import * as Sentry from '@sentry/nextjs'
 
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getAdminSession } from '@/lib/auth/admin-session'
+import { getImpersonationSession } from '@/lib/auth/admin-impersonation'
 
 /**
  * Get authenticated user.
@@ -18,7 +20,13 @@ export async function getAuthenticatedUser() {
   } = await supabase.auth.getUser()
 
   if (error || !user) {
-    throw new Error('Unauthorized')
+    const impersonated = await resolveImpersonatedUser()
+    if (!impersonated) {
+      throw new Error('Unauthorized')
+    }
+
+    Sentry.setUser({ id: impersonated.id })
+    return impersonated
   }
 
   // Attach non-PII user context for server-side error correlation.
@@ -94,6 +102,23 @@ export async function getUserQuota(userId: string) {
   }
 
   return data
+}
+
+
+
+async function resolveImpersonatedUser(): Promise<User | null> {
+  const [adminSession, impersonationSession] = await Promise.all([
+    getAdminSession(),
+    getImpersonationSession(),
+  ])
+
+  if (!adminSession || !impersonationSession) return null
+
+  const supabase = await createServiceRoleClient()
+  const { data, error } = await supabase.auth.admin.getUserById(impersonationSession.targetUserId)
+
+  if (error) return null
+  return data.user ?? null
 }
 
 function extractBearerToken(headers: Headers): string | null {

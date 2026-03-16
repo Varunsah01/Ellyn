@@ -103,6 +103,11 @@ export default async function AdminDashboardPage() {
           description="Abstract API usage & costs"
         />
         <QuickLink
+          href="/admin/dashboard/health"
+          title="Health"
+          description="Pipeline reliability, latency, and quota trends"
+        />
+        <QuickLink
           href="/admin/dashboard/webhooks"
           title="Webhooks"
           description="Billing and integration event logs"

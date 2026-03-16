@@ -38,6 +38,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             Verification
           </Link>
 
+          <Link href="/admin/dashboard/health"
+            className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5
+                       rounded-md hover:bg-gray-800">
+            Health
+          </Link>
+
           <Link href="/admin/dashboard/webhooks"
             className="text-sm text-gray-400 hover:text-white transition-colors px-3 py-1.5
                        rounded-md hover:bg-gray-800">

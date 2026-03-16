@@ -4,6 +4,8 @@ import {
   createClient,
   createServiceRoleClient,
 } from '@/lib/supabase/server'
+import { getAdminSession } from '@/lib/auth/admin-session'
+import { getImpersonationSession } from '@/lib/auth/admin-impersonation'
 
 export function extractBearerToken(headers: Headers): string | null {
   const rawAuth = headers.get('authorization')
@@ -14,6 +16,21 @@ export function extractBearerToken(headers: Headers): string | null {
 
   const token = match[1].trim()
   return token.length > 0 ? token : null
+}
+
+async function resolveImpersonatedUser(): Promise<User | null> {
+  const [adminSession, impersonationSession] = await Promise.all([
+    getAdminSession(),
+    getImpersonationSession(),
+  ])
+
+  if (!adminSession || !impersonationSession) return null
+
+  const serviceClient = await createServiceRoleClient()
+  const { data, error } = await serviceClient.auth.admin.getUserById(impersonationSession.targetUserId)
+
+  if (error) return null
+  return data.user ?? null
 }
 
 async function resolveUserFromCookie(): Promise<User | null> {
@@ -61,8 +78,13 @@ export async function getAuthenticatedServiceRoleClient(
     return { supabase, user }
   }
 
+  const cookieUser = await resolveUserFromCookie()
+  if (cookieUser) {
+    return { supabase, user: cookieUser }
+  }
+
   return {
     supabase,
-    user: await resolveUserFromCookie(),
+    user: await resolveImpersonatedUser(),
   }
 }
